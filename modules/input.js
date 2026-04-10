@@ -1,0 +1,404 @@
+/**
+ * LEXICON DEEP — Input Module
+ * window.LD.Input
+ *
+ * Handles all keyboard input and orchestrates the full turn sequence:
+ *   typing → validation → path-finding → submission → board effects → win/lose check
+ */
+(function () {
+  'use strict';
+
+  window.LD = window.LD || {};
+
+  // ---------------------------------------------------------------------------
+  // Internal state
+  // ---------------------------------------------------------------------------
+
+  let _state = null;       // reference set by init()
+  let _attached = false;   // guard against double-attaching listeners
+
+  // ---------------------------------------------------------------------------
+  // Helpers — safe module calls (graceful no-ops if a module isn't loaded yet)
+  // ---------------------------------------------------------------------------
+
+  function safeCall(fn, ...args) {
+    if (typeof fn === 'function') return fn(...args);
+    return undefined;
+  }
+
+  function dictIsValid(word) {
+    return safeCall(window.LD?.Dict?.isValid, word) ?? false;
+  }
+
+  function dictScore(word, pathTiles) {
+    return safeCall(window.LD?.Dict?.score, word, pathTiles) ?? word.length;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Input state mutators
+  // ---------------------------------------------------------------------------
+
+  function clearInput() {
+    _state.input.typed    = '';
+    _state.input.path     = [];
+    _state.input.valid    = false;
+    _state.input.hasPath  = false;
+  }
+
+  /**
+   * After every keystroke, re-run validation and path search, then update
+   * prefix-start highlighting via Pathfinder.
+   */
+  function refreshInputState() {
+    const typed = _state.input.typed;
+
+    if (typed.length === 0) {
+      _state.input.valid   = false;
+      _state.input.hasPath = false;
+      _state.input.path    = [];
+      return;
+    }
+
+    // 1. Dictionary validity check
+    _state.input.valid = dictIsValid(typed);
+
+    // 2. Path search (always, so live highlighting stays current)
+    const path = window.LD.Pathfinder
+      ? window.LD.Pathfinder.findPath(_state, typed)
+      : [];
+    _state.input.path    = path;
+    _state.input.hasPath = path.length > 0;
+
+    // 3. Prefix-start highlighting — store on state so renderer can use it
+    if (window.LD.Pathfinder) {
+      _state.input.prefixStarts = window.LD.Pathfinder.findPrefixStarts(_state, typed);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Viewport scrolling
+  // ---------------------------------------------------------------------------
+
+  function scrollViewport(dCol, dRow) {
+    const vp = _state.viewport;
+    const maxCol = _state.board.width  - vp.cols;
+    const maxRow = _state.board.height - vp.rows;
+
+    vp.col = Math.max(0, Math.min(maxCol, vp.col + dCol));
+    vp.row = Math.max(0, Math.min(maxRow, vp.row + dRow));
+
+    // Clear word input on scroll — path is now stale
+    clearInput();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Turn execution
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Resolve icon effects for tiles in the activated path.
+   * Called AFTER cleanseTilesNear so the crystal radius is already applied.
+   */
+  function processIconEffects(path) {
+    for (let i = 0; i < path.length; i++) {
+      const { col, row } = path[i];
+      const tile = _state.board.tiles[row * _state.board.width + col];
+      if (!tile || !tile.icon) continue;
+
+      switch (tile.icon) {
+        case 'ember': {
+          // 5×5 area centred on ember tile
+          const emberTiles = [];
+          for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              const c = col + dc;
+              const r = row + dr;
+              if (c >= 0 && c < _state.board.width && r >= 0 && r < _state.board.height) {
+                emberTiles.push({ col: c, row: r });
+              }
+            }
+          }
+          safeCall(window.LD?.Board?.cleanseTilesNear, _state, emberTiles, 2);
+          break;
+        }
+        case 'bomb': {
+          // 9×9 area centred on bomb tile
+          const bombTiles = [];
+          for (let dr = -4; dr <= 4; dr++) {
+            for (let dc = -4; dc <= 4; dc++) {
+              const c = col + dc;
+              const r = row + dr;
+              if (c >= 0 && c < _state.board.width && r >= 0 && r < _state.board.height) {
+                bombTiles.push({ col: c, row: r });
+              }
+            }
+          }
+          safeCall(window.LD?.Board?.cleanseTilesNear, _state, bombTiles, 2);
+          break;
+        }
+        case 'crystal':
+          // Crystal radius was already handled in submitWord (doubled radius)
+          break;
+        case 'void':
+          // Void is just a wildcard — no additional effect
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  /**
+   * Determine the cleanse radius for a submitted path.
+   * Crystal in the path doubles it from 2 → 4.
+   */
+  function getCleanseRadius(path) {
+    for (let i = 0; i < path.length; i++) {
+      const { col, row } = path[i];
+      const tile = _state.board.tiles[row * _state.board.width + col];
+      if (tile && tile.icon === 'crystal') return 4;
+    }
+    return 2;
+  }
+
+  /**
+   * Execute a valid, path-confirmed word submission.
+   *
+   * Turn sequence (per spec):
+   *   1. Score calculation
+   *   2. Cleanse tiles near path
+   *   3. Check / destroy seals
+   *   4. Process icon tile effects
+   *   5. Refresh activated tiles
+   *   6. Spread corruption
+   *   7. Update stats
+   *   8. Check win / lose
+   *   9. Spawn particles
+   *  10. Play audio
+   *  11. Clear input
+   */
+  function submitWord() {
+    const typed    = _state.input.typed;
+    const path     = _state.input.path.slice(); // snapshot before clear
+
+    // ── 1. Score ──────────────────────────────────────────────────────────────
+    const pathTiles = path.map(({ col, row }) =>
+      _state.board.tiles[row * _state.board.width + col]
+    );
+    const earned = dictScore(typed, pathTiles);
+
+    // ── 2. Cleanse tiles near path ────────────────────────────────────────────
+    const radius = getCleanseRadius(path);
+    safeCall(window.LD?.Board?.cleanseTilesNear, _state, path, radius);
+
+    // ── 3. Check and destroy seals ────────────────────────────────────────────
+    const sealIndex = safeCall(window.LD?.Board?.checkSealDestruction, _state, path);
+    if (typeof sealIndex === 'number' && sealIndex >= 0) {
+      safeCall(window.LD?.Board?.destroySeal, _state, sealIndex);
+      _state.seedsDestroyed = (_state.seedsDestroyed || 0) + 1;
+    }
+
+    // ── 4. Icon tile effects ──────────────────────────────────────────────────
+    processIconEffects(path);
+
+    // ── 5. Refresh activated tiles ────────────────────────────────────────────
+    safeCall(window.LD?.Board?.refreshTiles, _state, path);
+
+    // ── 6. Spread corruption ─────────────────────────────────────────────────
+    safeCall(window.LD?.Board?.spreadCorruption, _state);
+
+    // ── 7. Update stats ───────────────────────────────────────────────────────
+    _state.score        = (_state.score        || 0) + earned;
+    _state.wordsSpelled = (_state.wordsSpelled || 0) + 1;
+    _state.turns        = (_state.turns        || 0) + 1;
+    if (typed.length > ((_state.longestWord || '').length)) {
+      _state.longestWord = typed;
+    }
+
+    // ── 8. Win / lose checks ─────────────────────────────────────────────────
+    const totalSeeds = _state.totalSeeds || 0;
+    if (totalSeeds > 0 && (_state.seedsDestroyed || 0) >= totalSeeds) {
+      _state.phase = 'victory';
+    } else {
+      const corruptPct = safeCall(window.LD?.Board?.getCorruptionPercent, _state) ?? 0;
+      if (corruptPct >= 40) {
+        _state.phase = 'gameover';
+      }
+    }
+
+    // ── 9. Particles ──────────────────────────────────────────────────────────
+    safeCall(window.LD?.Particles?.spawnWordActivation, _state, path, typed);
+
+    // ── 10. Audio ─────────────────────────────────────────────────────────────
+    safeCall(window.LD?.Audio?.play, 'word_valid');
+
+    // ── 11. Clear input ───────────────────────────────────────────────────────
+    clearInput();
+  }
+
+  /**
+   * Handle an invalid or no-path submission attempt: give feedback without
+   * consuming a turn.
+   */
+  function rejectWord() {
+    safeCall(window.LD?.Audio?.play, 'word_invalid');
+    // Signal the renderer to flash the input indicator
+    _state.input.flashInvalid = true;
+    // The renderer is responsible for clearing flashInvalid after animation
+  }
+
+  // ---------------------------------------------------------------------------
+  // Letter-by-letter input
+  // ---------------------------------------------------------------------------
+
+  function appendLetter(letter) {
+    _state.input.typed += letter.toUpperCase();
+    refreshInputState();
+
+    // Ascending pitch: index = length of current word minus 1
+    const letterIndex = _state.input.typed.length - 1;
+    safeCall(window.LD?.Audio?.playLetterTick, letterIndex);
+  }
+
+  function backspaceLetter() {
+    if (_state.input.typed.length === 0) return;
+    _state.input.typed = _state.input.typed.slice(0, -1);
+    refreshInputState();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Keyboard handler
+  // ---------------------------------------------------------------------------
+
+  function onKeyDown(e) {
+    if (!_state) return;
+
+    // Do not intercept system shortcuts (Ctrl+R, Ctrl+W, Ctrl+T, etc.)
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // Block input when game is over (still allow scrolling to look around)
+    const phase = _state.phase;
+    const isGameOver = phase === 'victory' || phase === 'gameover';
+
+    const key = e.key;
+
+    // ── Arrow keys / WASD — scroll viewport ──────────────────────────────────
+    switch (key) {
+      case 'ArrowUp':
+      case 'w':
+      case 'W':
+        e.preventDefault();
+        scrollViewport(0, -1);
+        return;
+      case 'ArrowDown':
+      case 's':
+      case 'S':
+        e.preventDefault();
+        scrollViewport(0,  1);
+        return;
+      case 'ArrowLeft':
+      case 'a':
+      case 'A':
+        e.preventDefault();
+        scrollViewport(-1, 0);
+        return;
+      case 'ArrowRight':
+      case 'd':
+      case 'D':
+        e.preventDefault();
+        scrollViewport( 1, 0);
+        return;
+    }
+
+    if (isGameOver) return; // no word input after game ends
+
+    // ── Escape — clear input ──────────────────────────────────────────────────
+    if (key === 'Escape') {
+      e.preventDefault();
+      clearInput();
+      return;
+    }
+
+    // ── H — toggle hard mode ──────────────────────────────────────────────────
+    if (key === 'h' || key === 'H') {
+      e.preventDefault();
+      _state.settings = _state.settings || {};
+      _state.settings.hardMode = !_state.settings.hardMode;
+      if (_state.settings.hardMode) {
+        safeCall(window.LD?.Board?.applyHardMode, _state);
+      }
+      return;
+    }
+
+    // ── Backspace ─────────────────────────────────────────────────────────────
+    if (key === 'Backspace') {
+      e.preventDefault();
+      backspaceLetter();
+      return;
+    }
+
+    // ── Enter — submit ────────────────────────────────────────────────────────
+    if (key === 'Enter') {
+      e.preventDefault();
+      if (_state.input.valid && _state.input.hasPath) {
+        submitWord();
+      } else {
+        rejectWord();
+      }
+      return;
+    }
+
+    // ── Letter keys (A-Z) ────────────────────────────────────────────────────
+    // key.length === 1 catches printable single characters
+    if (key.length === 1 && /^[A-Za-z]$/.test(key)) {
+      e.preventDefault();
+      appendLetter(key);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Attach keyboard listeners and store the state reference.
+   * Safe to call multiple times — will only attach once.
+   *
+   * @param {object} state - the shared game state object
+   */
+  function init(state) {
+    _state = state;
+
+    // Ensure required input sub-fields exist
+    state.input         = state.input         || {};
+    state.input.typed   = state.input.typed   ?? '';
+    state.input.path    = state.input.path    ?? [];
+    state.input.valid   = state.input.valid   ?? false;
+    state.input.hasPath = state.input.hasPath ?? false;
+    state.input.prefixStarts = state.input.prefixStarts ?? [];
+    state.input.flashInvalid = state.input.flashInvalid ?? false;
+
+    if (!_attached) {
+      window.addEventListener('keydown', onKeyDown);
+      _attached = true;
+    }
+  }
+
+  /**
+   * Called each game loop tick. Currently event-driven so this is a no-op,
+   * but provided for consistent module interface.
+   *
+   * @param {object} state
+   */
+  function update(state) {
+    // Event-driven — nothing to poll each frame.
+    // If flashInvalid needs timed reset (renderer doesn't clear it),
+    // that can be handled here.
+    _state = state; // keep reference current in case state object is replaced
+  }
+
+  window.LD.Input = {
+    init,
+    update,
+  };
+})();
