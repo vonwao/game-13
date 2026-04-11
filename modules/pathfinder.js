@@ -80,7 +80,7 @@
       }
     }
     if (corrupted.length === 0) {
-      return () => Infinity; // no corruption — distance irrelevant
+      return () => 0; // no corruption — all paths equivalent, keep first found
     }
     return function distToNearest(col, row) {
       let min = Infinity;
