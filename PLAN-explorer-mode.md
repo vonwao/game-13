@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add a new primary game mode called **"Word Hunt"** alongside the existing corruption/seals mode (renamed to **"Siege"**). Word Hunt strips away corruption mechanics and replaces them with score-maximization, pre-planted hidden words, and a scavenger hunt challenge system. Also add a well-designed Settings screen, more granular feature toggles, and **full touch/mobile support** (tap-to-spell).
+Add a new primary game mode called **"Word Hunt"** alongside the existing corruption/seals mode (renamed to **"Siege"**). Word Hunt strips away corruption mechanics and replaces them with score-maximization, pre-planted hidden words, and a scavenger hunt challenge system. Also add a well-designed Settings screen, a **simple player-facing settings model backed by constants**, and **full touch/mobile support** (tap-to-spell).
 
 **Word Hunt is the default, primary mode.** Siege is the secondary/advanced mode.
 
@@ -39,7 +39,18 @@ That's it — 6 settings. Clean and simple.
 New file. IIFE on `window.LD.Constants`. Resolves user settings into actual numbers.
 
 ```js
+const BOARD_SIZES = {
+  small:  { width: 20, height: 16 },
+  medium: { width: 30, height: 25 },
+  large:  { width: 40, height: 40 },
+};
+
+const FRAGMENTS = ['ING', 'TION', 'COM', 'PRE', 'OUT', 'STR', 'IGHT', 'MENT',
+                   'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'ANCE'];
+
 window.LD.Constants = {
+  BOARD_SIZES,
+  FRAGMENTS,
   // Call at game start to get resolved config
   resolve(gameMode, settings) {
     const diff = settings.difficulty;
@@ -93,15 +104,6 @@ window.LD.Constants = {
     }
   },
 };
-
-const BOARD_SIZES = {
-  small:  { width: 20, height: 16 },
-  medium: { width: 30, height: 25 },
-  large:  { width: 40, height: 40 },
-};
-
-const FRAGMENTS = ['ING', 'TION', 'COM', 'PRE', 'OUT', 'STR', 'IGHT', 'MENT',
-                   'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'ANCE'];
 ```
 
 Modules never hardcode numbers like "30×25" or "6 seals." They call `LD.Constants.resolve()` once at game start and use the returned config object throughout.
@@ -350,7 +352,7 @@ Placement: random positions, avoiding each other and planted word paths.
 
 ### Path Shape Bonus
 
-When `settings.pathBonuses` is on:
+When `state.config.pathBonuses` is on:
 
 ```js
 function getPathShapeMultiplier(path) {
@@ -389,7 +391,7 @@ function getPathShapeMultiplier(path) {
 
 ### Combo System
 
-When `settings.comboBonuses` is on:
+When `state.config.comboBonuses` is on:
 - Each word submitted without scrolling increments `state.hunt.combo`
 - Scrolling resets combo to 0
 - Combo multiplier: `1.0 + (combo * 0.1)` — 3rd word = 1.3x, 5th = 1.5x, etc.
@@ -521,9 +523,7 @@ Auto-detect touch capability:
 STATE.touch.enabled = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 ```
 
-Also allow manual toggle in settings: `[✓] Touch mode (tap tiles to spell)`
-
-When touch is enabled, show on-screen controls and use tap-based input instead of keyboard.
+When touch is detected, automatically show on-screen controls and use tap-based input instead of keyboard. Do not add a separate player-facing toggle in v1; keep this automatic so the settings screen stays simple.
 
 ### Tap-to-Spell Input
 
@@ -633,15 +633,22 @@ const ROUNDS = [
   {
     id: 1,
     name: 'The First Page',
-    boardWidth: 30,
-    boardHeight: 25,
-    plantedWordCount: 15,     // target (may get fewer if placement fails)
-    plantedWordMinLen: 5,
-    plantedWordMaxLen: 7,
     challengeCount: 10,
+    challengeIds: [
+      'first_word',
+      'long_word',
+      'straight_h',
+      'high_score',
+      'discovery',
+      'combo_3',
+      'cross',
+      'rare_letter',
+      'five_words',
+      'straight_long',
+    ],
   },
   // Round 2+: NOT implemented now, just the structure for future use
-  // { id: 2, name: 'Deeper Shelves', boardWidth: 32, boardHeight: 28, plantedWordCount: 20, ... },
+  // { id: 2, name: 'Deeper Shelves', challengeCount: 12, challengeIds: [...], ... },
 ];
 ```
 
@@ -658,7 +665,7 @@ For now, "Continue" just starts a new Round 1 with a fresh board (since Round 2+
 
 ### File: `modules/constants.js` (NEW — ~100 lines)
 
-IIFE on `window.LD.Constants`. This is loaded FIRST (after dictionary).
+IIFE on `window.LD.Constants`. This is loaded immediately after `dictionary.js`.
 
 Contains:
 - `BOARD_SIZES` object mapping 'small'/'medium'/'large' to {width, height}
@@ -769,7 +776,7 @@ function submitWordHunt() {
   // 2. Path shape multiplier
   let shapeMult = 1.0;
   let isStraight = false, isH = false, isV = false, corners = 0;
-  if (_state.settings.pathBonuses) {
+  if (_state.config.pathBonuses) {
     // ... compute shape (see Part 3)
     shapeMult = getPathShapeMultiplier(path);
     earned = Math.round(earned * shapeMult);
@@ -777,7 +784,7 @@ function submitWordHunt() {
 
   // 3. Combo
   let comboMult = 1.0;
-  if (_state.settings.comboBonuses) {
+  if (_state.config.comboBonuses) {
     _state.hunt.combo++;
     comboMult = 1.0 + (_state.hunt.combo - 1) * 0.1;
     earned = Math.round(earned * comboMult);
@@ -827,7 +834,7 @@ function submitWordHunt() {
 ```
 
 **Modify `scrollViewport()`:**
-Add: `if (_state.gameMode === 'wordhunt' && _state.settings.comboBonuses) _state.hunt.combo = 0;`
+Add: `if (_state.gameMode === 'wordhunt' && _state.config.comboBonuses) _state.hunt.combo = 0;`
 
 ### File: `modules/renderer.js` (MODIFY)
 
@@ -880,8 +887,9 @@ if (state.gameMode === 'wordhunt' && LD.Challenges) {
 Title screen now just shows logo briefly then transitions to settings (or skip title, go straight to settings).
 
 **Modify `startGame()`:**
+- Resolve config first: `state.config = LD.Constants.resolve(state.gameMode, state.settings)`
 - Initialize based on `state.gameMode` and `state.settings`
-- Word Hunt: call word hunt board generation, generate challenges
+- Word Hunt: call word hunt board generation, generate challenges, initialize `timeRemaining` / `turnsRemaining` from `state.config`
 - Siege: existing behavior
 
 **Game loop additions:**
@@ -915,7 +923,7 @@ STATE.phase = 'settings';
 
 Update module order:
 ```bash
-for mod in dictionary board pathfinder challenges particles audio renderer settings touch input game; do
+for mod in dictionary constants board pathfinder challenges particles audio renderer settings touch input game; do
 ```
 
 ---
@@ -932,7 +940,7 @@ Execute in this order. Each step = one commit.
 
 4. **Challenges module** — New `challenges.js` with Round 1 challenges, check functions, sidebar rendering with hover tooltips. Wire into `submitWordHunt()`. Test: complete challenges, see sidebar update, celebrations fire.
 
-5. **Touch support** — New `touch.js`. Tap-to-spell input, action bar buttons, two-finger scroll. Touch detection in settings. Responsive tile sizing. Test: use touch mode (Chrome DevTools device emulation or actual phone).
+5. **Touch support** — New `touch.js`. Tap-to-spell input, action bar buttons, two-finger scroll. Automatic touch detection and responsive tile sizing. Test: use touch mode (Chrome DevTools device emulation or actual phone).
 
 6. **Polish + reassemble** — Completion animations, round-complete screen, timer/turns HUD, Word Hunt minimap. Update `assemble.sh` with new modules. Run assembly. Test full game flow in both modes, both input methods.
 
@@ -947,6 +955,6 @@ Execute in this order. Each step = one commit.
 - **Word Hunt is primary**: Default selection, listed first, most polished.
 - **Touch targets**: All interactive elements ≥ 44×44px in touch mode (Apple HIG minimum).
 - **No planted word hints**: Planted tiles look identical to random tiles. Discovery IS the game.
-- **Module load order**: `dictionary → board → pathfinder → challenges → particles → audio → renderer → settings → touch → input → game`
+- **Module load order**: `dictionary → constants → board → pathfinder → challenges → particles → audio → renderer → settings → touch → input → game`
 - **Commit after each step** per the repo's CLAUDE.md conventions.
 - **Test both modes** after each step to prevent regressions.
