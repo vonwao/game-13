@@ -332,8 +332,10 @@
       hunt.wordsThisRound.push({ word: typed, score: earned });
     }
 
-    // 8. Track used tiles for cross-word challenge
+    // 8. Mark tiles as used (cannot be used in future words) + track for cross challenge
     path.forEach(p => {
+      const t = board.tiles[p.row * board.width + p.col];
+      if (t) t.used = true;
       if (hunt && hunt.usedTileKeys) hunt.usedTileKeys.add(p.col + ',' + p.row);
     });
 

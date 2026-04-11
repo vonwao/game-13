@@ -59,9 +59,11 @@
   /**
    * Whether a tile's letter matches the required character.
    * Icon tiles act as wildcards (match any letter).
+   * Used tiles (already consumed in Word Hunt) are skipped.
    */
   function tileMatchesChar(tile, ch) {
     if (!tile || tile.corrupted) return false;
+    if (tile.used || tile.found) return false; // consumed in Word Hunt
     if (tile.icon) return true; // wildcard
     return tile.letter === ch;
   }
@@ -80,7 +82,13 @@
       }
     }
     if (corrupted.length === 0) {
-      return () => 0; // no corruption — all paths equivalent, keep first found
+      // No corruption (Word Hunt) — prefer higher letter-point tiles.
+      // Return negative points so the minimum-score path = highest-point path.
+      const { tiles, width } = state.board;
+      return function(col, row) {
+        const t = tiles[row * width + col];
+        return -(t ? (t.points || 1) : 1);
+      };
     }
     return function distToNearest(col, row) {
       let min = Infinity;

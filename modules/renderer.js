@@ -297,16 +297,27 @@
 
     // Word Hunt: found planted word — golden tint
     const isFoundPlanted = tile.planted && tile.found;
-    // Clean letter tile
-    ctx.fillStyle = isMatch ? '#e0c880' : (isFoundPlanted ? '#c8a840' : COLORS.tileFill);
+    // Word Hunt: used (consumed) tile — dimmed
+    const isUsed = tile.used && !isFoundPlanted;
+
+    let tileFill = COLORS.tileFill;
+    if (isFoundPlanted) tileFill = '#c8a840';
+    else if (isUsed)    tileFill = '#6a6050';
+    else if (isMatch)   tileFill = '#e0c880';
+
+    ctx.fillStyle = tileFill;
     ctx.fillRect(x + pad, y + pad, inner, inner);
+
     if (isFoundPlanted) {
       ctx.strokeStyle = '#f0d070';
       ctx.lineWidth = 2;
       ctx.strokeRect(x + pad, y + pad, inner, inner);
       ctx.lineWidth = 1;
+    } else if (isUsed) {
+      ctx.strokeStyle = '#4a4038';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + pad, y + pad, inner, inner);
     } else if (isMatch) {
-      // Subtle amber border for matching tiles
       ctx.strokeStyle = '#c8a050';
       ctx.lineWidth = 2;
       ctx.strokeRect(x + pad, y + pad, inner, inner);
@@ -325,7 +336,11 @@
     }
 
     if (tile.letter) {
-      drawLetter(ctx, tile.letter, x, y, ts, isMatch ? '#5a3a10' : COLORS.tileText, isMatch ? '#f0d890' : COLORS.tileTextEmboss, tile.points);
+      let letterColor  = COLORS.tileText;
+      let embossColor  = COLORS.tileTextEmboss;
+      if (isMatch)        { letterColor = '#5a3a10'; embossColor = '#f0d890'; }
+      else if (isUsed)    { letterColor = '#9a8868'; embossColor = null; }
+      drawLetter(ctx, tile.letter, x, y, ts, letterColor, embossColor, isUsed ? 0 : tile.points);
     }
   }
 
@@ -511,6 +526,12 @@
         if (state.gameMode === 'wordhunt' && tile.planted && tile.found) {
           ctx.fillStyle = '#c8a050';
           ctx.fillRect(px, py, dotSize, dotSize);
+          continue;
+        }
+        // Word Hunt: dark dots for used tiles
+        if (state.gameMode === 'wordhunt' && tile.used) {
+          ctx.fillStyle = '#3a3028';
+          ctx.fillRect(px, py, 2, 2);
           continue;
         }
         ctx.fillStyle = '#b0a080';

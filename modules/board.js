@@ -107,6 +107,7 @@
       tint:      null,
       planted:   false,  // true if part of a planted word (Word Hunt)
       found:     false,  // true if the planted word has been found
+      used:      false,  // true if tile has been consumed in any submitted word
     };
   }
 
