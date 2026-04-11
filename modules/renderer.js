@@ -833,30 +833,38 @@
   function drawGameOverScreen(ctx, state) {
     const w = canvas.width;
     const h = canvas.height;
+    const isWH = state.gameMode === 'wordhunt';
 
-    // Dark overlay
     ctx.fillStyle = 'rgba(13, 5, 16, 0.85)';
     ctx.fillRect(0, 0, w, h);
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Title
     ctx.font = 'bold 48px "Courier New", monospace';
     ctx.fillStyle = '#8a2040';
-    ctx.fillText('THE INK CONSUMES', w / 2, h / 2 - 80);
+    ctx.fillText(isWH ? 'TIME IS UP' : 'THE INK CONSUMES', w / 2, h / 2 - 80);
 
-    // Stats
     ctx.font = '16px "Courier New", monospace';
     ctx.fillStyle = COLORS.hud;
     ctx.fillText('Score: ' + (state.score || 0).toLocaleString(), w / 2, h / 2 - 20);
-    ctx.fillText('Words: ' + (state.wordsSpelled || 0) + '   Turns: ' + (state.turns || 0), w / 2, h / 2 + 10);
+    ctx.fillText('Words: ' + (state.wordsSpelled || 0), w / 2, h / 2 + 10);
     ctx.fillText('Longest: ' + (state.longestWord || 'none'), w / 2, h / 2 + 40);
-    ctx.fillText('Seeds Destroyed: ' + (state.seedsDestroyed || 0) + '/' + state.totalSeeds, w / 2, h / 2 + 70);
 
-    // Restart
+    if (isWH && state.hunt) {
+      const hunt = state.hunt;
+      const done  = hunt.completedCount || 0;
+      const total = (hunt.challenges && hunt.challenges.length) || 10;
+      const pw = (hunt.plantedWords || []).filter(function(p) { return p.found; }).length;
+      const pwT = (hunt.plantedWords || []).length;
+      ctx.fillText('Challenges: ' + done + '/' + total, w / 2, h / 2 + 70);
+      ctx.fillText('Hidden words found: ' + pw + '/' + pwT, w / 2, h / 2 + 96);
+    } else {
+      ctx.fillText('Seeds Destroyed: ' + (state.seedsDestroyed || 0) + '/' + state.totalSeeds, w / 2, h / 2 + 70);
+    }
+
     ctx.globalAlpha = 0.5 + 0.5 * Math.sin((state.time || 0) * 2.5);
-    ctx.fillText('Press Enter to Try Again', w / 2, h / 2 + 120);
+    ctx.fillText('Press Enter to Try Again', w / 2, h / 2 + 140);
     ctx.globalAlpha = 1;
   }
 
@@ -864,30 +872,36 @@
     const w = canvas.width;
     const h = canvas.height;
     const time = state.time || 0;
+    const isWH = state.gameMode === 'wordhunt';
 
-    // Golden overlay
     ctx.fillStyle = 'rgba(20, 16, 8, 0.8)';
     ctx.fillRect(0, 0, w, h);
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Title
     ctx.font = 'bold 44px "Courier New", monospace';
     ctx.fillStyle = COLORS.highlight;
-    ctx.fillText('THE ARCHIVE ENDURES', w / 2, h / 2 - 80);
+    ctx.fillText(isWH ? 'ROUND COMPLETE!' : 'THE ARCHIVE ENDURES', w / 2, h / 2 - 80);
 
-    // Stats
     ctx.font = '16px "Courier New", monospace';
     ctx.fillStyle = COLORS.hud;
     ctx.fillText('Score: ' + (state.score || 0).toLocaleString(), w / 2, h / 2 - 20);
-    ctx.fillText('Words: ' + (state.wordsSpelled || 0) + '   Turns: ' + (state.turns || 0), w / 2, h / 2 + 10);
+    ctx.fillText('Words: ' + (state.wordsSpelled || 0), w / 2, h / 2 + 10);
     ctx.fillText('Longest: ' + (state.longestWord || 'none'), w / 2, h / 2 + 40);
-    ctx.fillText('All ' + state.totalSeeds + ' seals destroyed!', w / 2, h / 2 + 70);
 
-    // Restart
+    if (isWH && state.hunt) {
+      const hunt = state.hunt;
+      const pw  = (hunt.plantedWords || []).filter(function(p) { return p.found; }).length;
+      const pwT = (hunt.plantedWords || []).length;
+      ctx.fillText('Hidden words found: ' + pw + '/' + pwT, w / 2, h / 2 + 70);
+      ctx.fillText('Best combo: ×' + (hunt.bestCombo || 0), w / 2, h / 2 + 96);
+    } else {
+      ctx.fillText('All ' + state.totalSeeds + ' seals destroyed!', w / 2, h / 2 + 70);
+    }
+
     ctx.globalAlpha = 0.5 + 0.5 * Math.sin(time * 2.5);
-    ctx.fillText('Press Enter to Play Again', w / 2, h / 2 + 120);
+    ctx.fillText('Press Enter to Play Again', w / 2, h / 2 + 140);
     ctx.globalAlpha = 1;
   }
 
