@@ -118,7 +118,7 @@
               }
             }
           }
-          safeCall(window.LD?.Board?.cleanseTilesNear, _state, emberTiles, 2);
+          safeCall(window.LD?.Board?.cleanseTilesNear, _state.board || _state, emberTiles, 0);
           break;
         }
         case 'bomb': {
@@ -133,7 +133,7 @@
               }
             }
           }
-          safeCall(window.LD?.Board?.cleanseTilesNear, _state, bombTiles, 2);
+          safeCall(window.LD?.Board?.cleanseTilesNear, _state.board || _state, bombTiles, 0);
           break;
         }
         case 'crystal':
@@ -188,13 +188,15 @@
     const earned = dictScore(typed, pathTiles);
 
     // ── 2. Cleanse tiles near path ────────────────────────────────────────────
+    const board = _state.board || _state;
     const radius = getCleanseRadius(path);
-    safeCall(window.LD?.Board?.cleanseTilesNear, _state, path, radius);
+    const cleansedTiles = safeCall(window.LD?.Board?.cleanseTilesNear, board, path, radius) || [];
 
     // ── 3. Check and destroy seals ────────────────────────────────────────────
-    const sealIndex = safeCall(window.LD?.Board?.checkSealDestruction, _state, path);
+    const sealIndex = safeCall(window.LD?.Board?.checkSealDestruction, board, path);
+    let sealCleansed = [];
     if (typeof sealIndex === 'number' && sealIndex >= 0) {
-      safeCall(window.LD?.Board?.destroySeal, _state, sealIndex);
+      sealCleansed = safeCall(window.LD?.Board?.destroySeal, board, sealIndex) || [];
       _state.seedsDestroyed = (_state.seedsDestroyed || 0) + 1;
     }
 
@@ -202,10 +204,10 @@
     processIconEffects(path);
 
     // ── 5. Refresh activated tiles ────────────────────────────────────────────
-    safeCall(window.LD?.Board?.refreshTiles, _state, path);
+    safeCall(window.LD?.Board?.refreshTiles, board, path);
 
     // ── 6. Spread corruption ─────────────────────────────────────────────────
-    safeCall(window.LD?.Board?.spreadCorruption, _state);
+    const newCorruption = safeCall(window.LD?.Board?.spreadCorruption, board) || [];
 
     // ── 7. Update stats ───────────────────────────────────────────────────────
     _state.score        = (_state.score        || 0) + earned;
@@ -220,16 +222,54 @@
     if (totalSeeds > 0 && (_state.seedsDestroyed || 0) >= totalSeeds) {
       _state.phase = 'victory';
     } else {
-      const corruptPct = safeCall(window.LD?.Board?.getCorruptionPercent, _state) ?? 0;
+      const corruptPct = safeCall(window.LD?.Board?.getCorruptionPercent, board) ?? 0;
       if (corruptPct >= 40) {
         _state.phase = 'gameover';
       }
     }
 
-    // ── 9. Particles ──────────────────────────────────────────────────────────
-    safeCall(window.LD?.Particles?.spawnWordActivation, _state, path, typed);
+    // ── 9. Particles & Audio ────────────────────────────────────────────────
+    const vp = _state.viewport;
+    const ts = vp.tileSize || 64;
+    function toPixel(t) {
+      return { x: vp.offsetX + (t.col - vp.col) * ts + ts/2, y: vp.offsetY + (t.row - vp.row) * ts + ts/2, col: t.col, row: t.row };
+    }
 
-    // ── 10. Audio ─────────────────────────────────────────────────────────────
+    // Word activation sparks
+    if (window.LD?.Particles?.wordActivation) {
+      const pixelPath = path.map(toPixel);
+      LD.Particles.wordActivation(pixelPath, ts);
+    }
+
+    // Cleanse particles
+    if (window.LD?.Particles?.cleanseTiles && cleansedTiles.length > 0) {
+      LD.Particles.cleanseTiles(cleansedTiles.map(toPixel), ts);
+    }
+
+    // Score popup
+    if (window.LD?.Particles?.text && path.length > 0) {
+      const mid = toPixel(path[Math.floor(path.length / 2)]);
+      LD.Particles.text(mid.x, mid.y - 20, '+' + earned, '#ffd700', 20);
+    }
+
+    // Seal destruction effects
+    if (typeof sealIndex === 'number' && sealIndex >= 0) {
+      const seal = board.seals[sealIndex];
+      if (seal && window.LD?.Particles?.sealDestroyed) {
+        const sp = toPixel(seal);
+        LD.Particles.sealDestroyed(sp.x, sp.y, sealCleansed.map(toPixel), ts);
+      }
+      safeCall(window.LD?.Audio?.play, 'seal_destroy');
+    }
+
+    // Corruption spread audio
+    if (newCorruption.length > 0) {
+      safeCall(window.LD?.Audio?.play, 'corrupt_spread');
+      if (window.LD?.Particles?.corruptionSpread) {
+        LD.Particles.corruptionSpread(newCorruption.map(toPixel), ts);
+      }
+    }
+
     safeCall(window.LD?.Audio?.play, 'word_valid');
 
     // ── 11. Clear input ───────────────────────────────────────────────────────
@@ -282,32 +322,55 @@
 
     const key = e.key;
 
-    // ── Arrow keys / WASD — scroll viewport ──────────────────────────────────
+    // ── Arrow keys always scroll ────────────────────────────────────────────
     switch (key) {
       case 'ArrowUp':
-      case 'w':
-      case 'W':
         e.preventDefault();
         scrollViewport(0, -1);
+        safeCall(window.LD?.Audio?.play, 'scroll');
         return;
       case 'ArrowDown':
-      case 's':
-      case 'S':
         e.preventDefault();
         scrollViewport(0,  1);
+        safeCall(window.LD?.Audio?.play, 'scroll');
         return;
       case 'ArrowLeft':
-      case 'a':
-      case 'A':
         e.preventDefault();
         scrollViewport(-1, 0);
+        safeCall(window.LD?.Audio?.play, 'scroll');
         return;
       case 'ArrowRight':
-      case 'd':
-      case 'D':
         e.preventDefault();
         scrollViewport( 1, 0);
+        safeCall(window.LD?.Audio?.play, 'scroll');
         return;
+    }
+
+    // WASD only scrolls when NOT typing a word (otherwise they're letter input)
+    const hasTypedText = _state.input.typed && _state.input.typed.length > 0;
+    if (!hasTypedText) {
+      switch (key) {
+        case 'w': case 'W':
+          e.preventDefault();
+          scrollViewport(0, -1);
+          safeCall(window.LD?.Audio?.play, 'scroll');
+          return;
+        case 'a': case 'A':
+          e.preventDefault();
+          scrollViewport(-1, 0);
+          safeCall(window.LD?.Audio?.play, 'scroll');
+          return;
+        case 's': case 'S':
+          e.preventDefault();
+          scrollViewport(0,  1);
+          safeCall(window.LD?.Audio?.play, 'scroll');
+          return;
+        case 'd': case 'D':
+          e.preventDefault();
+          scrollViewport( 1, 0);
+          safeCall(window.LD?.Audio?.play, 'scroll');
+          return;
+      }
     }
 
     if (isGameOver) return; // no word input after game ends
@@ -319,13 +382,13 @@
       return;
     }
 
-    // ── H — toggle hard mode ──────────────────────────────────────────────────
-    if (key === 'h' || key === 'H') {
+    // ── H — toggle hard mode (only when not typing) ──────────────────────────
+    if ((key === 'h' || key === 'H') && !hasTypedText) {
       e.preventDefault();
       _state.settings = _state.settings || {};
       _state.settings.hardMode = !_state.settings.hardMode;
       if (_state.settings.hardMode) {
-        safeCall(window.LD?.Board?.applyHardMode, _state);
+        safeCall(window.LD?.Board?.applyHardMode, _state.board || _state);
       }
       return;
     }
