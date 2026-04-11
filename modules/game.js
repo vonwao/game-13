@@ -211,6 +211,17 @@
 
     // Update systems
     if (LD.Particles) LD.Particles.update(dt);
+    if (LD.Touch && STATE.touch.enabled) LD.Touch.update(STATE);
+
+    // Word Hunt timed mode countdown
+    if (STATE.phase === 'playing' && STATE.gameMode === 'wordhunt' &&
+        STATE.settings.endCondition === 'timed' && STATE.hunt) {
+      STATE.hunt.timeRemaining = Math.max(0, (STATE.hunt.timeRemaining || 0) - dt);
+      if (STATE.hunt.timeRemaining <= 0) {
+        STATE.phase = 'gameover';
+      }
+    }
+
     if (LD.Renderer) {
       LD.Renderer.updateScroll(dt, STATE);
       LD.Renderer.render(ctx, STATE);
@@ -240,6 +251,11 @@
 
     // Initialize input system
     if (LD.Input) LD.Input.init(STATE);
+
+    // Initialize touch support if detected
+    if (STATE.touch.enabled && LD.Touch) {
+      LD.Touch.init(canvas, STATE);
+    }
 
     // Start in settings phase
     STATE.phase = 'settings';

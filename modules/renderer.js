@@ -133,7 +133,13 @@
 
     drawMinimap(ctx, state);
     drawHUD(ctx, state);
-    drawInputBar(ctx, state);
+
+    // Input bar: touch action bar on touch devices, keyboard bar otherwise
+    if (state.touch && state.touch.enabled && window.LD && window.LD.Touch) {
+      LD.Touch.renderActionBar(ctx, state);
+    } else {
+      drawInputBar(ctx, state);
+    }
 
     // Challenge sidebar (Word Hunt only)
     if (state.gameMode === 'wordhunt') {
@@ -730,11 +736,45 @@
       }
     }
 
-    // Hint text
-    ctx.fillStyle = '#555';
-    ctx.font = '11px "Courier New", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('Type a word, press Enter to cast. Arrow keys to scroll. Press ? for help.', 20, barY + 42);
+    // Word Hunt: show path shape info on second line
+    if (state.gameMode === 'wordhunt' && state.input.hasPath && state.input.path && state.input.path.length >= 2) {
+      const path = state.input.path;
+      const dc0 = path[1].col - path[0].col;
+      const dr0 = path[1].row - path[0].row;
+      let straight = true, corners = 0;
+      for (let i = 2; i < path.length; i++) {
+        const dc = path[i].col - path[i-1].col;
+        const dr = path[i].row - path[i-1].row;
+        if (dc !== (path[i-1].col - path[i-2].col) || dr !== (path[i-1].row - path[i-2].row)) {
+          straight = false; corners++;
+        }
+      }
+      let shapeStr = '';
+      if (straight) {
+        const isH = dr0 === 0;
+        const isV = dc0 === 0;
+        if (isH || isV) shapeStr = 'Straight 2.0×!';
+        else shapeStr = 'Diagonal 1.5×';
+      } else if (corners <= 1) {
+        shapeStr = '1 corner (1.0×)';
+      } else {
+        const mult = Math.max(0.7, 1.0 - corners * 0.1).toFixed(1);
+        shapeStr = corners + ' corners (' + mult + '×)';
+      }
+      ctx.fillStyle = straight ? '#80d080' : '#888';
+      ctx.font = '11px "Courier New", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(shapeStr, 20, barY + 42);
+    } else {
+      // Hint text
+      const modeHint = state.gameMode === 'wordhunt'
+        ? 'Type a word, press Enter to cast. Arrow keys to scroll. Press ? for help.'
+        : 'Type a word, press Enter to cast. Arrow keys to scroll. Press ? for help.';
+      ctx.fillStyle = '#555';
+      ctx.font = '11px "Courier New", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(modeHint, 20, barY + 42);
+    }
   }
 
   function drawTitleScreen(ctx, state) {

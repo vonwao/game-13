@@ -655,5 +655,8 @@
   window.LD.Input = {
     init,
     update,
+    // Exposed for touch module to trigger submission directly
+    _submitWord: submitWord,
+    _rejectWord: rejectWord,
   };
 })();
