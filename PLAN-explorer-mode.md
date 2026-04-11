@@ -10,55 +10,128 @@ Add a new primary game mode called **"Word Hunt"** alongside the existing corrup
 
 ---
 
-## Architecture: Feature Flag System
+## Architecture: Settings vs. Constants
 
-### State Changes
+There are two layers of configuration:
 
-Add to the game state object in `modules/game.js`:
+1. **User settings** (`state.settings`) — what the player chooses on the settings screen. Few, simple, meaningful choices: mode, difficulty, board size, goal, sound/particles/special tiles.
+2. **Constants** (`modules/constants.js`) — internal numbers driven BY the user settings. The player never sees these. Difficulty "Medium" maps to specific word lengths, fragment counts, corruption speed, etc. These live in a constants file and are resolved at game start.
+
+### User Settings (state.settings)
 
 ```js
 STATE.gameMode = 'wordhunt'; // 'wordhunt' | 'siege' (Word Hunt is default)
 STATE.settings = {
+  difficulty: 'medium',    // 'easy' | 'medium' | 'hard' — means different things per mode
+  boardSize: 'medium',     // 'small' | 'medium' | 'large'
   soundEnabled: true,
   particlesEnabled: true,
-  // Special tile toggles (granular)
-  crystalTiles: true,     // crystal = 2x score (wordhunt) or double cleanse (siege)
-  voidTiles: true,        // wildcard tiles
-  emberTiles: true,       // +20 bonus (wordhunt) or 5x5 cleanse (siege)
-  bombTiles: false,       // 9x9 cleanse — siege only, off by default
-  // Siege-specific
-  hardMode: false,        // letters degrade near corruption
-  // Word Hunt end conditions
+  specialTiles: true,      // single toggle for all special tiles
+  // Word Hunt only
   endCondition: 'challenges', // 'zen' | 'timed' | 'turns' | 'challenges'
-  timeLimit: 300,              // seconds (for 'timed')
-  turnLimit: 50,               // (for 'turns')
-  // Word Hunt specific
-  pathBonuses: true,      // straight-line scoring bonus
-  comboBonuses: true,     // combo multiplier for consecutive words
-  plantedWords: true,     // embed discoverable words in grid
-  fragments: true,        // embed common letter fragments
+};
+```
+
+That's it — 6 settings. Clean and simple.
+
+### Constants File (modules/constants.js)
+
+New file. IIFE on `window.LD.Constants`. Resolves user settings into actual numbers.
+
+```js
+window.LD.Constants = {
+  // Call at game start to get resolved config
+  resolve(gameMode, settings) {
+    const diff = settings.difficulty;
+    const size = BOARD_SIZES[settings.boardSize];
+
+    if (gameMode === 'wordhunt') {
+      return {
+        boardWidth: size.width,
+        boardHeight: size.height,
+        // Planted words
+        plantedWordCount: { easy: 20, medium: 15, hard: 10 }[diff],
+        plantedWordMinLen: { easy: 4, medium: 5, hard: 6 }[diff],
+        plantedWordMaxLen: { easy: 6, medium: 7, hard: 8 }[diff],
+        plantedDiagonalPct: { easy: 0, medium: 0.2, hard: 0.5 }[diff],    // % placed diagonally
+        plantedReversePct: { easy: 0, medium: 0.15, hard: 0.4 }[diff],    // % placed backwards
+        // Fragments
+        fragmentCount: { easy: 18, medium: 12, hard: 6 }[diff],
+        // Special tiles (if enabled)
+        crystalCount: settings.specialTiles ? 6 : 0,
+        voidCount: settings.specialTiles ? 5 : 0,
+        emberCount: settings.specialTiles ? 4 : 0,
+        bombCount: 0, // no bombs in Word Hunt
+        // Scoring
+        pathBonuses: true,
+        comboBonuses: true,
+        // Timing
+        timeLimit: { easy: 420, medium: 300, hard: 180 }[diff],
+        turnLimit: { easy: 60, medium: 50, hard: 35 }[diff],
+      };
+    }
+
+    if (gameMode === 'siege') {
+      return {
+        boardWidth: size.width,
+        boardHeight: size.height,
+        // Corruption
+        sealCount: { easy: 4, medium: 6, hard: 8 }[diff],
+        corruptionSpreadChance: { easy: 0.2, medium: 0.3, hard: 0.45 }[diff],
+        corruptionLossThreshold: { easy: 50, medium: 40, hard: 30 }[diff], // % to lose
+        initialCorruptionRadius: { easy: 1, medium: 1, hard: 2 }[diff],    // tiles around each seal
+        hardModeLetters: diff === 'hard',
+        // Special tiles
+        crystalCount: settings.specialTiles ? 8 : 0,
+        voidCount: settings.specialTiles ? 5 : 0,
+        emberCount: settings.specialTiles ? 6 : 0,
+        bombCount: settings.specialTiles ? 2 : 0,
+        // Scoring
+        pathBonuses: false,
+        comboBonuses: false,
+      };
+    }
+  },
 };
 
-// Word Hunt mode state
+const BOARD_SIZES = {
+  small:  { width: 20, height: 16 },
+  medium: { width: 30, height: 25 },
+  large:  { width: 40, height: 40 },
+};
+
+const FRAGMENTS = ['ING', 'TION', 'COM', 'PRE', 'OUT', 'STR', 'IGHT', 'MENT',
+                   'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'ANCE'];
+```
+
+Modules never hardcode numbers like "30×25" or "6 seals." They call `LD.Constants.resolve()` once at game start and use the returned config object throughout.
+
+### Runtime State
+
+```js
+// Word Hunt runtime state (only used in wordhunt mode)
 STATE.hunt = {
   round: 1,
-  challenges: [],       // array of challenge objects
+  challenges: [],
   completedCount: 0,
   plantedWords: [],     // { word, path: [{col,row}], found: false }
-  timeRemaining: 300,   // seconds (for timed mode)
-  turnsRemaining: 50,   // (for turns mode)
-  combo: 0,             // consecutive words without scrolling
+  timeRemaining: 0,     // set from constants at start
+  turnsRemaining: 0,
+  combo: 0,
   bestCombo: 0,
-  wordsThisRound: [],   // history of words played this round
-  usedTileKeys: new Set(), // "col,row" strings — for cross-word challenge tracking
+  wordsThisRound: [],
+  usedTileKeys: new Set(),
 };
 
 // Touch/mobile state
 STATE.touch = {
   enabled: false,         // auto-detected or toggled
-  selectedTiles: [],      // tiles tapped in order for current word
-  lastTap: null,          // {col, row} for visual feedback
+  selectedTiles: [],      // tiles tapped in order
+  lastTap: null,
 };
+
+// Resolved constants for current game (set at startGame time)
+STATE.config = {};  // filled by LD.Constants.resolve()
 ```
 
 ### Mode Branching Points
@@ -66,10 +139,10 @@ STATE.touch = {
 | Module | Function | Siege behavior | Word Hunt behavior |
 |--------|----------|---------------|-------------------|
 | `board.js` | `generate()` | Places seals, initial corruption | No seals/corruption; plants hidden words + fragments |
-| `board.js` | `spreadCorruption()` | Spreads corruption | No-op (return []) |
-| `board.js` | `refreshTiles()` | Replaces used tiles with random letters | **No-op — tiles are fixed, reusable across words** |
-| `input.js` | `submitWord()` | Cleanse, seal check, spread corruption | Score with path/combo bonus, check challenges, check planted words |
-| `input.js` | win/lose check | Seeds destroyed / 40% corruption | All challenges complete / time or turns expired |
+| `board.js` | `spreadCorruption()` | Spreads corruption (rate from config) | No-op (return []) |
+| `board.js` | `refreshTiles()` | Replaces used tiles with random letters | **No-op — tiles are fixed** |
+| `input.js` | `submitWord()` | Cleanse, seal check, spread | Score with path/combo, check challenges, check planted |
+| `input.js` | win/lose check | Seeds destroyed / corruption % | Challenges complete / time or turns expired |
 | `renderer.js` | HUD | Corruption %, seeds | Timer/turns, combo, challenge progress |
 | `renderer.js` | Board | Corruption overlay | Found planted words highlighted |
 | `game.js` | `startGame()` | Generate with seals | Generate with planted words + challenges |
@@ -83,6 +156,8 @@ STATE.touch = {
 The settings screen replaces the simple "Press Enter" title screen. It should feel like a polished game menu — not a dev panel.
 
 **Word Hunt is listed FIRST and selected by default.**
+
+The settings screen adapts based on the selected mode — labels, descriptions, and even which options appear change dynamically. This keeps it clean (no irrelevant options) and contextual.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -100,27 +175,19 @@ The settings screen replaces the simple "Press Enter" title screen. It should fe
 │  │  │  complete     │    │  spreading    │                 │    │
 │  │  │  challenges,  │    │  corruption.  │                 │    │
 │  │  │  discover     │    │  Destroy all  │                 │    │
-│  │  │  hidden words │    │  6 seals.     │                 │    │
+│  │  │  hidden words │    │  seals.       │                 │    │
 │  │  └───────────────┘    └───────────────┘                 │    │
 │  │─────────────────────────────────────────────────────────│    │
-│  │  GOAL (Word Hunt only)                                  │    │
-│  │  (●) Challenges — Complete all challenges to win        │    │
-│  │  ( ) Zen — No limit, play at your own pace              │    │
-│  │  ( ) Timed — 5 minutes        ( ) Turns — 50 turns     │    │
+│  │  DIFFICULTY          [  Easy  ] [ Medium ] [  Hard  ]   │    │
+│  │  ← label changes →  ← description changes per mode →   │    │
 │  │─────────────────────────────────────────────────────────│    │
-│  │  WORD HUNT OPTIONS                                      │    │
-│  │  [✓] Path shape bonuses (straight lines score more)     │    │
-│  │  [✓] Combo bonus (consecutive words without scrolling)  │    │
-│  │  [✓] Hidden planted words                               │    │
-│  │  [✓] Common fragments (ING, TION, etc.)                 │    │
+│  │  BOARD SIZE          [ Small ] [ Medium ] [ Large ]     │    │
 │  │─────────────────────────────────────────────────────────│    │
-│  │  TILE OPTIONS                                           │    │
-│  │  [✓] Crystal tiles (2x word score / double cleanse)     │    │
-│  │  [✓] Void tiles (wildcard — matches any letter)         │    │
-│  │  [✓] Ember tiles (+20 bonus / 5x5 cleanse)             │    │
-│  │  [ ] Bomb tiles (massive 9x9 cleanse — Siege only)      │    │
+│  │  GOAL (Word Hunt)    or    (hidden when Siege)          │    │
+│  │  (●) Challenges      ( ) Zen      ( ) Timed  ( ) Turns │    │
 │  │─────────────────────────────────────────────────────────│    │
-│  │  GENERAL                                                │    │
+│  │  OPTIONS                                                │    │
+│  │  [✓] Special tiles (crystal, void, ember)               │    │
 │  │  [✓] Sound effects                                      │    │
 │  │  [✓] Particle effects                                   │    │
 │  └─────────────────────────────────────────────────────────┘    │
@@ -131,11 +198,18 @@ The settings screen replaces the simple "Press Enter" title screen. It should fe
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Conditional visibility:**
-- "GOAL" section only shows when Word Hunt is selected
-- "WORD HUNT OPTIONS" section only shows when Word Hunt is selected
-- "Hard mode" checkbox only shows when Siege is selected
-- Bomb tiles checkbox is disabled (greyed out) in Word Hunt mode
+**Dynamic difficulty labels (shown below the buttons):**
+
+| Difficulty | Word Hunt description | Siege description |
+|------------|----------------------|-------------------|
+| **Easy** | "More hidden words, shorter, mostly horizontal/vertical. Extra fragments." | "4 seals, slower corruption spread, generous loss threshold." |
+| **Medium** | "Balanced mix. Some diagonal and reversed hidden words." | "6 seals, standard corruption. The intended challenge." |
+| **Hard** | "Fewer hidden words, longer, many diagonal/reversed. Few fragments." | "8 seals, fast corruption, letters degrade near ink." |
+
+**Conditional sections:**
+- "GOAL" only shows when Word Hunt is selected
+- Difficulty descriptions change when mode changes
+- Board size is always visible (same options for both modes)
 
 ### Implementation
 
@@ -157,17 +231,25 @@ Create `modules/settings.js` (IIFE on `window.LD.Settings`)
 
 **Public API:**
 - `LD.Settings.init(canvas, state)` — attach mouse+touch listeners
-- `LD.Settings.render(ctx, state)` — draw the full settings screen
+- `LD.Settings.render(ctx, state)` — draw the settings screen (adapts to selected mode)
 - Internal click handler updates `state.settings` and `state.gameMode` directly
+
+**Dynamic behavior:**
+- When mode changes, the difficulty description text updates immediately
+- The "GOAL" section only renders when Word Hunt is selected
+- Difficulty buttons (Easy/Medium/Hard) are 3 toggle buttons in a row, selected = amber fill
+- Board size buttons (Small/Medium/Large) same style
+- Descriptions shown below the difficulty buttons change based on mode (see table above)
 
 **Design details:**
 - Mode cards: ~220×130 rectangles. Selected = amber border + subtle fill tint. Unselected = dark border.
-- Radio buttons: 12px circles, filled for selected
-- Checkboxes: 14px squares, checkmark when checked, greyed out when disabled
+- Toggle buttons (difficulty, board size): ~100×32, 3 in a row. Selected = amber fill, unselected = dark.
+- Radio buttons (goal): 12px circles, filled for selected
+- Checkboxes: 14px squares, checkmark when checked
 - Start button: centered, ~220×44 rectangle, amber fill, "START GAME" text, hover/touch brightens
 - All text Courier New monospace
 - Colors: same palette (sand #d4c4a0, amber #c8a050, charcoal #1a1714)
-- The settings panel should be vertically scrollable or fit within 720px height — keep sections compact
+- Must fit within 720px height — keep sections compact
 
 ---
 
@@ -175,7 +257,13 @@ Create `modules/settings.js` (IIFE on `window.LD.Settings`)
 
 ### Board Size
 
-**30×25 grid** (750 tiles). Viewport stays ~14×10. Smaller than Siege's 40×40 but still requires scrolling for exploration.
+Driven by `state.config.boardWidth` and `state.config.boardHeight`, resolved from the user's board size setting via `LD.Constants.resolve()`. Same sizes available for both modes:
+
+| Setting | Dimensions | Tiles | Feel |
+|---------|-----------|-------|------|
+| Small | 20×16 | 320 | Fits almost on screen, minimal scrolling |
+| Medium | 30×25 | 750 | Requires scrolling, good exploration |
+| Large | 40×40 | 1600 | Big map, lots to discover |
 
 In `board.js`, `generate()` checks `state.gameMode`:
 ```js
@@ -186,65 +274,75 @@ if (state.gameMode === 'wordhunt') {
 }
 ```
 
+Both generators read dimensions from `state.config`.
+
 ### Planted Words
 
-Embed 12-20 words into the grid as straight-line paths (horizontal, vertical, or diagonal). These are hidden — **NO visual hints on the tiles**. The fun is discovering them.
+Embed hidden words as straight-line paths (horizontal, vertical, or diagonal). **NO visual hints on planted tiles** — discovery IS the game.
 
-**Word selection — dictionary-driven, not a curated list:**
+**Word selection — dictionary-driven:**
 ```js
-function selectPlantableWords(count) {
-  // Filter dictionary to 5-8 letter words
+function selectPlantableWords(config) {
+  // Filter dictionary by length range from constants
   const candidates = [];
-  LD.Dict.DICT.forEach(word => {  // or iterate the Set
-    if (word.length >= 5 && word.length <= 8) candidates.push(word.toUpperCase());
+  LD.Dict.DICT.forEach(word => {
+    const len = word.length;
+    if (len >= config.plantedWordMinLen && len <= config.plantedWordMaxLen) {
+      candidates.push(word.toUpperCase());
+    }
   });
-  // Shuffle and pick `count` words
   shuffle(candidates);
-  return candidates.slice(0, count);
+  return candidates.slice(0, config.plantedWordCount * 2); // grab extras since some will fail to place
 }
 ```
 
-The dictionary already has ~50K+ words in this length range. Randomly selecting from the full dictionary each game means every board is unique.
+Every board is unique — words are randomly selected from the full dictionary each game.
 
 **Planting algorithm:**
-1. Select 20-30 candidate words (more than needed, some will fail to place)
-2. For each word, try up to 100 random positions × 8 directions:
+1. Select candidate words from dictionary (2x the target count, since some won't fit)
+2. Determine direction pool based on difficulty:
+   - **Easy:** only horizontal and vertical (2 directions)
+   - **Medium:** horizontal, vertical, + some diagonal (8 directions, but `config.plantedDiagonalPct` of words forced diagonal)
+   - **Hard:** all 8 directions, with `config.plantedDiagonalPct` forced diagonal AND `config.plantedReversePct` placed backwards (e.g., DRAGON planted as NOGARD)
+3. For each word, try up to 100 random positions × allowed directions:
    - Must fit within board bounds
-   - May overlap with previously planted words ONLY if the overlapping letter matches (crossword-style). This is encouraged — it creates the natural grid look.
-   - If no valid placement found after 100 attempts, skip this word
-3. Write the word's letters into those tile positions
-4. Do NOT mark tiles visually — `tile.planted` is stored for game logic only, NOT rendered
-5. Fill remaining empty tiles with weighted random letters
-6. Target: at least 12 successfully planted words per board
-7. Store in `state.hunt.plantedWords`: `{ word, path: [{col,row}], found: false }`
+   - May overlap with previously planted words ONLY if the overlapping letter matches (crossword-style encouraged)
+   - If placement fails after 100 attempts, skip this word
+4. Write letters into tile positions
+5. `tile.planted` stored for game logic only — NOT rendered
+6. Fill remaining tiles with weighted random letters
+7. Store in `state.hunt.plantedWords`: `{ word, path: [{col,row}], found: false, reversed: bool }`
+8. Target: `config.plantedWordCount` successfully placed words
 
 ### Fragment Planting
 
-Plant common fragments naturally distributed across the board (NOT in clusters — just place them wherever they fit as part of the random fill step).
+Fragments are common letter sequences (ING, TION, COM, etc.) placed naturally across the board to help players form words. Driven by `config.fragmentCount` from constants.
 
+Fragment list lives in `constants.js`:
 ```js
 const FRAGMENTS = ['ING', 'TION', 'COM', 'PRE', 'OUT', 'STR', 'IGHT', 'MENT',
-                   'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'IGHT'];
+                   'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'ANCE'];
 ```
 
-**Approach:** After planting words and before random fill, for each fragment:
-1. Pick a random empty position on the board
-2. Pick a random direction (prefer horizontal/vertical)
-3. If the fragment fits (all positions empty or matching letters), write it in
-4. Place 10-15 fragments total
-5. Remaining tiles get random weighted letters as usual
+**Placement:** After planting words, before random fill:
+1. For each fragment (up to `config.fragmentCount`):
+   - Pick a random empty position
+   - Pick a random direction (horizontal or vertical preferred)
+   - If the fragment fits (all positions empty or letter matches), write it in
+   - Otherwise try another position (up to 50 attempts)
+2. Remaining tiles filled with weighted random letters
 
-No visual indicator on fragment tiles. They're just convenient letter groupings that help players form words naturally.
+No visual indicator. Fragments are just convenient groupings that naturally improve the board's playability. Easy difficulty gets more fragments (18), hard gets fewer (6).
 
 ### Special Tiles in Word Hunt
 
-Placed if their individual toggle is on in settings:
+Placed when `settings.specialTiles` is on. Counts come from `state.config`:
 - **Crystal** — 2x score multiplier for the entire word
-- **Void** — wildcard (matches any letter)
+- **Void** — wildcard (matches any letter in the path)
 - **Ember** — +20 bonus points when used in a word
-- **Bomb** — disabled in Word Hunt (checkbox greyed out)
+- **Bomb** — not placed in Word Hunt (`config.bombCount = 0`)
 
-Placement: same as current (random, away from each other). Counts: 6 crystals, 5 voids, 4 embers (slightly fewer than Siege since board is smaller).
+Placement: random positions, avoiding each other and planted word paths.
 
 ---
 
@@ -558,20 +656,31 @@ For now, "Continue" just starts a new Round 1 with a fresh board (since Round 2+
 
 ## Part 7: Module-by-Module Implementation Instructions
 
+### File: `modules/constants.js` (NEW — ~100 lines)
+
+IIFE on `window.LD.Constants`. This is loaded FIRST (after dictionary).
+
+Contains:
+- `BOARD_SIZES` object mapping 'small'/'medium'/'large' to {width, height}
+- `FRAGMENTS` array of common letter sequences
+- `resolve(gameMode, settings)` function that returns the full config object (see Architecture section above)
+
+This file is the single source of truth for all gameplay numbers. No other module hardcodes counts, percentages, or thresholds.
+
 ### File: `modules/settings.js` (NEW — ~400 lines)
 
 IIFE on `window.LD.Settings`.
 
 **Must implement:**
 - `init(canvas, state)` — attach `mousemove`, `mousedown`, `touchstart` listeners to canvas
-- `render(ctx, state)` — draw the settings screen (see layout above)
-- Click/tap handler updates state directly
+- `render(ctx, state)` — draw the settings screen with mode-adaptive sections
+- Click/tap handler updates `state.settings` and `state.gameMode` directly
 
 **Key design rules:**
 - Rebuild hit regions every render (positions depend on which sections are visible)
-- Sections conditionally visible based on selected mode
-- Disabled checkboxes drawn greyed out with strikethrough text
-- Start button only active when a mode is selected
+- Difficulty description text changes when mode or difficulty selection changes
+- "GOAL" section only visible when Word Hunt is selected
+- Start button always active (default selections are valid)
 - The whole panel should be centered vertically on the 720px canvas
 
 ### File: `modules/challenges.js` (NEW — ~300 lines)
@@ -613,23 +722,26 @@ IIFE on `window.LD.Touch`.
 
 ### File: `modules/board.js` (MODIFY)
 
-**Add `generateWordHunt(state)` function:**
-1. Set dimensions: `state.width = 30; state.height = 25;`
-2. Create empty tile array (750 tiles)
-3. Plant words: select 20-30 candidates from dictionary (5-8 letters), try to place each in a straight line. Keep those that fit (target 12-20). Store in `state.hunt.plantedWords`.
-4. Plant fragments (if enabled): place 10-15 common fragments (ING, TION, etc.) in random positions/directions among empty tiles
+**Add `generateWordHunt(state)` function.** All numbers come from `state.config` (resolved from constants):
+1. Set dimensions from `state.config.boardWidth` / `boardHeight`
+2. Create empty tile array
+3. Plant words using `selectPlantableWords(state.config)` — length range and count from config. Direction pool from config (`plantedDiagonalPct`, `plantedReversePct`).
+4. Plant fragments: count from `state.config.fragmentCount`, fragment list from `LD.Constants.FRAGMENTS`
 5. Fill remaining tiles with weighted random letters
-6. Place special tiles (per individual toggles in settings)
+6. Place special tiles: counts from `state.config.crystalCount`, `voidCount`, `emberCount`
 7. Set `state.corruptionCount = 0` (no corruption)
 
+**Modify `generateSiege(state)` (renamed from current generate internals):**
+- Read seal count, corruption spread chance, initial radius from `state.config`
+- Everything else stays the same
+
 **Modify existing functions:**
-- Rename current `generate()` internals to `generateSiege()`
 - `generate(state)` becomes a router: checks `state.gameMode` and calls the right generator
-- `spreadCorruption(state)`: early return `[]` if gameMode is 'wordhunt'
+- `spreadCorruption(state)`: early return `[]` if gameMode is 'wordhunt'. In siege, use `state.config.corruptionSpreadChance` instead of hardcoded 0.30.
 - `refreshTiles(state, path)`: early return if gameMode is 'wordhunt'
 
 **Add:**
-- `checkPlantedWord(state, word, path)` → matching planted word object or null. Compare word and check that path tiles cover all planted tile positions (in either direction).
+- `checkPlantedWord(state, word, path)` → matching planted word object or null. Compare word (case-insensitive) and check that path tiles cover the planted path positions. Finding a word backwards counts (compare reversed path too).
 
 ### File: `modules/input.js` (MODIFY)
 
