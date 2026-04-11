@@ -6,6 +6,7 @@
   let targetScrollX = 0, targetScrollY = 0;
   let inputFlashTimer = 0;
   let inputFlashColor = null;
+  let mouseX = 0, mouseY = 0;
 
   const COLORS = {
     bg: '#1a1714',
@@ -37,6 +38,14 @@
   function init(cvs, state) {
     canvas = cvs;
     resize(canvas, state);
+    // Track mouse for challenge sidebar tooltips
+    cvs.addEventListener('mousemove', function(e) {
+      var rect = cvs.getBoundingClientRect();
+      var scaleX = cvs.width  / rect.width;
+      var scaleY = cvs.height / rect.height;
+      mouseX = (e.clientX - rect.left) * scaleX;
+      mouseY = (e.clientY - rect.top)  * scaleY;
+    }, { passive: true });
   }
 
   function resize(cvs, state) {
@@ -125,6 +134,13 @@
     drawMinimap(ctx, state);
     drawHUD(ctx, state);
     drawInputBar(ctx, state);
+
+    // Challenge sidebar (Word Hunt only)
+    if (state.gameMode === 'wordhunt') {
+      if (window.LD && window.LD.Challenges) {
+        LD.Challenges.renderSidebar(ctx, state, mouseX, mouseY);
+      }
+    }
 
     // Help overlay
     if (state.showHelp) {

@@ -184,7 +184,62 @@
       playSine(659, 0.15 * vol, 1.5, 0.6);
       playSine(784, 0.15 * vol, 1.5, 0.6);
       playSine(1047, 0.15 * vol, 1.5, 0.6);
-    }
+    },
+    // Word Hunt sounds
+    challenge_complete: function(vol) {
+      vol = vol || 1;
+      // Bright ascending chime C5→E5→G5
+      playSine(523, 0.25 * vol, 0.12, 0);
+      playSine(659, 0.25 * vol, 0.12, 0.08);
+      playSine(784, 0.25 * vol, 0.18, 0.16);
+    },
+    round_complete: function(vol) {
+      vol = vol || 1;
+      playSine(523, 0.2 * vol, 0.2, 0);
+      playSine(659, 0.2 * vol, 0.2, 0.1);
+      playSine(784, 0.2 * vol, 0.2, 0.2);
+      playSine(1047, 0.2 * vol, 0.2, 0.3);
+      playSine(1319, 0.18 * vol, 0.5, 0.4);
+      playSine(523, 0.15 * vol, 1.5, 0.6);
+      playSine(784, 0.15 * vol, 1.5, 0.6);
+      playSine(1047, 0.15 * vol, 1.5, 0.6);
+    },
+    combo: function(vol) {
+      vol = vol || 1;
+      // Quick double-tick
+      playSine(600, 0.12 * vol, 0.03, 0);
+      playSine(800, 0.12 * vol, 0.03, 0.05);
+    },
+    discovery: function(vol) {
+      vol = vol || 1;
+      if (!ensureCtx()) return;
+      // Magical shimmer with vibrato
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      const g = ctx.createGain();
+      lfo.frequency.setValueAtTime(6, now);
+      lfoGain.gain.setValueAtTime(60, now);
+      lfo.connect(lfoGain);
+      lfoGain.connect(osc.frequency);
+      osc.frequency.setValueAtTime(1600, now);
+      g.gain.setValueAtTime(0.15 * vol, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(now);
+      lfo.start(now);
+      osc.stop(now + 0.5);
+      lfo.stop(now + 0.5);
+      playSine(880, 0.1 * vol, 0.3, 0.1);
+      playSine(1047, 0.1 * vol, 0.3, 0.2);
+    },
+    tap: function(vol) {
+      vol = vol || 1;
+      playNoise(0.008, 0.04 * vol, 'highpass', 2500);
+      playSine(700, 0.08 * vol, 0.02);
+    },
   };
 
   function play(name, opts) {

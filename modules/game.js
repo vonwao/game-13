@@ -138,6 +138,11 @@
     // Generate board (pass board sub-object, gameMode, config)
     LD.Board.generate(STATE.board, STATE.gameMode, STATE.config, STATE);
 
+    // Generate challenges for Word Hunt
+    if (STATE.gameMode === 'wordhunt' && LD.Challenges) {
+      STATE.hunt.challenges = LD.Challenges.generate(STATE.hunt.round);
+    }
+
     // Center viewport on the board
     STATE.viewport.col = Math.max(0, Math.floor((STATE.board.width  - STATE.viewport.cols) / 2));
     STATE.viewport.row = Math.max(0, Math.floor((STATE.board.height - STATE.viewport.rows) / 2));

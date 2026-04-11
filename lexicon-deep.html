@@ -1198,6 +1198,347 @@ canvas {
 
 </script>
 <script>
+(function () {
+  'use strict';
+
+  window.LD = window.LD || {};
+
+  // ---------------------------------------------------------------------------
+  // Round 1 challenge definitions
+  // ---------------------------------------------------------------------------
+
+  var ROUND_1_CHALLENGES = [
+    {
+      id: 'first_word',
+      type: 'basic',
+      title: 'First Steps',
+      description: 'Submit any valid word',
+      icon: '★',
+      reward: 50,
+      target: 1,
+    },
+    {
+      id: 'long_word',
+      type: 'length',
+      title: 'Linguist',
+      description: 'Find a 6+ letter word',
+      icon: '▶',
+      reward: 100,
+      target: 1,
+    },
+    {
+      id: 'straight_h',
+      type: 'path',
+      title: "Ruler's Path",
+      description: 'Submit a word in a perfect horizontal line',
+      icon: '─',
+      reward: 100,
+      target: 1,
+    },
+    {
+      id: 'high_score',
+      type: 'score',
+      title: 'High Roller',
+      description: 'Score 50+ points in a single word',
+      icon: '◆',
+      reward: 150,
+      target: 1,
+    },
+    {
+      id: 'discovery',
+      type: 'hunt',
+      title: 'Discovery',
+      description: 'Find a hidden planted word',
+      icon: '◎',
+      reward: 200,
+      target: 1,
+    },
+    {
+      id: 'combo_3',
+      type: 'combo',
+      title: 'Chain Caster',
+      description: 'Reach a 3-word combo',
+      icon: '⚡',
+      reward: 100,
+      target: 1,
+    },
+    {
+      id: 'cross',
+      type: 'cross',
+      title: 'Crossroads',
+      description: 'Spell two words that share a tile',
+      icon: '✚',
+      reward: 100,
+      target: 1,
+    },
+    {
+      id: 'rare_letter',
+      type: 'rare',
+      title: 'Rare Find',
+      description: 'Use Q, Z, X, or J in a word',
+      icon: '♦',
+      reward: 100,
+      target: 1,
+    },
+    {
+      id: 'five_words',
+      type: 'count',
+      title: 'Prolific',
+      description: 'Submit 5 valid words',
+      icon: '⬡',
+      reward: 100,
+      target: 5,
+    },
+    {
+      id: 'straight_long',
+      type: 'path',
+      title: 'Laser Focus',
+      description: '5+ letter word in a straight line',
+      icon: '◥',
+      reward: 150,
+      target: 1,
+    },
+  ];
+
+  // ---------------------------------------------------------------------------
+  // Check functions (per challenge ID)
+  // ---------------------------------------------------------------------------
+
+  var CHECKS = {
+    first_word: function (state, wordData) {
+      return true; // any valid word
+    },
+    long_word: function (state, wordData) {
+      return wordData.word.length >= 6;
+    },
+    straight_h: function (state, wordData) {
+      return wordData.isStraight && wordData.isHorizontal;
+    },
+    high_score: function (state, wordData) {
+      return wordData.score >= 50;
+    },
+    discovery: function (state, wordData) {
+      return wordData.isPlantedWord === true;
+    },
+    combo_3: function (state, wordData) {
+      return (state.hunt && state.hunt.combo >= 3);
+    },
+    cross: function (state, wordData) {
+      // Check if any tile in this path was already in usedTileKeys
+      if (!state.hunt || !state.hunt.usedTileKeys) return false;
+      var path = wordData.tilesUsed || wordData.path;
+      for (var i = 0; i < path.length; i++) {
+        var key = path[i].col + ',' + path[i].row;
+        if (state.hunt.usedTileKeys.has(key)) return true;
+      }
+      return false;
+    },
+    rare_letter: function (state, wordData) {
+      return /[QZXJ]/.test(wordData.word.toUpperCase());
+    },
+    five_words: function (state, wordData) {
+      return (state.wordsSpelled || 0) >= 5;
+    },
+    straight_long: function (state, wordData) {
+      return wordData.isStraight && wordData.word.length >= 5;
+    },
+  };
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  function generate(round) {
+    // Only Round 1 defined for now
+    return ROUND_1_CHALLENGES.map(function (def) {
+      return {
+        id:          def.id,
+        type:        def.type,
+        title:       def.title,
+        description: def.description,
+        icon:        def.icon,
+        reward:      def.reward,
+        target:      def.target,
+        completed:   false,
+        progress:    0,
+      };
+    });
+  }
+
+  /**
+   * checkAll(state, wordData) — called after every word in Word Hunt.
+   * Returns array of challenge IDs that JUST completed this turn.
+   */
+  function checkAll(state, wordData) {
+    var hunt = state.hunt;
+    if (!hunt || !hunt.challenges) return [];
+
+    var newlyCompleted = [];
+
+    for (var i = 0; i < hunt.challenges.length; i++) {
+      var c = hunt.challenges[i];
+      if (c.completed) continue;
+
+      var checkFn = CHECKS[c.id];
+      if (!checkFn) continue;
+
+      if (c.target > 1) {
+        // Progress-based challenge
+        if (checkFn(state, wordData)) {
+          c.progress = Math.min(c.target, (c.progress || 0) + 1);
+          if (c.progress >= c.target) {
+            c.completed = true;
+            newlyCompleted.push(c.id);
+          }
+        }
+      } else {
+        // Single-shot challenge
+        if (checkFn(state, wordData)) {
+          c.completed = true;
+          c.progress  = 1;
+          newlyCompleted.push(c.id);
+        }
+      }
+    }
+
+    return newlyCompleted;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sidebar rendering
+  // ---------------------------------------------------------------------------
+
+  function renderSidebar(ctx, state, mouseX, mouseY) {
+    var hunt = state.hunt || {};
+    var challenges = hunt.challenges || [];
+    if (challenges.length === 0) return;
+
+    var vp = state.viewport || {};
+    var canvasH = ctx.canvas ? ctx.canvas.height : 720;
+    var canvasW = ctx.canvas ? ctx.canvas.width  : 1280;
+
+    var sideW = 160;
+    var sideX = canvasW - sideW - 4;
+    var sideY = 66;
+    var rowH  = 22;
+    var headerH = 28;
+    var totalH  = headerH + challenges.length * rowH + 12;
+
+    // Panel background
+    ctx.fillStyle = 'rgba(12, 10, 8, 0.88)';
+    ctx.fillRect(sideX, sideY, sideW, totalH);
+    ctx.strokeStyle = '#2a2420';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sideX, sideY, sideW, totalH);
+
+    // Header
+    var done = hunt.completedCount || 0;
+    var total = challenges.length;
+    ctx.font = 'bold 11px "Courier New", monospace';
+    ctx.fillStyle = '#c8a050';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('CHALLENGES  ' + done + '/' + total, sideX + 8, sideY + headerH / 2);
+
+    // Challenge rows
+    var hoveredChallenge = null;
+    for (var i = 0; i < challenges.length; i++) {
+      var c   = challenges[i];
+      var cy  = sideY + headerH + i * rowH;
+      var cMid = cy + rowH / 2;
+
+      // Hover detection
+      var isHov = mouseX >= sideX && mouseX <= sideX + sideW &&
+                  mouseY >= cy     && mouseY <= cy + rowH;
+      if (isHov) hoveredChallenge = c;
+
+      if (isHov) {
+        ctx.fillStyle = 'rgba(200,160,80,0.12)';
+        ctx.fillRect(sideX, cy, sideW, rowH);
+      }
+
+      // Bullet: ✓ or ○
+      ctx.font = '11px "Courier New", monospace';
+      ctx.fillStyle = c.completed ? '#c8a050' : '#5a4a30';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(c.completed ? '✓' : '○', sideX + 6, cMid);
+
+      // Icon
+      ctx.fillStyle = c.completed ? '#c8a050' : '#5a4a30';
+      ctx.fillText(c.icon, sideX + 20, cMid);
+
+      // Title
+      ctx.fillStyle = c.completed ? '#d4c4a0' : '#8a7a60';
+      ctx.fillText(c.title, sideX + 34, cMid);
+
+      // Progress for multi-step challenges
+      if (c.target > 1 && !c.completed) {
+        ctx.fillStyle = '#6a5a40';
+        ctx.textAlign = 'right';
+        ctx.fillText((c.progress || 0) + '/' + c.target, sideX + sideW - 6, cMid);
+        ctx.textAlign = 'left';
+      }
+    }
+
+    // Tooltip for hovered challenge
+    if (hoveredChallenge) {
+      drawTooltip(ctx, hoveredChallenge, mouseX, mouseY, canvasW, canvasH);
+    }
+
+    // Footer hint
+    ctx.font = '9px "Courier New", monospace';
+    ctx.fillStyle = '#4a3a20';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('hover for details', sideX + sideW / 2, sideY + totalH - 7);
+  }
+
+  function drawTooltip(ctx, c, mouseX, mouseY, canvasW, canvasH) {
+    var ttW = 200;
+    var ttH = 52;
+    var ttX = mouseX - ttW - 8;
+    var ttY = mouseY - 8;
+    if (ttX < 4) ttX = mouseX + 8;
+    if (ttY + ttH > canvasH - 4) ttY = canvasH - ttH - 4;
+
+    ctx.fillStyle = 'rgba(20, 16, 12, 0.95)';
+    ctx.strokeStyle = '#c8a050';
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    ctx.rect(ttX, ttY, ttW, ttH);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#c8a050';
+    ctx.font = 'bold 12px "Courier New", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(c.title, ttX + 8, ttY + 8);
+
+    ctx.fillStyle = '#a09080';
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillText(c.description, ttX + 8, ttY + 24);
+
+    ctx.fillStyle = '#c8a050';
+    ctx.fillText('+' + c.reward + ' pts', ttX + 8, ttY + 38);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Expose
+  // ---------------------------------------------------------------------------
+
+  window.LD.Challenges = {
+    generate:       generate,
+    checkAll:       checkAll,
+    renderSidebar:  renderSidebar,
+  };
+
+})();
+
+</script>
+<script>
 // LEXICON DEEP — Particle System
 // Attaches to window.LD.Particles
 (function () {
@@ -2011,7 +2352,62 @@ canvas {
       playSine(659, 0.15 * vol, 1.5, 0.6);
       playSine(784, 0.15 * vol, 1.5, 0.6);
       playSine(1047, 0.15 * vol, 1.5, 0.6);
-    }
+    },
+    // Word Hunt sounds
+    challenge_complete: function(vol) {
+      vol = vol || 1;
+      // Bright ascending chime C5→E5→G5
+      playSine(523, 0.25 * vol, 0.12, 0);
+      playSine(659, 0.25 * vol, 0.12, 0.08);
+      playSine(784, 0.25 * vol, 0.18, 0.16);
+    },
+    round_complete: function(vol) {
+      vol = vol || 1;
+      playSine(523, 0.2 * vol, 0.2, 0);
+      playSine(659, 0.2 * vol, 0.2, 0.1);
+      playSine(784, 0.2 * vol, 0.2, 0.2);
+      playSine(1047, 0.2 * vol, 0.2, 0.3);
+      playSine(1319, 0.18 * vol, 0.5, 0.4);
+      playSine(523, 0.15 * vol, 1.5, 0.6);
+      playSine(784, 0.15 * vol, 1.5, 0.6);
+      playSine(1047, 0.15 * vol, 1.5, 0.6);
+    },
+    combo: function(vol) {
+      vol = vol || 1;
+      // Quick double-tick
+      playSine(600, 0.12 * vol, 0.03, 0);
+      playSine(800, 0.12 * vol, 0.03, 0.05);
+    },
+    discovery: function(vol) {
+      vol = vol || 1;
+      if (!ensureCtx()) return;
+      // Magical shimmer with vibrato
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      const g = ctx.createGain();
+      lfo.frequency.setValueAtTime(6, now);
+      lfoGain.gain.setValueAtTime(60, now);
+      lfo.connect(lfoGain);
+      lfoGain.connect(osc.frequency);
+      osc.frequency.setValueAtTime(1600, now);
+      g.gain.setValueAtTime(0.15 * vol, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(now);
+      lfo.start(now);
+      osc.stop(now + 0.5);
+      lfo.stop(now + 0.5);
+      playSine(880, 0.1 * vol, 0.3, 0.1);
+      playSine(1047, 0.1 * vol, 0.3, 0.2);
+    },
+    tap: function(vol) {
+      vol = vol || 1;
+      playNoise(0.008, 0.04 * vol, 'highpass', 2500);
+      playSine(700, 0.08 * vol, 0.02);
+    },
   };
 
   function play(name, opts) {
@@ -2038,6 +2434,7 @@ canvas {
   let targetScrollX = 0, targetScrollY = 0;
   let inputFlashTimer = 0;
   let inputFlashColor = null;
+  let mouseX = 0, mouseY = 0;
 
   const COLORS = {
     bg: '#1a1714',
@@ -2069,6 +2466,14 @@ canvas {
   function init(cvs, state) {
     canvas = cvs;
     resize(canvas, state);
+    // Track mouse for challenge sidebar tooltips
+    cvs.addEventListener('mousemove', function(e) {
+      var rect = cvs.getBoundingClientRect();
+      var scaleX = cvs.width  / rect.width;
+      var scaleY = cvs.height / rect.height;
+      mouseX = (e.clientX - rect.left) * scaleX;
+      mouseY = (e.clientY - rect.top)  * scaleY;
+    }, { passive: true });
   }
 
   function resize(cvs, state) {
@@ -2157,6 +2562,13 @@ canvas {
     drawMinimap(ctx, state);
     drawHUD(ctx, state);
     drawInputBar(ctx, state);
+
+    // Challenge sidebar (Word Hunt only)
+    if (state.gameMode === 'wordhunt') {
+      if (window.LD && window.LD.Challenges) {
+        LD.Challenges.renderSidebar(ctx, state, mouseX, mouseY);
+      }
+    }
 
     // Help overlay
     if (state.showHelp) {
@@ -4333,6 +4745,11 @@ canvas {
 
     // Generate board (pass board sub-object, gameMode, config)
     LD.Board.generate(STATE.board, STATE.gameMode, STATE.config, STATE);
+
+    // Generate challenges for Word Hunt
+    if (STATE.gameMode === 'wordhunt' && LD.Challenges) {
+      STATE.hunt.challenges = LD.Challenges.generate(STATE.hunt.round);
+    }
 
     // Center viewport on the board
     STATE.viewport.col = Math.max(0, Math.floor((STATE.board.width  - STATE.viewport.cols) / 2));

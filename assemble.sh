@@ -23,7 +23,7 @@ canvas {
 HTMLHEAD
 
 # Append each module as a script block
-for mod in dictionary constants board pathfinder particles audio renderer settings input game; do
+for mod in dictionary constants board pathfinder challenges particles audio renderer settings input game; do
   echo "<script>" >> "$OUT"
   cat "modules/${mod}.js" >> "$OUT"
   echo "" >> "$OUT"
