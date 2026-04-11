@@ -10,11 +10,12 @@
   var BOARD_WIDTH = 40;
   var BOARD_HEIGHT = 40;
 
-  // Weighted letter pool
+  // Weighted letter pool — rebalanced from Scrabble for more visual variety
+  // Reduced common vowels, boosted mid-tier consonants
   var LETTER_WEIGHTS = {
-    A: 10, B: 2,  C: 3,  D: 4,  E: 14, F: 2,  G: 3,  H: 3,
-    I: 10, J: 1,  K: 1,  L: 5,  M: 3,  N: 7,  O: 9,  P: 2,
-    Q: 1,  R: 7,  S: 6,  T: 8,  U: 5,  V: 2,  W: 2,  X: 1,
+    A: 7,  B: 3,  C: 4,  D: 4,  E: 9,  F: 3,  G: 3,  H: 4,
+    I: 7,  J: 1,  K: 2,  L: 5,  M: 4,  N: 6,  O: 7,  P: 3,
+    Q: 1,  R: 6,  S: 6,  T: 7,  U: 4,  V: 2,  W: 3,  X: 1,
     Y: 3,  Z: 1
   };
 

@@ -361,6 +361,19 @@
         return;
     }
 
+    // ── ? — toggle help screen ─────────────────────────────────────────────
+    if (key === '?') {
+      e.preventDefault();
+      _state.showHelp = !_state.showHelp;
+      return;
+    }
+
+    // Close help on any other key
+    if (_state.showHelp) {
+      _state.showHelp = false;
+      return;
+    }
+
     if (isGameOver) return; // no word input after game ends
 
     // ── Escape — clear input ──────────────────────────────────────────────────

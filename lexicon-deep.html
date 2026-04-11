@@ -124,11 +124,12 @@ canvas {
   var BOARD_WIDTH = 40;
   var BOARD_HEIGHT = 40;
 
-  // Weighted letter pool
+  // Weighted letter pool — rebalanced from Scrabble for more visual variety
+  // Reduced common vowels, boosted mid-tier consonants
   var LETTER_WEIGHTS = {
-    A: 10, B: 2,  C: 3,  D: 4,  E: 14, F: 2,  G: 3,  H: 3,
-    I: 10, J: 1,  K: 1,  L: 5,  M: 3,  N: 7,  O: 9,  P: 2,
-    Q: 1,  R: 7,  S: 6,  T: 8,  U: 5,  V: 2,  W: 2,  X: 1,
+    A: 7,  B: 3,  C: 4,  D: 4,  E: 9,  F: 3,  G: 3,  H: 4,
+    I: 7,  J: 1,  K: 2,  L: 5,  M: 4,  N: 6,  O: 7,  P: 3,
+    Q: 1,  R: 6,  S: 6,  T: 7,  U: 4,  V: 2,  W: 3,  X: 1,
     Y: 3,  Z: 1
   };
 
@@ -1925,6 +1926,11 @@ canvas {
     drawMinimap(ctx, state);
     drawHUD(ctx, state);
     drawInputBar(ctx, state);
+
+    // Help overlay
+    if (state.showHelp) {
+      drawHelpScreen(ctx, state);
+    }
   }
 
   function drawBoard(ctx, state) {
@@ -2021,7 +2027,7 @@ canvas {
       ctx.lineWidth = 1;
       // Letter in white
       if (tile.letter) {
-        drawLetter(ctx, tile.letter, x, y, ts, '#ffffff', '#c8a050');
+        drawLetter(ctx, tile.letter, x, y, ts, '#ffffff', '#c8a050', tile.points);
       } else if (tile.icon) {
         drawIcon(ctx, tile.icon, x, y, ts, true);
       }
@@ -2091,11 +2097,11 @@ canvas {
     }
 
     if (tile.letter) {
-      drawLetter(ctx, tile.letter, x, y, ts, isMatch ? '#5a3a10' : COLORS.tileText, isMatch ? '#f0d890' : COLORS.tileTextEmboss);
+      drawLetter(ctx, tile.letter, x, y, ts, isMatch ? '#5a3a10' : COLORS.tileText, isMatch ? '#f0d890' : COLORS.tileTextEmboss, tile.points);
     }
   }
 
-  function drawLetter(ctx, letter, x, y, ts, color, embossColor) {
+  function drawLetter(ctx, letter, x, y, ts, color, embossColor, points) {
     const fontSize = Math.max(12, Math.floor(ts * 0.55));
     ctx.font = 'bold ' + fontSize + 'px "Courier New", monospace';
     ctx.textAlign = 'center';
@@ -2109,6 +2115,20 @@ canvas {
     }
     ctx.fillStyle = color;
     ctx.fillText(letter, cx, cy);
+
+    // Point value in bottom-right corner
+    if (points && points > 1 && ts >= 30) {
+      const ptSize = Math.max(8, Math.floor(ts * 0.22));
+      ctx.font = ptSize + 'px "Courier New", monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = color;
+      ctx.fillText(points, x + ts - 3, y + ts - 2);
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+    }
   }
 
   function drawIcon(ctx, icon, x, y, ts, highlighted) {
@@ -2414,7 +2434,7 @@ canvas {
     ctx.fillStyle = '#555';
     ctx.font = '11px "Courier New", monospace';
     ctx.textAlign = 'left';
-    ctx.fillText('Type a word, press Enter to cast. Arrow keys to scroll. H for hard mode.', 20, barY + 42);
+    ctx.fillText('Type a word, press Enter to cast. Arrow keys to scroll. Press ? for help.', 20, barY + 42);
   }
 
   function drawTitleScreen(ctx, state) {
@@ -2529,6 +2549,160 @@ canvas {
     ctx.globalAlpha = 0.5 + 0.5 * Math.sin(time * 2.5);
     ctx.fillText('Press Enter to Play Again', w / 2, h / 2 + 120);
     ctx.globalAlpha = 1;
+  }
+
+  function drawHelpScreen(ctx, state) {
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Dark overlay
+    ctx.fillStyle = 'rgba(10, 8, 6, 0.92)';
+    ctx.fillRect(0, 0, w, h);
+
+    const col1 = 60;
+    const col2 = 460;
+    let y = 50;
+    const lineH = 20;
+    const sectionGap = 30;
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    // Title
+    ctx.font = 'bold 28px "Courier New", monospace';
+    ctx.fillStyle = COLORS.highlight;
+    ctx.fillText('LEXICON DEEP — Reference', col1, y);
+    y += 45;
+
+    // Controls
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillStyle = '#c8a050';
+    ctx.fillText('CONTROLS', col1, y);
+    y += lineH + 4;
+    ctx.font = '13px "Courier New", monospace';
+    ctx.fillStyle = COLORS.hud;
+    var controls = [
+      ['A-Z keys', 'Type letters to spell a word'],
+      ['Enter', 'Submit word (cast spell)'],
+      ['Backspace', 'Delete last letter'],
+      ['Escape', 'Clear current word'],
+      ['Arrow keys', 'Scroll the viewport'],
+      ['?', 'Toggle this help screen'],
+    ];
+    for (var ci = 0; ci < controls.length; ci++) {
+      ctx.fillStyle = '#c8a050';
+      ctx.fillText(controls[ci][0], col1 + 10, y);
+      ctx.fillStyle = COLORS.hud;
+      ctx.fillText(controls[ci][1], col1 + 150, y);
+      y += lineH;
+    }
+    y += sectionGap;
+
+    // How to play
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillStyle = '#c8a050';
+    ctx.fillText('HOW TO PLAY', col1, y);
+    y += lineH + 4;
+    ctx.font = '13px "Courier New", monospace';
+    ctx.fillStyle = COLORS.hud;
+    var howto = [
+      'Type a word (3-8 letters). The game finds a connected path',
+      'on the visible grid. Press Enter to cast — tiles activate,',
+      'cleansing corruption within 2 tiles of your word.',
+      '',
+      'Destroy all 6 corruption seals to win.',
+      'Seal destruction: spell a 6+ letter word with 2+ tiles',
+      'adjacent to a seal. The seal shatters and all connected',
+      'corruption is cleansed in a cascade.',
+      '',
+      'Lose if corruption covers 40% of the board (640+ tiles).',
+      'Corruption spreads one step after each word you cast.',
+    ];
+    for (var hi = 0; hi < howto.length; hi++) {
+      ctx.fillText(howto[hi], col1 + 10, y);
+      y += howto[hi] === '' ? 8 : lineH;
+    }
+
+    // Right column — scoring
+    y = 95;
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillStyle = '#c8a050';
+    ctx.fillText('LETTER POINTS', col2, y);
+    y += lineH + 4;
+    ctx.font = '13px "Courier New", monospace';
+    var scoring = [
+      [' 1 pt', 'E  A  I  O  N  R  T  L  S  U'],
+      [' 2 pt', 'D  G'],
+      [' 3 pt', 'B  C  M  P'],
+      [' 4 pt', 'F  H  V  W  Y'],
+      [' 5 pt', 'K'],
+      [' 8 pt', 'J  X'],
+      ['10 pt', 'Q  Z'],
+    ];
+    for (var si = 0; si < scoring.length; si++) {
+      ctx.fillStyle = '#c8a050';
+      ctx.fillText(scoring[si][0], col2 + 10, y);
+      ctx.fillStyle = COLORS.hud;
+      ctx.fillText(scoring[si][1], col2 + 70, y);
+      y += lineH;
+    }
+    y += sectionGap;
+
+    // Length multiplier
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillStyle = '#c8a050';
+    ctx.fillText('WORD LENGTH BONUS', col2, y);
+    y += lineH + 4;
+    ctx.font = '13px "Courier New", monospace';
+    var lengths = [
+      ['3 letters', '1x'],
+      ['4 letters', '1.5x'],
+      ['5 letters', '2x'],
+      ['6 letters', '3x  (can destroy seals!)'],
+      ['7 letters', '5x'],
+      ['8 letters', '8x'],
+    ];
+    for (var li = 0; li < lengths.length; li++) {
+      ctx.fillStyle = COLORS.hud;
+      ctx.fillText(lengths[li][0], col2 + 10, y);
+      ctx.fillStyle = '#c8a050';
+      ctx.fillText(lengths[li][1], col2 + 120, y);
+      y += lineH;
+    }
+    y += sectionGap;
+
+    // Special tiles
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillStyle = '#c8a050';
+    ctx.fillText('SPECIAL TILES', col2, y);
+    y += lineH + 4;
+    ctx.font = '13px "Courier New", monospace';
+    var specials = [
+      ['Ember (orange)', 'Cleanse a 5x5 area'],
+      ['Crystal (cyan)', 'Double cleanse radius (2 -> 4)'],
+      ['Void (purple)', 'Wildcard — matches any letter'],
+      ['Bomb (red)', 'Cleanse a 9x9 area (!)'],
+      ['', 'Special tiles act as wildcards in paths'],
+      ['', 'and cannot be corrupted (natural barriers)'],
+    ];
+    for (var ti = 0; ti < specials.length; ti++) {
+      if (specials[ti][0]) {
+        ctx.fillStyle = '#c8a050';
+        ctx.fillText(specials[ti][0], col2 + 10, y);
+        ctx.fillStyle = COLORS.hud;
+        ctx.fillText(specials[ti][1], col2 + 180, y);
+      } else {
+        ctx.fillStyle = '#888';
+        ctx.fillText(specials[ti][1], col2 + 10, y);
+      }
+      y += lineH;
+    }
+
+    // Footer
+    ctx.textAlign = 'center';
+    ctx.font = '14px "Courier New", monospace';
+    ctx.fillStyle = '#888';
+    ctx.fillText('Press ? to close', w / 2, h - 30);
   }
 
   function screenToGrid(mx, my, state) {
@@ -2932,6 +3106,19 @@ canvas {
         scrollViewport( 1, 0);
         safeCall(window.LD?.Audio?.play, 'scroll');
         return;
+    }
+
+    // ── ? — toggle help screen ─────────────────────────────────────────────
+    if (key === '?') {
+      e.preventDefault();
+      _state.showHelp = !_state.showHelp;
+      return;
+    }
+
+    // Close help on any other key
+    if (_state.showHelp) {
+      _state.showHelp = false;
+      return;
     }
 
     if (isGameOver) return; // no word input after game ends
