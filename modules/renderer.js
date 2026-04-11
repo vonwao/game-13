@@ -125,10 +125,18 @@
     const vp = state.viewport;
     const ts = vp.tileSize;
     const board = state.board;
+
+    // Build sets for fast lookup
     const pathSet = new Set();
     if (state.input.path) {
-      state.input.path.forEach(function(p, i) {
-        pathSet.set ? pathSet.add(p.col + ',' + p.row) : pathSet.add(p.col + ',' + p.row);
+      state.input.path.forEach(function(p) {
+        pathSet.add(p.col + ',' + p.row);
+      });
+    }
+    const matchSet = new Set();
+    if (state.input.matchingTiles) {
+      state.input.matchingTiles.forEach(function(p) {
+        matchSet.add(p.col + ',' + p.row);
       });
     }
 
@@ -140,10 +148,12 @@
         const tile = board.tiles[gr * board.width + gc];
         const x = vp.offsetX + vc * ts;
         const y = vp.offsetY + vr * ts;
-        const inPath = pathSet.has(gc + ',' + gr);
+        const key = gc + ',' + gr;
+        const inPath = pathSet.has(key);
+        const isMatch = !inPath && matchSet.has(key);
         const pathIdx = inPath ? getPathIndex(state.input.path, gc, gr) : -1;
 
-        drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state);
+        drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state, isMatch);
       }
     }
   }
@@ -155,7 +165,7 @@
     return -1;
   }
 
-  function drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state) {
+  function drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state, isMatch) {
     const pad = 1;
     const inner = ts - pad * 2;
     const time = state.time || 0;
@@ -253,10 +263,18 @@
     }
 
     // Clean letter tile
-    ctx.fillStyle = COLORS.tileFill;
+    ctx.fillStyle = isMatch ? '#e0c880' : COLORS.tileFill;
     ctx.fillRect(x + pad, y + pad, inner, inner);
-    ctx.strokeStyle = COLORS.tileBorder;
-    ctx.strokeRect(x + pad, y + pad, inner, inner);
+    if (isMatch) {
+      // Subtle amber border for matching tiles
+      ctx.strokeStyle = '#c8a050';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + pad, y + pad, inner, inner);
+      ctx.lineWidth = 1;
+    } else {
+      ctx.strokeStyle = COLORS.tileBorder;
+      ctx.strokeRect(x + pad, y + pad, inner, inner);
+    }
 
     // Tile tint (for effects)
     if (tile.tint) {
@@ -267,7 +285,7 @@
     }
 
     if (tile.letter) {
-      drawLetter(ctx, tile.letter, x, y, ts, COLORS.tileText, COLORS.tileTextEmboss);
+      drawLetter(ctx, tile.letter, x, y, ts, isMatch ? '#5a3a10' : COLORS.tileText, isMatch ? '#f0d890' : COLORS.tileTextEmboss);
     }
   }
 

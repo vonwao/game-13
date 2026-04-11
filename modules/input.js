@@ -47,15 +47,16 @@
 
   /**
    * After every keystroke, re-run validation and path search, then update
-   * prefix-start highlighting via Pathfinder.
+   * highlighting data for the renderer.
    */
   function refreshInputState() {
     const typed = _state.input.typed;
 
     if (typed.length === 0) {
-      _state.input.valid   = false;
-      _state.input.hasPath = false;
-      _state.input.path    = [];
+      _state.input.valid       = false;
+      _state.input.hasPath     = false;
+      _state.input.path        = [];
+      _state.input.matchingTiles = [];
       return;
     }
 
@@ -69,10 +70,24 @@
     _state.input.path    = path;
     _state.input.hasPath = path.length > 0;
 
-    // 3. Prefix-start highlighting — store on state so renderer can use it
-    if (window.LD.Pathfinder) {
-      _state.input.prefixStarts = window.LD.Pathfinder.findPrefixStarts(_state, typed);
+    // 3. Highlight ALL visible tiles that match any letter in the typed word
+    const vp = _state.viewport;
+    const board = _state.board;
+    const typedLetters = new Set(typed.toUpperCase().split(''));
+    const matching = [];
+    for (let vr = 0; vr < vp.rows; vr++) {
+      for (let vc = 0; vc < vp.cols; vc++) {
+        const gc = vp.col + vc;
+        const gr = vp.row + vr;
+        if (gc >= board.width || gr >= board.height) continue;
+        const tile = board.tiles[gr * board.width + gc];
+        if (tile.corrupted || tile.isSeal) continue;
+        if (tile.letter && typedLetters.has(tile.letter)) {
+          matching.push({ col: gc, row: gr });
+        }
+      }
     }
+    _state.input.matchingTiles = matching;
   }
 
   // ---------------------------------------------------------------------------
@@ -346,50 +361,12 @@
         return;
     }
 
-    // WASD only scrolls when NOT typing a word (otherwise they're letter input)
-    const hasTypedText = _state.input.typed && _state.input.typed.length > 0;
-    if (!hasTypedText) {
-      switch (key) {
-        case 'w': case 'W':
-          e.preventDefault();
-          scrollViewport(0, -1);
-          safeCall(window.LD?.Audio?.play, 'scroll');
-          return;
-        case 'a': case 'A':
-          e.preventDefault();
-          scrollViewport(-1, 0);
-          safeCall(window.LD?.Audio?.play, 'scroll');
-          return;
-        case 's': case 'S':
-          e.preventDefault();
-          scrollViewport(0,  1);
-          safeCall(window.LD?.Audio?.play, 'scroll');
-          return;
-        case 'd': case 'D':
-          e.preventDefault();
-          scrollViewport( 1, 0);
-          safeCall(window.LD?.Audio?.play, 'scroll');
-          return;
-      }
-    }
-
     if (isGameOver) return; // no word input after game ends
 
     // ── Escape — clear input ──────────────────────────────────────────────────
     if (key === 'Escape') {
       e.preventDefault();
       clearInput();
-      return;
-    }
-
-    // ── H — toggle hard mode (only when not typing) ──────────────────────────
-    if ((key === 'h' || key === 'H') && !hasTypedText) {
-      e.preventDefault();
-      _state.settings = _state.settings || {};
-      _state.settings.hardMode = !_state.settings.hardMode;
-      if (_state.settings.hardMode) {
-        safeCall(window.LD?.Board?.applyHardMode, _state.board || _state);
-      }
       return;
     }
 

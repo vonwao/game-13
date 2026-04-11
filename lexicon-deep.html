@@ -1931,10 +1931,18 @@ canvas {
     const vp = state.viewport;
     const ts = vp.tileSize;
     const board = state.board;
+
+    // Build sets for fast lookup
     const pathSet = new Set();
     if (state.input.path) {
-      state.input.path.forEach(function(p, i) {
-        pathSet.set ? pathSet.add(p.col + ',' + p.row) : pathSet.add(p.col + ',' + p.row);
+      state.input.path.forEach(function(p) {
+        pathSet.add(p.col + ',' + p.row);
+      });
+    }
+    const matchSet = new Set();
+    if (state.input.matchingTiles) {
+      state.input.matchingTiles.forEach(function(p) {
+        matchSet.add(p.col + ',' + p.row);
       });
     }
 
@@ -1946,10 +1954,12 @@ canvas {
         const tile = board.tiles[gr * board.width + gc];
         const x = vp.offsetX + vc * ts;
         const y = vp.offsetY + vr * ts;
-        const inPath = pathSet.has(gc + ',' + gr);
+        const key = gc + ',' + gr;
+        const inPath = pathSet.has(key);
+        const isMatch = !inPath && matchSet.has(key);
         const pathIdx = inPath ? getPathIndex(state.input.path, gc, gr) : -1;
 
-        drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state);
+        drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state, isMatch);
       }
     }
   }
@@ -1961,7 +1971,7 @@ canvas {
     return -1;
   }
 
-  function drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state) {
+  function drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state, isMatch) {
     const pad = 1;
     const inner = ts - pad * 2;
     const time = state.time || 0;
@@ -2059,10 +2069,18 @@ canvas {
     }
 
     // Clean letter tile
-    ctx.fillStyle = COLORS.tileFill;
+    ctx.fillStyle = isMatch ? '#e0c880' : COLORS.tileFill;
     ctx.fillRect(x + pad, y + pad, inner, inner);
-    ctx.strokeStyle = COLORS.tileBorder;
-    ctx.strokeRect(x + pad, y + pad, inner, inner);
+    if (isMatch) {
+      // Subtle amber border for matching tiles
+      ctx.strokeStyle = '#c8a050';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + pad, y + pad, inner, inner);
+      ctx.lineWidth = 1;
+    } else {
+      ctx.strokeStyle = COLORS.tileBorder;
+      ctx.strokeRect(x + pad, y + pad, inner, inner);
+    }
 
     // Tile tint (for effects)
     if (tile.tint) {
@@ -2073,7 +2091,7 @@ canvas {
     }
 
     if (tile.letter) {
-      drawLetter(ctx, tile.letter, x, y, ts, COLORS.tileText, COLORS.tileTextEmboss);
+      drawLetter(ctx, tile.letter, x, y, ts, isMatch ? '#5a3a10' : COLORS.tileText, isMatch ? '#f0d890' : COLORS.tileTextEmboss);
     }
   }
 
@@ -2602,15 +2620,16 @@ canvas {
 
   /**
    * After every keystroke, re-run validation and path search, then update
-   * prefix-start highlighting via Pathfinder.
+   * highlighting data for the renderer.
    */
   function refreshInputState() {
     const typed = _state.input.typed;
 
     if (typed.length === 0) {
-      _state.input.valid   = false;
-      _state.input.hasPath = false;
-      _state.input.path    = [];
+      _state.input.valid       = false;
+      _state.input.hasPath     = false;
+      _state.input.path        = [];
+      _state.input.matchingTiles = [];
       return;
     }
 
@@ -2624,10 +2643,24 @@ canvas {
     _state.input.path    = path;
     _state.input.hasPath = path.length > 0;
 
-    // 3. Prefix-start highlighting — store on state so renderer can use it
-    if (window.LD.Pathfinder) {
-      _state.input.prefixStarts = window.LD.Pathfinder.findPrefixStarts(_state, typed);
+    // 3. Highlight ALL visible tiles that match any letter in the typed word
+    const vp = _state.viewport;
+    const board = _state.board;
+    const typedLetters = new Set(typed.toUpperCase().split(''));
+    const matching = [];
+    for (let vr = 0; vr < vp.rows; vr++) {
+      for (let vc = 0; vc < vp.cols; vc++) {
+        const gc = vp.col + vc;
+        const gr = vp.row + vr;
+        if (gc >= board.width || gr >= board.height) continue;
+        const tile = board.tiles[gr * board.width + gc];
+        if (tile.corrupted || tile.isSeal) continue;
+        if (tile.letter && typedLetters.has(tile.letter)) {
+          matching.push({ col: gc, row: gr });
+        }
+      }
     }
+    _state.input.matchingTiles = matching;
   }
 
   // ---------------------------------------------------------------------------
@@ -2901,50 +2934,12 @@ canvas {
         return;
     }
 
-    // WASD only scrolls when NOT typing a word (otherwise they're letter input)
-    const hasTypedText = _state.input.typed && _state.input.typed.length > 0;
-    if (!hasTypedText) {
-      switch (key) {
-        case 'w': case 'W':
-          e.preventDefault();
-          scrollViewport(0, -1);
-          safeCall(window.LD?.Audio?.play, 'scroll');
-          return;
-        case 'a': case 'A':
-          e.preventDefault();
-          scrollViewport(-1, 0);
-          safeCall(window.LD?.Audio?.play, 'scroll');
-          return;
-        case 's': case 'S':
-          e.preventDefault();
-          scrollViewport(0,  1);
-          safeCall(window.LD?.Audio?.play, 'scroll');
-          return;
-        case 'd': case 'D':
-          e.preventDefault();
-          scrollViewport( 1, 0);
-          safeCall(window.LD?.Audio?.play, 'scroll');
-          return;
-      }
-    }
-
     if (isGameOver) return; // no word input after game ends
 
     // ── Escape — clear input ──────────────────────────────────────────────────
     if (key === 'Escape') {
       e.preventDefault();
       clearInput();
-      return;
-    }
-
-    // ── H — toggle hard mode (only when not typing) ──────────────────────────
-    if ((key === 'h' || key === 'H') && !hasTypedText) {
-      e.preventDefault();
-      _state.settings = _state.settings || {};
-      _state.settings.hardMode = !_state.settings.hardMode;
-      if (_state.settings.hardMode) {
-        safeCall(window.LD?.Board?.applyHardMode, _state.board || _state);
-      }
       return;
     }
 
