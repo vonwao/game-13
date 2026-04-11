@@ -273,10 +273,17 @@
       return;
     }
 
+    // Word Hunt: found planted word — golden tint
+    const isFoundPlanted = tile.planted && tile.found;
     // Clean letter tile
-    ctx.fillStyle = isMatch ? '#e0c880' : COLORS.tileFill;
+    ctx.fillStyle = isMatch ? '#e0c880' : (isFoundPlanted ? '#c8a840' : COLORS.tileFill);
     ctx.fillRect(x + pad, y + pad, inner, inner);
-    if (isMatch) {
+    if (isFoundPlanted) {
+      ctx.strokeStyle = '#f0d070';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + pad, y + pad, inner, inner);
+      ctx.lineWidth = 1;
+    } else if (isMatch) {
       // Subtle amber border for matching tiles
       ctx.strokeStyle = '#c8a050';
       ctx.lineWidth = 2;
@@ -473,8 +480,14 @@
           ctx.fillRect(px, py, dotSize, dotSize);
           continue;
         }
-        if (tile.corrupted) {
+        if (tile.corrupted && state.gameMode !== 'wordhunt') {
           ctx.fillStyle = '#3a0a50';
+          ctx.fillRect(px, py, dotSize, dotSize);
+          continue;
+        }
+        // Word Hunt: amber dots for found planted tiles
+        if (state.gameMode === 'wordhunt' && tile.planted && tile.found) {
+          ctx.fillStyle = '#c8a050';
           ctx.fillRect(px, py, dotSize, dotSize);
           continue;
         }
@@ -495,6 +508,78 @@
   }
 
   function drawHUD(ctx, state) {
+    if (state.gameMode === 'wordhunt') {
+      drawHUDWordHunt(ctx, state);
+    } else {
+      drawHUDSiege(ctx, state);
+    }
+  }
+
+  function drawHUDWordHunt(ctx, state) {
+    const w = canvas.width;
+    const h = 55;
+    const hunt = state.hunt || {};
+
+    ctx.fillStyle = COLORS.hudBg;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#2a2420';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(w, h); ctx.stroke();
+
+    ctx.fillStyle = COLORS.hud;
+    ctx.textBaseline = 'middle';
+
+    // Title + round
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('WORD HUNT', 12, 16);
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillStyle = '#8a7a60';
+    ctx.fillText('Round ' + (hunt.round || 1) + ': The First Page', 12, 32);
+
+    // Score + words
+    ctx.fillStyle = COLORS.hud;
+    ctx.font = '13px "Courier New", monospace';
+    ctx.fillText('Score: ' + (state.score || 0).toLocaleString(), 170, 22);
+    ctx.fillText('Words: ' + (state.wordsSpelled || 0), 170, 40);
+
+    // Combo
+    if (hunt.combo > 1) {
+      ctx.font = 'bold 14px "Courier New", monospace';
+      ctx.fillStyle = '#f0d070';
+      ctx.textAlign = 'center';
+      ctx.fillText('× ' + hunt.combo + ' COMBO', w / 2, 28);
+    }
+
+    // End condition indicator
+    ctx.textAlign = 'right';
+    ctx.font = '13px "Courier New", monospace';
+    ctx.fillStyle = COLORS.hud;
+    const endCond = (state.settings && state.settings.endCondition) || 'challenges';
+    if (endCond === 'challenges') {
+      const total = (hunt.challenges && hunt.challenges.length) || 10;
+      const done  = hunt.completedCount || 0;
+      ctx.fillText('Challenges: ' + done + '/' + total, w - 20, 22);
+      // Mini progress bar
+      const bw = 140, bh = 6, bx = w - bw - 20, by = 34;
+      ctx.fillStyle = '#2a2420';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = COLORS.highlight;
+      ctx.fillRect(bx, by, Math.round((done / Math.max(total, 1)) * bw), bh);
+      ctx.strokeStyle = '#444';
+      ctx.strokeRect(bx, by, bw, bh);
+    } else if (endCond === 'timed') {
+      const secs = Math.max(0, Math.ceil(hunt.timeRemaining || 0));
+      const mm = Math.floor(secs / 60);
+      const ss = String(secs % 60).padStart(2, '0');
+      ctx.fillStyle = secs < 30 ? '#ff6040' : COLORS.hud;
+      ctx.fillText('Time: ' + mm + ':' + ss, w - 20, 28);
+    } else if (endCond === 'turns') {
+      ctx.fillText('Turns left: ' + (hunt.turnsRemaining || 0), w - 20, 28);
+    }
+  }
+
+  function drawHUDSiege(ctx, state) {
     const w = canvas.width;
     const h = 55;
 
@@ -559,7 +644,7 @@
     ctx.strokeRect(barX, barY, barW, barH);
 
     // Hard mode indicator
-    if (state.settings && state.settings.hardMode) {
+    if (state.settings && state.settings.difficulty === 'hard') {
       ctx.fillStyle = '#ff6040';
       ctx.font = 'bold 11px "Courier New", monospace';
       ctx.textAlign = 'right';

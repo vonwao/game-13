@@ -279,8 +279,13 @@
     const planted = safeCall(window.LD?.Board?.checkPlantedWord, board, typed, path);
     if (planted) {
       planted.found = true;
+      // Mark individual tile objects as found (for golden tint rendering)
+      for (let i = 0; i < planted.path.length; i++) {
+        const pt = planted.path[i];
+        const t = board.tiles[pt.row * board.width + pt.col];
+        if (t) { t.found = true; }
+      }
       earned += 100;
-      if (hunt) hunt.completedCount = (hunt.completedCount || 0); // updated by challenges check
       // Discovery visual
       const vp = _state.viewport;
       const ts = vp.tileSize || 32;
