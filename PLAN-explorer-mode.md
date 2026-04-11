@@ -1,8 +1,10 @@
-# LEXICON DEEP — Explorer Mode Implementation Plan
+# LEXICON DEEP — Word Hunt Mode + Touch Support Implementation Plan
 
 ## Overview
 
-Add a new "Explorer" game mode alongside the existing "Classic" (corruption/seals) mode. Explorer mode strips away corruption mechanics and replaces them with score-maximization, pre-planted hidden words, and a scavenger hunt challenge system. Also add a well-designed Settings screen for mode selection and feature toggles.
+Add a new primary game mode called **"Word Hunt"** alongside the existing corruption/seals mode (renamed to **"Siege"**). Word Hunt strips away corruption mechanics and replaces them with score-maximization, pre-planted hidden words, and a scavenger hunt challenge system. Also add a well-designed Settings screen, more granular feature toggles, and **full touch/mobile support** (tap-to-spell).
+
+**Word Hunt is the default, primary mode.** Siege is the secondary/advanced mode.
 
 **Guiding principle:** The existing engine (tiles, pathfinding, dictionary, rendering, particles, audio) stays shared. Mode-specific logic branches on `state.gameMode`.
 
@@ -15,46 +17,61 @@ Add a new "Explorer" game mode alongside the existing "Classic" (corruption/seal
 Add to the game state object in `modules/game.js`:
 
 ```js
-STATE.gameMode = 'explorer'; // 'classic' | 'explorer'
+STATE.gameMode = 'wordhunt'; // 'wordhunt' | 'siege' (Word Hunt is default)
 STATE.settings = {
-  hardMode: false,
-  specialTiles: true,    // ember, crystal, void, bomb
   soundEnabled: true,
-  showTimer: true,
-  // Explorer mode settings
+  particlesEnabled: true,
+  // Special tile toggles (granular)
+  crystalTiles: true,     // crystal = 2x score (wordhunt) or double cleanse (siege)
+  voidTiles: true,        // wildcard tiles
+  emberTiles: true,       // +20 bonus (wordhunt) or 5x5 cleanse (siege)
+  bombTiles: false,       // 9x9 cleanse — siege only, off by default
+  // Siege-specific
+  hardMode: false,        // letters degrade near corruption
+  // Word Hunt end conditions
   endCondition: 'challenges', // 'zen' | 'timed' | 'turns' | 'challenges'
-  timeLimit: 300,              // seconds (for 'timed' mode)
-  turnLimit: 50,               // (for 'turns' mode)
+  timeLimit: 300,              // seconds (for 'timed')
+  turnLimit: 50,               // (for 'turns')
+  // Word Hunt specific
+  pathBonuses: true,      // straight-line scoring bonus
+  comboBonuses: true,     // combo multiplier for consecutive words
+  plantedWords: true,     // embed discoverable words in grid
+  fragments: true,        // embed common letter fragments
 };
 
-// Explorer mode state
-STATE.explorer = {
+// Word Hunt mode state
+STATE.hunt = {
   round: 1,
   challenges: [],       // array of challenge objects
   completedCount: 0,
   plantedWords: [],     // { word, path: [{col,row}], found: false }
-  fragments: [],        // { fragment, positions: [{col,row}], usedCount: 0 }
   timeRemaining: 300,   // seconds (for timed mode)
   turnsRemaining: 50,   // (for turns mode)
   combo: 0,             // consecutive words without scrolling
   bestCombo: 0,
-  wordsThisRound: [],   // history of words played
+  wordsThisRound: [],   // history of words played this round
+  usedTileKeys: new Set(), // "col,row" strings — for cross-word challenge tracking
+};
+
+// Touch/mobile state
+STATE.touch = {
+  enabled: false,         // auto-detected or toggled
+  selectedTiles: [],      // tiles tapped in order for current word
+  lastTap: null,          // {col, row} for visual feedback
 };
 ```
 
 ### Mode Branching Points
 
-These are the specific places in existing modules where behavior changes based on mode:
-
-| Module | Function | Classic behavior | Explorer behavior |
-|--------|----------|-----------------|-------------------|
+| Module | Function | Siege behavior | Word Hunt behavior |
+|--------|----------|---------------|-------------------|
 | `board.js` | `generate()` | Places seals, initial corruption | No seals/corruption; plants hidden words + fragments |
-| `board.js` | `spreadCorruption()` | Spreads corruption | No-op (skip entirely) |
+| `board.js` | `spreadCorruption()` | Spreads corruption | No-op (return []) |
 | `board.js` | `refreshTiles()` | Replaces used tiles with random letters | **No-op — tiles are fixed, reusable across words** |
-| `input.js` | `submitWord()` | Cleanse, seal check, spread corruption | Score with path bonus, check challenges, check planted words |
+| `input.js` | `submitWord()` | Cleanse, seal check, spread corruption | Score with path/combo bonus, check challenges, check planted words |
 | `input.js` | win/lose check | Seeds destroyed / 40% corruption | All challenges complete / time or turns expired |
-| `renderer.js` | HUD | Corruption %, seeds | Timer/turns remaining, combo, challenge progress |
-| `renderer.js` | Minimap | Corruption coloring | Planted word locations (if discovered nearby) |
+| `renderer.js` | HUD | Corruption %, seeds | Timer/turns, combo, challenge progress |
+| `renderer.js` | Board | Corruption overlay | Found planted words highlighted |
 | `game.js` | `startGame()` | Generate with seals | Generate with planted words + challenges |
 
 ---
@@ -63,7 +80,9 @@ These are the specific places in existing modules where behavior changes based o
 
 ### Design
 
-The settings screen appears BEFORE the game starts, replacing the simple "Press Enter" title screen. It should feel like a polished game menu — not a dev panel.
+The settings screen replaces the simple "Press Enter" title screen. It should feel like a polished game menu — not a dev panel.
+
+**Word Hunt is listed FIRST and selected by default.**
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -75,25 +94,35 @@ The settings screen appears BEFORE the game starts, replacing the simple "Press 
 │  │  GAME MODE                                              │    │
 │  │                                                         │    │
 │  │  ┌───────────────┐    ┌───────────────┐                 │    │
-│  │  │   CLASSIC     │    │  EXPLORER     │                 │    │
-│  │  │               │    │               │                 │    │
-│  │  │  Fight the    │    │  Find words,  │                 │    │
-│  │  │  spreading    │    │  complete     │                 │    │
-│  │  │  corruption   │    │  challenges   │                 │    │
-│  │  │               │    │               │                 │    │
+│  │  │  WORD HUNT    │    │    SIEGE      │                 │    │
+│  │  │  ▲ selected   │    │               │                 │    │
+│  │  │  Find words,  │    │  Fight the    │                 │    │
+│  │  │  complete     │    │  spreading    │                 │    │
+│  │  │  challenges,  │    │  corruption.  │                 │    │
+│  │  │  discover     │    │  Destroy all  │                 │    │
+│  │  │  hidden words │    │  6 seals.     │                 │    │
 │  │  └───────────────┘    └───────────────┘                 │    │
-│  │                         ▲ selected                      │    │
 │  │─────────────────────────────────────────────────────────│    │
-│  │  END CONDITION (Explorer only)                          │    │
-│  │  ( ) Zen — No limit, just explore                       │    │
+│  │  GOAL (Word Hunt only)                                  │    │
 │  │  (●) Challenges — Complete all challenges to win        │    │
+│  │  ( ) Zen — No limit, play at your own pace              │    │
 │  │  ( ) Timed — 5 minutes        ( ) Turns — 50 turns     │    │
 │  │─────────────────────────────────────────────────────────│    │
-│  │  OPTIONS                                                │    │
-│  │  [✓] Special tiles (ember, crystal, void, bomb)         │    │
+│  │  WORD HUNT OPTIONS                                      │    │
+│  │  [✓] Path shape bonuses (straight lines score more)     │    │
+│  │  [✓] Combo bonus (consecutive words without scrolling)  │    │
+│  │  [✓] Hidden planted words                               │    │
+│  │  [✓] Common fragments (ING, TION, etc.)                 │    │
+│  │─────────────────────────────────────────────────────────│    │
+│  │  TILE OPTIONS                                           │    │
+│  │  [✓] Crystal tiles (2x word score / double cleanse)     │    │
+│  │  [✓] Void tiles (wildcard — matches any letter)         │    │
+│  │  [✓] Ember tiles (+20 bonus / 5x5 cleanse)             │    │
+│  │  [ ] Bomb tiles (massive 9x9 cleanse — Siege only)      │    │
+│  │─────────────────────────────────────────────────────────│    │
+│  │  GENERAL                                                │    │
 │  │  [✓] Sound effects                                      │    │
 │  │  [✓] Particle effects                                   │    │
-│  │  [ ] Hard mode (letters degrade near corruption)        │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                                                                 │
 │              [ ► START GAME ]                                   │
@@ -102,109 +131,134 @@ The settings screen appears BEFORE the game starts, replacing the simple "Press 
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+**Conditional visibility:**
+- "GOAL" section only shows when Word Hunt is selected
+- "WORD HUNT OPTIONS" section only shows when Word Hunt is selected
+- "Hard mode" checkbox only shows when Siege is selected
+- Bomb tiles checkbox is disabled (greyed out) in Word Hunt mode
+
 ### Implementation
 
-Create a new module: `modules/settings.js` (IIFE on `window.LD.Settings`)
+Create `modules/settings.js` (IIFE on `window.LD.Settings`)
 
-**Rendering:** The settings screen is a new phase: `state.phase = 'settings'`. The renderer draws it when phase is `'settings'`.
+**Rendering:** New phase `state.phase = 'settings'`. Renderer delegates to `LD.Settings.render()`.
 
-**Interaction:** This screen needs MOUSE interaction (not just keyboard). Track:
-- Hovered element (for highlight)
-- Click targets (mode cards, radio buttons, checkboxes, start button)
+**Interaction:** Mouse AND touch support from the start:
+- Track hovered element for highlight (mousemove)
+- Click/tap targets for all interactive elements (mousedown + touchstart)
+- Use simple hit-testing: store clickable regions as `{ x, y, w, h, action }` arrays
 
-Use simple hit-testing: store clickable regions as `{ x, y, w, h, action }` arrays, check `mousedown` event coords against them.
-
-**Flow:** Title screen ("Press Enter") → Settings screen → Game starts
+**Phase flow:**
+```
+'title' → (Enter/click/tap) → 'settings' → (Start button) → 'playing' → 'victory'/'gameover'
+                                                                        ↓
+                                                                  'settings' (play again)
+```
 
 **Public API:**
-- `LD.Settings.init(state)` — attach mouse listeners
-- `LD.Settings.render(ctx, state)` — draw the settings screen
-- `LD.Settings.handleClick(mx, my, state)` — process click, return true if something changed
+- `LD.Settings.init(canvas, state)` — attach mouse+touch listeners
+- `LD.Settings.render(ctx, state)` — draw the full settings screen
+- Internal click handler updates `state.settings` and `state.gameMode` directly
 
-### Phase flow update in game.js:
-
-```
-'title' → (Enter/click) → 'settings' → (Start button) → 'playing' → 'victory'/'gameover'
-                                                                    ↓
-                                                              'settings' (play again)
-```
+**Design details:**
+- Mode cards: ~220×130 rectangles. Selected = amber border + subtle fill tint. Unselected = dark border.
+- Radio buttons: 12px circles, filled for selected
+- Checkboxes: 14px squares, checkmark when checked, greyed out when disabled
+- Start button: centered, ~220×44 rectangle, amber fill, "START GAME" text, hover/touch brightens
+- All text Courier New monospace
+- Colors: same palette (sand #d4c4a0, amber #c8a050, charcoal #1a1714)
+- The settings panel should be vertically scrollable or fit within 720px height — keep sections compact
 
 ---
 
-## Part 2: Explorer Board Generation
+## Part 2: Word Hunt Board Generation
 
 ### Board Size
 
-**30×25 grid** (750 tiles). Viewport stays ~14×10. This is smaller than classic (40×40 = 1600) but still requires scrolling, keeping the exploration feel.
+**30×25 grid** (750 tiles). Viewport stays ~14×10. Smaller than Siege's 40×40 but still requires scrolling for exploration.
 
-Update `board.js` to accept board dimensions from settings:
+In `board.js`, `generate()` checks `state.gameMode`:
 ```js
-function generate(state) {
-  // Use dimensions from settings or default
-  var w = state.width || (state.gameMode === 'explorer' ? 30 : 40);
-  var h = state.height || (state.gameMode === 'explorer' ? 25 : 40);
-  state.width = w;
-  state.height = h;
-  ...
+if (state.gameMode === 'wordhunt') {
+  return generateWordHunt(state);
+} else {
+  return generateSiege(state); // existing logic, renamed
 }
 ```
 
 ### Planted Words
 
-During generation, embed 8-12 specific words into the grid as connected paths (horizontal, vertical, or diagonal lines). These are the "discoveries."
+Embed 12-20 words into the grid as straight-line paths (horizontal, vertical, or diagonal). These are hidden — **NO visual hints on the tiles**. The fun is discovering them.
 
-**Word selection:** Pick from a curated list of thematic words:
+**Word selection — dictionary-driven, not a curated list:**
 ```js
-const PLANTABLE_WORDS = [
-  'ARCHIVE', 'ANCIENT', 'CRYSTAL', 'DRAGON', 'ECLIPSE', 'FROZEN',
-  'THUNDER', 'LIBRARY', 'MYSTIC', 'PHOENIX', 'SCHOLAR', 'TEMPLE',
-  'WIZARD', 'BEACON', 'CIPHER', 'DUNGEON', 'ENIGMA', 'FORTRESS',
-  'GLACIER', 'HORIZON', 'JOURNEY', 'KINGDOM', 'LANTERN', 'MIRAGE',
-  'NEBULA', 'ORACLE', 'PRISM', 'QUARTET', 'RELIC', 'SPHINX',
-  'TROPHY', 'UNDONE', 'VENTURE', 'WRAITH', 'ZENITH', 'ALCHEMY'
-];
+function selectPlantableWords(count) {
+  // Filter dictionary to 5-8 letter words
+  const candidates = [];
+  LD.Dict.DICT.forEach(word => {  // or iterate the Set
+    if (word.length >= 5 && word.length <= 8) candidates.push(word.toUpperCase());
+  });
+  // Shuffle and pick `count` words
+  shuffle(candidates);
+  return candidates.slice(0, count);
+}
 ```
+
+The dictionary already has ~50K+ words in this length range. Randomly selecting from the full dictionary each game means every board is unique.
 
 **Planting algorithm:**
-1. Pick 8-12 words randomly from the list
-2. For each word, find a random starting position and direction (8 directions) where:
-   - The full word fits within board bounds
-   - No tile in the path is already part of another planted word (unless sharing a letter — crossword-style overlaps are OK if the shared letter matches)
+1. Select 20-30 candidate words (more than needed, some will fail to place)
+2. For each word, try up to 100 random positions × 8 directions:
+   - Must fit within board bounds
+   - May overlap with previously planted words ONLY if the overlapping letter matches (crossword-style). This is encouraged — it creates the natural grid look.
+   - If no valid placement found after 100 attempts, skip this word
 3. Write the word's letters into those tile positions
-4. Mark each tile: `tile.planted = true` (for rendering — subtle golden underline or dot)
-5. Fill remaining tiles with weighted random letters
-6. Store planted word data in `state.explorer.plantedWords`
+4. Do NOT mark tiles visually — `tile.planted` is stored for game logic only, NOT rendered
+5. Fill remaining empty tiles with weighted random letters
+6. Target: at least 12 successfully planted words per board
+7. Store in `state.hunt.plantedWords`: `{ word, path: [{col,row}], found: false }`
 
-**Fragment planting:**
-After words, plant 10-15 common fragments in clusters:
+### Fragment Planting
+
+Plant common fragments naturally distributed across the board (NOT in clusters — just place them wherever they fit as part of the random fill step).
+
 ```js
-const FRAGMENTS = ['ING', 'TION', 'COM', 'PRE', 'OUT', 'STR', 'IGHT', 'MENT', 'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'NESS'];
+const FRAGMENTS = ['ING', 'TION', 'COM', 'PRE', 'OUT', 'STR', 'IGHT', 'MENT',
+                   'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'IGHT'];
 ```
-Place each fragment as 3-5 adjacent tiles. These aren't hidden — they're productivity boosters that help form words. Mark tiles: `tile.fragment = 'ING'` etc.
 
-### Special Tiles in Explorer Mode
+**Approach:** After planting words and before random fill, for each fragment:
+1. Pick a random empty position on the board
+2. Pick a random direction (prefer horizontal/vertical)
+3. If the fragment fits (all positions empty or matching letters), write it in
+4. Place 10-15 fragments total
+5. Remaining tiles get random weighted letters as usual
 
-If `settings.specialTiles` is on, place icon tiles as before but with adjusted purpose:
-- **Crystal** — 2x score for the word (not cleanse radius)
-- **Void** — still wildcard
-- **Ember** — +20 bonus points
-- **Bomb** — removed (no corruption to cleanse)
+No visual indicator on fragment tiles. They're just convenient letter groupings that help players form words naturally.
 
-No seals, no corruption, no icon-as-barrier mechanic.
+### Special Tiles in Word Hunt
+
+Placed if their individual toggle is on in settings:
+- **Crystal** — 2x score multiplier for the entire word
+- **Void** — wildcard (matches any letter)
+- **Ember** — +20 bonus points when used in a word
+- **Bomb** — disabled in Word Hunt (checkbox greyed out)
+
+Placement: same as current (random, away from each other). Counts: 6 crystals, 5 voids, 4 embers (slightly fewer than Siege since board is smaller).
 
 ---
 
-## Part 3: Explorer Scoring System
+## Part 3: Word Hunt Scoring System
 
 ### Path Shape Bonus
 
-The key new mechanic: HOW your word path looks affects its score.
+When `settings.pathBonuses` is on:
 
 ```js
 function getPathShapeMultiplier(path) {
   if (path.length < 2) return 1.0;
 
-  // Check if all tiles are in a straight line (horizontal, vertical, or diagonal)
+  // Check if all tiles are in a straight line
   const dc = path[1].col - path[0].col;
   const dr = path[1].row - path[0].row;
   let isStraight = true;
@@ -216,12 +270,11 @@ function getPathShapeMultiplier(path) {
   }
 
   if (isStraight) {
-    // Perfectly straight line
     if (dc === 0 || dr === 0) return 2.0;  // horizontal or vertical = best
-    return 1.5;                              // diagonal straight = good
+    return 1.5;                              // diagonal straight
   }
 
-  // Count direction changes ("corners")
+  // Count direction changes
   let corners = 0;
   for (let i = 2; i < path.length; i++) {
     const dc1 = path[i-1].col - path[i-2].col;
@@ -231,30 +284,44 @@ function getPathShapeMultiplier(path) {
     if (dc1 !== dc2 || dr1 !== dr2) corners++;
   }
 
-  if (corners === 1) return 1.0;  // one turn = normal
-  return Math.max(0.7, 1.0 - corners * 0.1);  // more corners = slight penalty (min 0.7x)
+  if (corners <= 1) return 1.0;
+  return Math.max(0.7, 1.0 - corners * 0.1);  // more corners = slight penalty, min 0.7x
 }
 ```
 
-### Final Score Formula (Explorer)
+### Combo System
+
+When `settings.comboBonuses` is on:
+- Each word submitted without scrolling increments `state.hunt.combo`
+- Scrolling resets combo to 0
+- Combo multiplier: `1.0 + (combo * 0.1)` — 3rd word = 1.3x, 5th = 1.5x, etc.
+- Play a `combo` sound on each increment
+
+### Final Score Formula (Word Hunt)
 
 ```
-word_score = sum(letter_points) × length_multiplier × path_shape_multiplier × combo_bonus × crystal_bonus
+word_score = sum(letter_points) × length_multiplier × path_shape_multiplier × combo_bonus × crystal_bonus + ember_bonus
 ```
 
 Where:
-- `length_multiplier`: same as classic (3→1x, 4→1.5x, 5→2x, 6→3x, 7→5x, 8→8x)
-- `path_shape_multiplier`: 0.7x to 2.0x based on path shape
-- `combo_bonus`: 1.0 + (combo * 0.1) — e.g., 3rd word in a row without scrolling = 1.3x
-- `crystal_bonus`: 2.0 if crystal tile in path, else 1.0
+- `length_multiplier`: 3→1x, 4→1.5x, 5→2x, 6→3x, 7→5x, 8→8x
+- `path_shape_multiplier`: 0.7x to 2.0x (only if pathBonuses on)
+- `combo_bonus`: 1.0 to ~2.0x (only if comboBonuses on)
+- `crystal_bonus`: 2.0x if crystal in path, else 1.0x
+- `ember_bonus`: +20 flat per ember tile in path
 
-Display the breakdown as a popup: "+45 pts (STORM × 2.0 straight × 1.2 combo)"
+**Display breakdown as floating text popup:** "+52 pts (STORM × 2.0 straight × 1.2 combo)"
 
-### Combo System
+### Planted Word Discovery Bonus
 
-Track consecutive words submitted without scrolling. Each word without scrolling increments `state.explorer.combo`. Scrolling resets it to 0.
+When a player submits a word that matches a planted word AND the path matches the planted path:
+- **+100 bonus points** (on top of normal score)
+- Mark it as found: `plantedWord.found = true`
+- Play `challenge_complete` sound
+- Big particle celebration
+- Flash "DISCOVERED: PHOENIX!" text
 
-Show combo count on HUD when > 0: "Combo: x3 (1.3x)"
+Checking: after each word, compare against all unfound planted words. Match requires same word (case-insensitive) and the submitted path must cover the exact planted tiles (in any direction — finding it backwards counts).
 
 ---
 
@@ -271,82 +338,195 @@ Show combo count on HUD when > 0: "Combo: x3 (1.3x)"
   icon: '✚',               // displayed in sidebar
   completed: false,
   progress: 0,             // for multi-step challenges
-  target: 1,               // how many times to complete
+  target: 1,               // how many times needed
   reward: 100,             // bonus points on completion
-  checkFn: 'checkCross',   // name of function to call after each word
 }
 ```
 
-### Challenge Types and Check Functions
+### Challenge Module
 
-Implement these as functions in a new `modules/challenges.js` module:
+New `modules/challenges.js` (IIFE on `window.LD.Challenges`):
 
 ```js
 window.LD.Challenges = {
-  generate(round),           // returns array of challenge objects for this round
-  checkAll(state, wordData), // called after each word, returns newly completed challenges
+  generate(round),           // returns challenge array for this round
+  checkAll(state, wordData), // called after each word, returns newly completed IDs
+  renderSidebar(ctx, state, mouseX, mouseY), // draw sidebar with hover tooltips
 };
 ```
 
-**`wordData`** passed to check functions:
+**`wordData`** passed after each word:
 ```js
 {
   word: 'STORM',
   path: [{col, row}, ...],
   score: 45,
-  pathShape: 'straight',  // 'straight_h', 'straight_v', 'straight_diag', 'curved'
+  isStraight: true,
+  isHorizontal: false,
+  isVertical: false,
   corners: 0,
-  usedFragment: 'STR',    // or null
-  isPlanted: true,         // was this a pre-planted word?
-  tilesUsed: Set(),        // for cross-checking
+  isPlantedWord: false,
+  tilesUsed: [{col,row}, ...],
 }
 ```
 
-### Round 1 Challenges (10 challenges, varied difficulty)
+### Round 1 Challenges (10 total)
 
 | # | ID | Title | Description | Check Logic |
 |---|-----|-------|-------------|-------------|
-| 1 | `first_word` | First Steps | Submit any valid word | Always completes on first word |
-| 2 | `long_word` | Linguist | Find a word with 6+ letters | `word.length >= 6` |
-| 3 | `straight_line` | Ruler's Path | Submit a word in a perfect straight line (H or V) | path shape is horizontal or vertical straight |
-| 4 | `high_score` | High Roller | Score 40+ points in a single word | `score >= 40` |
-| 5 | `discovery` | Discovery | Find a hidden planted word | `isPlanted === true` |
-| 6 | `fragment_use` | Fragment Hunter | Use a planted fragment (-ING, -TION, etc.) in a word | word contains a fragment and path passes through fragment tiles |
-| 7 | `combo_3` | Chain Caster | Reach a 3-word combo (no scrolling) | `state.explorer.combo >= 3` |
-| 8 | `cross` | Crossroads | Find two words that share a tile | Track all used tile positions; after each word, check if any tile in path was used by a previous word |
-| 9 | `rare_letter` | Rare Find | Use Q, Z, X, or J in a word | word contains any of those letters |
-| 10 | `five_words` | Prolific | Submit 5 valid words | `state.wordsSpelled >= 5` |
+| 1 | `first_word` | First Steps | Submit any valid word | Always on first word |
+| 2 | `long_word` | Linguist | Find a 6+ letter word | `word.length >= 6` |
+| 3 | `straight_h` | Ruler's Path | Submit a word in a perfect horizontal line | `isStraight && isHorizontal` |
+| 4 | `high_score` | High Roller | Score 50+ points in a single word | `score >= 50` |
+| 5 | `discovery` | Discovery | Find a hidden planted word | `isPlantedWord === true` |
+| 6 | `combo_3` | Chain Caster | Reach a 3-word combo | `state.hunt.combo >= 3` |
+| 7 | `cross` | Crossroads | Spell two words sharing a tile | Check `usedTileKeys` intersection |
+| 8 | `rare_letter` | Rare Find | Use Q, Z, X, or J in a word | word contains any of those |
+| 9 | `five_words` | Prolific | Submit 5 valid words | `state.wordsSpelled >= 5` (progress: X/5) |
+| 10 | `straight_long` | Laser Focus | 5+ letter word in a straight line | `isStraight && word.length >= 5` |
 
 ### Challenge Sidebar UI
 
-Rendered on the right side of the screen (where minimap currently is — move minimap to bottom-left in explorer mode).
+Right side of screen (minimap moves to bottom-left in Word Hunt).
 
 ```
-┌──────────────────────┐
-│  CHALLENGES  4/10    │
-│                      │
-│  ✓ First Steps       │
-│  ✓ Linguist          │
-│  ✓ High Roller       │
-│  ✓ Crossroads        │
-│  ○ Ruler's Path      │  ← unfilled = incomplete
-│  ○ Discovery         │
-│  ○ Fragment Hunter   │
-│  ○ Chain Caster      │
-│  ○ Rare Find         │
-│  ○ Prolific  3/5     │  ← shows progress
-│                      │
-│  ► Hover for details │
-└──────────────────────┘
+┌──────────────────────────┐
+│  CHALLENGES  4/10        │
+│                          │
+│  ✓ First Steps           │
+│  ✓ Linguist              │
+│  ✓ High Roller           │
+│  ✓ Crossroads            │
+│  ○ Ruler's Path          │  ← unfilled = incomplete
+│  ○ Discovery             │
+│  ○ Chain Caster          │
+│  ○ Rare Find             │
+│  ○ Prolific  3/5         │  ← shows progress
+│  ○ Laser Focus           │
+│                          │
+│  ► Hover/tap for details │
+└──────────────────────────┘
 ```
 
-**Mouse hover:** When cursor hovers over a challenge row, show the full description as a tooltip box. Track mouse position in renderer, check if within challenge sidebar bounds, show tooltip for the hovered challenge.
+**Hover (desktop) / Tap (mobile):** Show description tooltip for the challenge.
 
-**Completion animation:** When a challenge completes, flash the row gold, spawn particles from the sidebar, play a chime sound, show "+100" floating text.
+**Completion animation:** Flash row gold, particles burst from sidebar, chime sound, "+100" floating text.
 
 ---
 
-## Part 5: Round/Level System
+## Part 5: Touch / Mobile Support
+
+### Detection
+
+Auto-detect touch capability:
+```js
+STATE.touch.enabled = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+```
+
+Also allow manual toggle in settings: `[✓] Touch mode (tap tiles to spell)`
+
+When touch is enabled, show on-screen controls and use tap-based input instead of keyboard.
+
+### Tap-to-Spell Input
+
+This is the primary mobile input method. Instead of typing letters, the player taps tiles directly to build a word path.
+
+**Flow:**
+1. Player taps a tile → it becomes the first letter, highlighted
+2. Player taps an adjacent tile → added to path (must be 8-directionally adjacent to last tile)
+3. Continue tapping adjacent tiles to spell a word
+4. If player taps a non-adjacent tile → start a new word from that tile
+5. If player taps the last tile in the path → undo (remove last letter)
+6. The typed word is assembled from the path: `state.input.typed = path.map(t => tile.letter || '?').join('')`
+7. Validity check runs after each tap (same as keyboard: dictionary + path validation)
+
+**Important:** In tap mode, the path is built by the player directly — no need for pathfinder DFS. The player IS the pathfinder. But we still validate that:
+- Each tile is adjacent to the previous one
+- No tile is used twice in the same word
+- The resulting word is in the dictionary
+
+### On-Screen UI Elements (Touch Mode)
+
+Draw these at the bottom of the screen, replacing the keyboard-focused input bar:
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  S - T - O - R - M     ✓ valid                                │
+│                                                                │
+│  [ ✗ Clear ]    [ ↩ Undo ]    [ ✓ Submit ]    [ ↕ Scroll ]   │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Buttons:
+- **Clear** — reset current word (like Escape)
+- **Undo** — remove last tapped tile (like Backspace)
+- **Submit** — submit the word (like Enter). Only enabled when valid + path exists.
+- **Scroll toggle** — when active, touch-drag scrolls the viewport instead of selecting tiles. Visual indicator shows which mode is active (spell vs scroll). By default, single taps = spell, two-finger drag or long-press-drag = scroll.
+
+### Viewport Scrolling (Touch)
+
+Two approaches, implement both:
+1. **Two-finger drag** — pans the viewport (pinch-to-zoom NOT needed, tile size is fixed)
+2. **Scroll mode button** — toggles between tap-to-spell and drag-to-scroll modes
+3. **Edge swipe** — swiping from the edge of the game area scrolls in that direction
+
+Recommendation: default to tap-to-spell, with two-finger drag for scrolling. The scroll-mode button is a fallback for devices where multi-touch is awkward.
+
+### Touch Event Handling
+
+Add to `modules/input.js` (or a new `modules/touch.js`):
+
+```js
+// Canvas touch listeners
+canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+
+function onTouchStart(e) {
+  e.preventDefault(); // prevent scroll/zoom
+  const touch = e.touches[0];
+  const { x, y } = canvasCoords(touch);
+
+  // Check if touch is on a UI button
+  if (checkButtonHit(x, y)) return;
+
+  // Check if touch is on a tile
+  const grid = LD.Renderer.screenToGrid(x, y, state);
+  if (grid) {
+    handleTileTap(grid.col, grid.row);
+  }
+}
+```
+
+**Multi-touch detection:** If `e.touches.length >= 2`, enter scroll mode (track the gesture for panning).
+
+### Responsive Layout
+
+When touch mode is active OR screen width < 768px:
+- Increase tile size slightly for easier tapping (min 44px per tile — Apple's recommended touch target)
+- Reduce viewport to ~10×7 tiles to fit larger tiles
+- Move challenge sidebar below the board (or make it a collapsible drawer)
+- Larger on-screen buttons (min 44×44px)
+- Input bar becomes the touch action bar with bigger buttons
+
+The canvas should scale to fill the screen:
+```js
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  // Recompute tile size to fit viewport.cols tiles with 44px minimum
+  const minTileSize = state.touch.enabled ? 44 : 30;
+  ...
+}
+```
+
+### Audio on Mobile
+
+Mobile browsers require audio context to be created inside a user gesture handler. The current `LD.Audio.init()` is called on first keydown — add it to the first touchstart as well.
+
+---
+
+## Part 6: Round/Level System
 
 ### Framework (implement just Round 1 for now)
 
@@ -357,188 +537,304 @@ const ROUNDS = [
     name: 'The First Page',
     boardWidth: 30,
     boardHeight: 25,
-    plantedWordCount: 8,
-    fragmentCount: 10,
+    plantedWordCount: 15,     // target (may get fewer if placement fails)
+    plantedWordMinLen: 5,
+    plantedWordMaxLen: 7,
     challengeCount: 10,
-    specialTileMultiplier: 1.0, // normal amount of special tiles
   },
-  // Future rounds defined here — NOT implemented now, just the structure
-  // { id: 2, name: 'Deeper Shelves', boardWidth: 35, boardHeight: 30, ... },
+  // Round 2+: NOT implemented now, just the structure for future use
+  // { id: 2, name: 'Deeper Shelves', boardWidth: 32, boardHeight: 28, plantedWordCount: 20, ... },
 ];
 ```
 
-**Round completion:** When all challenges are done (in 'challenges' end condition), show a round-complete screen with stats, then option to continue to next round or return to menu.
+**Round completion:** When all challenges are done (in 'challenges' mode), show a round-complete screen:
+- Stats: score, words found, challenges completed, time taken
+- Planted words found: X/Y
+- "Continue" button (loads next round) or "Menu" button (back to settings)
 
-For 'zen' mode, rounds aren't used — just endless play.
-
-For 'timed' and 'turns' modes, the round ends when time/turns expire and score is shown.
+For now, "Continue" just starts a new Round 1 with a fresh board (since Round 2+ isn't defined yet).
 
 ---
 
-## Part 6: Module-by-Module Implementation Instructions
+## Part 7: Module-by-Module Implementation Instructions
 
-### File: `modules/settings.js` (NEW — ~300 lines)
+### File: `modules/settings.js` (NEW — ~400 lines)
 
-Create from scratch. IIFE on `window.LD.Settings`.
-
-**Must implement:**
-- `init(state)` — attach `mousemove`, `mousedown` listeners to canvas. Store state ref.
-- `render(ctx, state)` — draw the full settings screen when `state.phase === 'settings'`
-- `handleClick(mx, my, state)` — check click against stored hit regions, update `state.settings` and `state.gameMode`
-
-**Design details:**
-- Mode cards: 200×120 rectangles with border. Selected card has bright amber border + fill tint
-- Radio buttons: 12px circles, filled circle for selected. Draw with arc().
-- Checkboxes: 14px squares, draw checkmark (two lines) when checked
-- Start button: centered, 200×40 rectangle, amber fill, "START GAME" text, hover brightens
-- All text in Courier New monospace to match game aesthetic
-- Colors: same palette as game (sand, amber, charcoal backgrounds)
-
-**Hit regions array:**
-```js
-const hitRegions = [
-  { x, y, w, h, action: () => { state.gameMode = 'classic'; } },
-  { x, y, w, h, action: () => { state.gameMode = 'explorer'; } },
-  { x, y, w, h, action: () => { state.settings.endCondition = 'zen'; } },
-  // ... etc
-  { x, y, w, h, action: () => { startGame(); } },
-];
-```
-
-Rebuild hitRegions array each render call (positions depend on layout). On click, iterate and fire first matching action.
-
-### File: `modules/challenges.js` (NEW — ~250 lines)
-
-Create from scratch. IIFE on `window.LD.Challenges`.
+IIFE on `window.LD.Settings`.
 
 **Must implement:**
-- `generate(round)` → array of challenge objects for the given round number
-- `checkAll(state, wordData)` → array of challenge IDs that were just completed
-- `renderSidebar(ctx, state, mouseX, mouseY)` — draw challenge list in sidebar
-- Challenge check functions for each type (see table above)
+- `init(canvas, state)` — attach `mousemove`, `mousedown`, `touchstart` listeners to canvas
+- `render(ctx, state)` — draw the settings screen (see layout above)
+- Click/tap handler updates state directly
+
+**Key design rules:**
+- Rebuild hit regions every render (positions depend on which sections are visible)
+- Sections conditionally visible based on selected mode
+- Disabled checkboxes drawn greyed out with strikethrough text
+- Start button only active when a mode is selected
+- The whole panel should be centered vertically on the 720px canvas
+
+### File: `modules/challenges.js` (NEW — ~300 lines)
+
+IIFE on `window.LD.Challenges`.
+
+**Must implement:**
+- `generate(round)` → array of challenge objects
+- `checkAll(state, wordData)` → array of newly completed challenge IDs
+- `renderSidebar(ctx, state, mouseX, mouseY)` — draw challenge list, handle hover tooltips
 
 **Challenge check detail:**
-- After each word submission in input.js (explorer mode), build `wordData` object and call `LD.Challenges.checkAll(state, wordData)`
-- For `cross` challenge: maintain `state.explorer.usedTileKeys` (Set of "col,row" strings). After each word, check intersection with new path tiles.
-- For `fragment_use`: check if the word contains any fragment string AND the path passes through the fragment's planted tile positions
-- Return IDs of newly-completed challenges for audio/particle celebration
+- Called after every word submission in Word Hunt mode
+- `cross` check: maintain `state.hunt.usedTileKeys` Set. After each word, check if any tile key in the new path already exists in the set. If so, challenge complete. Then add all new path tile keys to the set.
+- Each challenge `checkFn` is a method on the Challenges object, looked up by ID
+- Return value is array of IDs that JUST completed (for celebration effects)
+
+### File: `modules/touch.js` (NEW — ~250 lines)
+
+IIFE on `window.LD.Touch`.
+
+**Must implement:**
+- `init(canvas, state)` — attach touch event listeners
+- `handleTileTap(col, row, state)` — add tile to current path, validate adjacency
+- `handleUndo(state)` — remove last tile from path
+- `handleClear(state)` — clear entire path
+- `handleSubmit(state)` — trigger word submission (call same logic as Enter key)
+- `renderActionBar(ctx, state)` — draw touch buttons at bottom of screen
+- `isScrollGesture(e)` — detect multi-touch pan
+- `update(state)` — process scroll momentum if needed
+
+**Tap-to-spell rules:**
+- First tap: any non-corrupted tile starts the word
+- Subsequent taps: must be 8-directionally adjacent to the last tile in path
+- Tap on last tile in path: undo (remove it)
+- Tap on non-adjacent tile: clear and start new word from that tile
+- Double-tap: submit word (alternative to submit button)
+- After each tap, assemble `state.input.typed` from path tiles and run validation
 
 ### File: `modules/board.js` (MODIFY)
 
-**Add `generateExplorer(state)` function** that:
-1. Creates the 30×25 grid filled with weighted random letters
-2. Plants hidden words (see algorithm above)
-3. Plants fragments
-4. Places special tiles (if enabled, no bombs)
-5. No seals, no corruption
+**Add `generateWordHunt(state)` function:**
+1. Set dimensions: `state.width = 30; state.height = 25;`
+2. Create empty tile array (750 tiles)
+3. Plant words: select 20-30 candidates from dictionary (5-8 letters), try to place each in a straight line. Keep those that fit (target 12-20). Store in `state.hunt.plantedWords`.
+4. Plant fragments (if enabled): place 10-15 common fragments (ING, TION, etc.) in random positions/directions among empty tiles
+5. Fill remaining tiles with weighted random letters
+6. Place special tiles (per individual toggles in settings)
+7. Set `state.corruptionCount = 0` (no corruption)
 
 **Modify existing functions:**
-- `spreadCorruption(state)`: add early return if `state.gameMode === 'explorer'` (no-op, return [])
-- `refreshTiles(state, path)`: add early return if `state.gameMode === 'explorer'` (tiles are fixed)
-- `generate(state)`: check `state.gameMode` and call either existing logic or `generateExplorer`
+- Rename current `generate()` internals to `generateSiege()`
+- `generate(state)` becomes a router: checks `state.gameMode` and calls the right generator
+- `spreadCorruption(state)`: early return `[]` if gameMode is 'wordhunt'
+- `refreshTiles(state, path)`: early return if gameMode is 'wordhunt'
 
-**Add new function:**
-- `checkPlantedWord(state, word, path)` → planted word object or null. Check if the submitted word matches a planted word and the path matches its planted path.
+**Add:**
+- `checkPlantedWord(state, word, path)` → matching planted word object or null. Compare word and check that path tiles cover all planted tile positions (in either direction).
 
 ### File: `modules/input.js` (MODIFY)
 
 **Modify `submitWord()`:**
-After the existing score calculation, add explorer-mode branch:
+
+Add a mode branch at the top of the function:
 
 ```js
-if (_state.gameMode === 'explorer') {
-  // 1. Calculate explorer score (with path shape multiplier, combo, crystal)
-  // 2. Check if word is a planted word
-  // 3. Check if word uses a fragment
-  // 4. Build wordData object
-  // 5. Call LD.Challenges.checkAll(state, wordData)
-  // 6. Update combo
-  // 7. Add to wordsThisRound history
-  // 8. Do NOT call spreadCorruption or refreshTiles
-  // 9. Check end conditions (all challenges done, time/turns expired)
-  // 10. Particles + audio
-} else {
-  // ... existing classic mode logic (unchanged)
+function submitWord() {
+  if (_state.gameMode === 'wordhunt') {
+    return submitWordHunt();
+  }
+  // ... existing Siege logic unchanged
+}
+
+function submitWordHunt() {
+  const typed = _state.input.typed;
+  const path = _state.input.path.slice();
+  const board = _state.board;
+
+  // 1. Base score
+  const pathTiles = path.map(({col, row}) => board.tiles[row * board.width + col]);
+  let earned = dictScore(typed, pathTiles);
+
+  // 2. Path shape multiplier
+  let shapeMult = 1.0;
+  let isStraight = false, isH = false, isV = false, corners = 0;
+  if (_state.settings.pathBonuses) {
+    // ... compute shape (see Part 3)
+    shapeMult = getPathShapeMultiplier(path);
+    earned = Math.round(earned * shapeMult);
+  }
+
+  // 3. Combo
+  let comboMult = 1.0;
+  if (_state.settings.comboBonuses) {
+    _state.hunt.combo++;
+    comboMult = 1.0 + (_state.hunt.combo - 1) * 0.1;
+    earned = Math.round(earned * comboMult);
+  }
+
+  // 4. Crystal / Ember bonuses
+  // ... check for crystal (2x) and ember (+20) in path tiles
+
+  // 5. Check planted words
+  const planted = safeCall(LD.Board?.checkPlantedWord, board, typed, path);
+  if (planted) {
+    planted.found = true;
+    earned += 100; // discovery bonus
+    // celebration effects
+  }
+
+  // 6. Check challenges
+  const wordData = { word: typed, path, score: earned, isStraight, isHorizontal: isH, isVertical: isV, corners, isPlantedWord: !!planted, tilesUsed: path };
+  const newlyCompleted = safeCall(LD.Challenges?.checkAll, _state, wordData) || [];
+  for (const id of newlyCompleted) {
+    // award challenge reward points, play sound, particles
+  }
+
+  // 7. Update stats (do NOT call refreshTiles or spreadCorruption)
+  _state.score += earned;
+  _state.wordsSpelled++;
+  if (_state.settings.endCondition === 'turns') _state.hunt.turnsRemaining--;
+  _state.hunt.wordsThisRound.push({ word: typed, score: earned });
+
+  // 8. Track used tiles for cross-word challenge
+  path.forEach(p => _state.hunt.usedTileKeys.add(p.col + ',' + p.row));
+
+  // 9. Win/lose check
+  if (_state.settings.endCondition === 'challenges') {
+    if (_state.hunt.completedCount >= _state.hunt.challenges.length) {
+      _state.phase = 'victory';
+    }
+  } else if (_state.settings.endCondition === 'turns') {
+    if (_state.hunt.turnsRemaining <= 0) _state.phase = 'gameover';
+  }
+
+  // 10. Particles, audio, clear input
+  // ... (same particle/audio calls as existing, with score popup)
+
+  clearInput();
 }
 ```
 
 **Modify `scrollViewport()`:**
-Reset combo: `if (_state.gameMode === 'explorer') _state.explorer.combo = 0;`
+Add: `if (_state.gameMode === 'wordhunt' && _state.settings.comboBonuses) _state.hunt.combo = 0;`
 
 ### File: `modules/renderer.js` (MODIFY)
 
 **Modify `drawHUD()`:**
-In explorer mode, show:
-- Score, Words, Combo (instead of Seeds, Corruption %)
-- Timer or turns remaining (based on end condition)
-- Round name: "Round 1: The First Page"
+```js
+if (state.gameMode === 'wordhunt') {
+  drawHUDWordHunt(ctx, state);
+} else {
+  drawHUDSiege(ctx, state); // existing HUD code, renamed
+}
+```
+
+Word Hunt HUD shows:
+- Score, Words, Round name
+- Combo indicator (when > 0)
+- Timer or turns remaining (per end condition)
+- No corruption bar, no seeds indicator
 
 **Modify `drawBoard()`:**
-- Planted word tiles: draw a subtle golden dot or underline indicator (only for tiles that are part of a planted word, regardless of whether the word has been found)
-- Fragment tiles: draw a subtle colored dot (e.g., small cyan dot in corner)
-- Already-found planted word tiles: brighter gold highlight
+- No planted-word visual hints (tiles look normal)
+- Once a planted word is found: highlight its path tiles with a subtle golden tint and a small star icon — this is the REWARD for finding it, not a hint
+- In Siege mode: existing corruption rendering, unchanged
 
 **Modify `drawMinimap()`:**
-In explorer mode:
+Word Hunt mode:
+- All tiles rendered as sand-colored dots
+- Found planted word tiles as amber dots
+- Special tiles as their color dots
+- Viewport rectangle
 - No corruption coloring
-- Show planted word locations as amber dots (once found) or dim dots (undiscovered but nearby)
-- Show viewport rectangle
 
-**Add `drawChallengeSidebar()` call** in the playing phase render (explorer mode only). Delegate to `LD.Challenges.renderSidebar()`.
+**Add `drawChallengeSidebar()` delegation** in playing phase:
+```js
+if (state.gameMode === 'wordhunt' && LD.Challenges) {
+  LD.Challenges.renderSidebar(ctx, state, mouseX, mouseY);
+}
+```
 
 **Modify `drawInputBar()`:**
-In explorer mode, show path shape info: "STORM → Straight line! 2.0x" or "STORM → 1 corner, 1.0x"
+- Word Hunt: show path shape info ("Straight 2.0x!" or "1 corner")
+- Touch mode: delegate to `LD.Touch.renderActionBar(ctx, state)` instead
 
 ### File: `modules/game.js` (MODIFY)
 
 **Phase flow update:**
 ```
-'title' → (Enter/click) → 'settings' → (Start button) → 'playing' → ...
+'title' → 'settings' → 'playing' → 'victory'/'gameover' → 'settings'
 ```
 
+Title screen now just shows logo briefly then transitions to settings (or skip title, go straight to settings).
+
 **Modify `startGame()`:**
-- Read `state.gameMode` and `state.settings` from the settings screen
-- If explorer: call explorer board generation, generate challenges, set up timer/turns
-- If classic: existing behavior
+- Initialize based on `state.gameMode` and `state.settings`
+- Word Hunt: call word hunt board generation, generate challenges
+- Siege: existing behavior
 
-**Add timer update in game loop:**
-If explorer + timed mode, decrement `state.explorer.timeRemaining` by dt each frame. If reaches 0, trigger game over.
+**Game loop additions:**
+- If Word Hunt + timed: decrement `state.hunt.timeRemaining` by dt. If ≤ 0, trigger gameover.
+- Touch mode: call `LD.Touch.update(state)` for scroll momentum
 
-**Modify title screen** in renderer: just show "LEXICON DEEP" and "Press Enter" — it transitions to settings screen, not directly to game.
+**Boot sequence:**
+```js
+// Detect touch
+STATE.touch.enabled = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+// Init modules
+if (LD.Settings) LD.Settings.init(canvas, STATE);
+if (LD.Input) LD.Input.init(STATE);
+if (LD.Touch && STATE.touch.enabled) LD.Touch.init(canvas, STATE);
+
+// Start in settings phase (skip title or show it briefly)
+STATE.phase = 'settings';
+```
 
 ### File: `modules/audio.js` (MODIFY)
 
-**Add new sounds:**
-- `challenge_complete` — bright ascending 3-note chime (C5 → E5 → G5, 80ms each, gain 0.25). Plays when a challenge is completed.
-- `round_complete` — longer victory arpeggio variant. Plays when all challenges in a round are done.
-- `combo` — quick double-tick (two sine pings at 600Hz and 800Hz, 30ms each, 50ms apart). Plays on combo increment.
+**Add sounds:**
+- `challenge_complete` — bright 3-note ascending chime (C5→E5→G5, 80ms each, gain 0.25)
+- `round_complete` — extended victory arpeggio
+- `combo` — quick double-tick (600Hz + 800Hz, 30ms each, 50ms apart)
+- `discovery` — magical shimmer (high sine with vibrato → chord swell, 500ms)
+- `tap` — very short click for tile taps in touch mode (similar to `scroll` but slightly brighter)
+
+### File: `assemble.sh` (MODIFY)
+
+Update module order:
+```bash
+for mod in dictionary board pathfinder challenges particles audio renderer settings touch input game; do
+```
 
 ---
 
-## Part 7: Implementation Order
+## Part 8: Implementation Order
 
-Execute in this order (each step should be a commit):
+Execute in this order. Each step = one commit.
 
-1. **Settings module + phase flow** — New `settings.js`, update `game.js` phase handling, update renderer to draw settings screen. Test: can navigate title → settings → start game in both modes.
+1. **Settings module + phase flow** — New `settings.js`. Update `game.js` to route through settings phase. Update renderer to draw settings screen. Test: navigate title → settings → start game in both modes. Both modes should start the existing game (Word Hunt just acts like Siege for now).
 
-2. **Explorer board generation** — Add `generateExplorer()` to board.js with planted words and fragments. No seals, no corruption. Test: start explorer mode, see planted words on board.
+2. **Word Hunt board generation** — Add `generateWordHunt()` to board.js. Plant words from dictionary, plant fragments, fill remaining tiles. Disable corruption spread and tile refresh for Word Hunt. Test: start Word Hunt, verify board has no corruption, tiles don't refresh after words.
 
-3. **Explorer scoring** — Path shape multiplier, combo system. Modify input.js submitWord for explorer branch. Disable tile refresh and corruption spread. Test: submit words, see score with shape bonus and combo.
+3. **Word Hunt scoring** — Path shape multiplier function, combo tracking, crystal/ember bonuses. New `submitWordHunt()` in input.js. Planted word detection with `checkPlantedWord()`. Score breakdown popup. Test: submit words, see shape/combo bonuses, find a planted word.
 
-4. **Challenges module** — New `challenges.js` with Round 1 challenges, check functions, sidebar rendering. Wire into input.js word submission. Test: complete challenges, see them fill in.
+4. **Challenges module** — New `challenges.js` with Round 1 challenges, check functions, sidebar rendering with hover tooltips. Wire into `submitWordHunt()`. Test: complete challenges, see sidebar update, celebrations fire.
 
-5. **Polish** — Challenge completion animations, score breakdown popup, round complete screen, timer/turns HUD display, tooltip hover for challenges.
+5. **Touch support** — New `touch.js`. Tap-to-spell input, action bar buttons, two-finger scroll. Touch detection in settings. Responsive tile sizing. Test: use touch mode (Chrome DevTools device emulation or actual phone).
 
-6. **Reassemble** — Run `bash assemble.sh` (update it to include new modules: settings.js, challenges.js). Test full game flow in both modes.
+6. **Polish + reassemble** — Completion animations, round-complete screen, timer/turns HUD, Word Hunt minimap. Update `assemble.sh` with new modules. Run assembly. Test full game flow in both modes, both input methods.
 
 ---
 
-## Part 8: Key Constraints
+## Part 9: Key Constraints
 
-- **Single file output**: Everything must assemble into `lexicon-deep.html` via `assemble.sh`
-- **No external dependencies**: No npm, no CDN, no images. All canvas-drawn.
-- **Shared engine**: Don't duplicate pathfinder, dictionary, particles, audio. Branch on `state.gameMode` where behavior differs.
-- **Don't break classic mode**: All classic mode behavior must remain functional. Test both modes.
-- **Mouse interaction**: The settings screen and challenge sidebar need mouse support. Add mousemove/mousedown listeners. Store canvas-relative coordinates.
-- **Module load order** in assemble.sh: `dictionary → board → pathfinder → challenges → particles → audio → renderer → settings → input → game`
-- **Commit after each step** per the repo's conventions.
+- **Single file output**: Everything assembles into `lexicon-deep.html` via `bash assemble.sh`
+- **No external dependencies**: No npm, no CDN, no images. Canvas-drawn everything.
+- **Shared engine**: Pathfinder, dictionary, particles, audio are shared. Branch on `state.gameMode`.
+- **Don't break Siege mode**: All existing corruption/seal behavior must still work when Siege is selected.
+- **Word Hunt is primary**: Default selection, listed first, most polished.
+- **Touch targets**: All interactive elements ≥ 44×44px in touch mode (Apple HIG minimum).
+- **No planted word hints**: Planted tiles look identical to random tiles. Discovery IS the game.
+- **Module load order**: `dictionary → board → pathfinder → challenges → particles → audio → renderer → settings → touch → input → game`
+- **Commit after each step** per the repo's CLAUDE.md conventions.
+- **Test both modes** after each step to prevent regressions.
