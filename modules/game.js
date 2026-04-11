@@ -3,10 +3,11 @@
 
   // ── State ──────────────────────────────────────────────────────────────────
   const STATE = {
-    phase: 'title',
+    phase: 'settings',
+    gameMode: 'wordhunt',  // 'wordhunt' | 'siege'
     board: {
-      width: 40,
-      height: 40,
+      width: 30,
+      height: 25,
       tiles: [],
       seals: [],
       corruptionCount: 0,
@@ -37,7 +38,32 @@
     particles: [],
     floatingTexts: [],
     animations: [],
-    settings: { hardMode: false },
+    settings: {
+      difficulty:       'medium',
+      boardSize:        'medium',
+      soundEnabled:     true,
+      particlesEnabled: true,
+      specialTiles:     true,
+      endCondition:     'challenges',
+    },
+    config: {},
+    hunt: {
+      round:          1,
+      challenges:     [],
+      completedCount: 0,
+      plantedWords:   [],
+      timeRemaining:  0,
+      turnsRemaining: 0,
+      combo:          0,
+      bestCombo:      0,
+      wordsThisRound: [],
+      usedTileKeys:   new Set(),
+    },
+    touch: {
+      enabled: false,
+      selectedTiles: [],
+      lastTap: null,
+    },
     time: 0,
     dt: 0,
   };
@@ -72,27 +98,59 @@
   }
 
   function startGame() {
+    // Resolve constants for this game
+    if (LD.Constants) {
+      STATE.config = LD.Constants.resolve(STATE.gameMode, STATE.settings);
+    } else {
+      STATE.config = { boardWidth: 30, boardHeight: 25 };
+    }
+
     STATE.phase = 'playing';
     STATE.score = 0;
     STATE.wordsSpelled = 0;
     STATE.turns = 0;
     STATE.longestWord = '';
     STATE.seedsDestroyed = 0;
+    STATE.totalSeeds = STATE.config.sealCount || 6;
     STATE.input.typed = '';
     STATE.input.path = [];
     STATE.input.valid = false;
     STATE.input.hasPath = false;
 
-    // Generate board
-    LD.Board.generate(STATE.board);
+    // Update board size from config
+    STATE.board.width  = STATE.config.boardWidth  || 30;
+    STATE.board.height = STATE.config.boardHeight || 25;
+
+    // Reset Word Hunt runtime state
+    STATE.hunt = {
+      round:          STATE.hunt ? STATE.hunt.round : 1,
+      challenges:     [],
+      completedCount: 0,
+      plantedWords:   [],
+      timeRemaining:  STATE.config.timeLimit  || 300,
+      turnsRemaining: STATE.config.turnLimit  || 50,
+      combo:          0,
+      bestCombo:      0,
+      wordsThisRound: [],
+      usedTileKeys:   new Set(),
+    };
+
+    // Generate board (pass board sub-object, gameMode, config)
+    LD.Board.generate(STATE.board, STATE.gameMode, STATE.config, STATE);
 
     // Center viewport on the board
-    STATE.viewport.col = Math.floor((STATE.board.width - STATE.viewport.cols) / 2);
-    STATE.viewport.row = Math.floor((STATE.board.height - STATE.viewport.rows) / 2);
+    STATE.viewport.col = Math.max(0, Math.floor((STATE.board.width  - STATE.viewport.cols) / 2));
+    STATE.viewport.row = Math.max(0, Math.floor((STATE.board.height - STATE.viewport.rows) / 2));
+
+    // Re-run renderer resize to pick up new board dims
+    if (LD.Renderer) LD.Renderer.init(canvas, STATE);
 
     // Clear particles
     if (LD.Particles && LD.Particles.clear) LD.Particles.clear();
   }
+
+  // Expose startGame for Settings module's Start button
+  window.LD.Game = { startGame: startGame };
 
   function initAudio() {
     if (!audioInitialized && LD.Audio) {
@@ -110,6 +168,13 @@
     if (STATE.phase === 'title' && e.key === 'Enter') {
       e.preventDefault();
       e.stopImmediatePropagation();
+      STATE.phase = 'settings';
+      return;
+    }
+
+    if (STATE.phase === 'settings' && e.key === 'Enter') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
       startGame();
       return;
     }
@@ -117,7 +182,7 @@
     if ((STATE.phase === 'gameover' || STATE.phase === 'victory') && e.key === 'Enter') {
       e.preventDefault();
       e.stopImmediatePropagation();
-      startGame();
+      STATE.phase = 'settings';
       return;
     }
   }, true); // capture phase — fires before input.js
@@ -126,7 +191,7 @@
   window.addEventListener('click', function() {
     initAudio();
     if (STATE.phase === 'title') {
-      startGame();
+      STATE.phase = 'settings';
     }
   }, { once: false });
 
@@ -162,8 +227,17 @@
   function boot() {
     initCanvas();
 
+    // Detect touch
+    STATE.touch.enabled = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+    // Initialize Settings module (before Input so settings screen can respond to clicks)
+    if (LD.Settings) LD.Settings.init(canvas, STATE);
+
     // Initialize input system
     if (LD.Input) LD.Input.init(STATE);
+
+    // Start in settings phase
+    STATE.phase = 'settings';
 
     // Start render loop
     requestAnimationFrame(gameLoop);

@@ -117,15 +117,92 @@ canvas {
 
   window.LD = window.LD || {};
 
+  var BOARD_SIZES = {
+    small:  { width: 20, height: 16 },
+    medium: { width: 30, height: 25 },
+    large:  { width: 40, height: 40 },
+  };
+
+  var FRAGMENTS = [
+    'ING', 'TION', 'COM', 'PRE', 'OUT', 'STR', 'IGHT', 'MENT',
+    'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'ANCE'
+  ];
+
+  function resolve(gameMode, settings) {
+    var diff = settings.difficulty || 'medium';
+    var sizeKey = settings.boardSize || 'medium';
+    var size = BOARD_SIZES[sizeKey] || BOARD_SIZES.medium;
+
+    if (gameMode === 'wordhunt') {
+      return {
+        boardWidth:  size.width,
+        boardHeight: size.height,
+        // Planted words
+        plantedWordCount:    { easy: 20, medium: 15, hard: 10 }[diff],
+        plantedWordMinLen:   { easy: 4,  medium: 5,  hard: 6  }[diff],
+        plantedWordMaxLen:   { easy: 6,  medium: 7,  hard: 8  }[diff],
+        plantedDiagonalPct: { easy: 0,  medium: 0.2, hard: 0.5 }[diff],
+        plantedReversePct:  { easy: 0,  medium: 0.15, hard: 0.4 }[diff],
+        // Fragments
+        fragmentCount: { easy: 18, medium: 12, hard: 6 }[diff],
+        // Special tiles
+        crystalCount: settings.specialTiles ? 6 : 0,
+        voidCount:    settings.specialTiles ? 5 : 0,
+        emberCount:   settings.specialTiles ? 4 : 0,
+        bombCount:    0,
+        // Scoring
+        pathBonuses:  true,
+        comboBonuses: true,
+        // Timing
+        timeLimit:  { easy: 420, medium: 300, hard: 180 }[diff],
+        turnLimit:  { easy: 60,  medium: 50,  hard: 35  }[diff],
+      };
+    }
+
+    if (gameMode === 'siege') {
+      return {
+        boardWidth:  size.width,
+        boardHeight: size.height,
+        // Corruption
+        sealCount:                { easy: 4, medium: 6, hard: 8 }[diff],
+        corruptionSpreadChance:   { easy: 0.2, medium: 0.3, hard: 0.45 }[diff],
+        corruptionLossThreshold:  { easy: 50, medium: 40, hard: 30 }[diff],
+        initialCorruptionRadius:  { easy: 1, medium: 1, hard: 2 }[diff],
+        hardModeLetters:          diff === 'hard',
+        // Special tiles
+        crystalCount: settings.specialTiles ? 8 : 0,
+        voidCount:    settings.specialTiles ? 5 : 0,
+        emberCount:   settings.specialTiles ? 6 : 0,
+        bombCount:    settings.specialTiles ? 2 : 0,
+        // Scoring
+        pathBonuses:  false,
+        comboBonuses: false,
+      };
+    }
+
+    // Fallback (should not happen)
+    return { boardWidth: size.width, boardHeight: size.height };
+  }
+
+  window.LD.Constants = {
+    BOARD_SIZES: BOARD_SIZES,
+    FRAGMENTS:   FRAGMENTS,
+    resolve:     resolve,
+  };
+
+})();
+
+</script>
+<script>
+(function () {
+  'use strict';
+
+  window.LD = window.LD || {};
+
   // ---------------------------------------------------------------------------
-  // Constants
+  // Letter tables (shared between modes)
   // ---------------------------------------------------------------------------
 
-  var BOARD_WIDTH = 40;
-  var BOARD_HEIGHT = 40;
-
-  // Weighted letter pool — rebalanced from Scrabble for more visual variety
-  // Reduced common vowels, boosted mid-tier consonants
   var LETTER_WEIGHTS = {
     A: 7,  B: 3,  C: 4,  D: 4,  E: 9,  F: 3,  G: 3,  H: 4,
     I: 7,  J: 1,  K: 2,  L: 5,  M: 4,  N: 6,  O: 7,  P: 3,
@@ -133,7 +210,6 @@ canvas {
     Y: 3,  Z: 1
   };
 
-  // Point values
   var LETTER_POINTS = {
     E: 1, A: 1, I: 1, O: 1, N: 1, R: 1, T: 1, L: 1, S: 1, U: 1,
     D: 2, G: 2,
@@ -144,29 +220,31 @@ canvas {
     Q: 10, Z: 10
   };
 
-  // Hard mode degradation letters
   var HARD_MODE_LETTERS = ['Q', 'X', 'Z', 'V', 'J'];
 
-  // Build weighted letter array for fast random sampling
   var WEIGHTED_LETTERS = (function () {
     var pool = [];
     var letters = Object.keys(LETTER_WEIGHTS);
     for (var i = 0; i < letters.length; i++) {
       var letter = letters[i];
       var weight = LETTER_WEIGHTS[letter];
-      for (var w = 0; w < weight; w++) {
-        pool.push(letter);
-      }
+      for (var w = 0; w < weight; w++) pool.push(letter);
     }
     return pool;
   })();
 
   // ---------------------------------------------------------------------------
-  // Helper utilities
+  // Helpers
   // ---------------------------------------------------------------------------
 
-  function rand(max) {
-    return Math.floor(Math.random() * max);
+  function rand(max) { return Math.floor(Math.random() * max); }
+
+  function shuffle(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = rand(i + 1);
+      var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    }
+    return arr;
   }
 
   function getRandomLetter() {
@@ -177,24 +255,20 @@ canvas {
     return LETTER_POINTS[letter] || 0;
   }
 
-  /**
-   * Returns array of [col, row] pairs for all 8-directional neighbors
-   * within the board bounds.
-   */
+  function idx(col, row, width) {
+    return row * width + col;
+  }
+
   function getAdjacent(col, row, width, height) {
-    width = width || BOARD_WIDTH;
-    height = height || BOARD_HEIGHT;
     var dirs = [
-      [-1, -1], [-1, 0], [-1, 1],
-      [0, -1],           [0, 1],
-      [1, -1],  [1, 0],  [1, 1]
+      [-1,-1],[-1,0],[-1,1],
+      [0,-1],         [0,1],
+      [1,-1], [1,0],  [1,1]
     ];
     var result = [];
     for (var i = 0; i < dirs.length; i++) {
-      var dc = dirs[i][0];
-      var dr = dirs[i][1];
-      var nc = col + dc;
-      var nr = row + dr;
+      var nc = col + dirs[i][0];
+      var nr = row + dirs[i][1];
       if (nc >= 0 && nc < width && nr >= 0 && nr < height) {
         result.push([nc, nr]);
       }
@@ -202,19 +276,12 @@ canvas {
     return result;
   }
 
-  /** Manhattan distance between two positions. */
   function manhattanDist(c1, r1, c2, r2) {
     return Math.abs(c1 - c2) + Math.abs(r1 - r2);
   }
 
-  /** Chebyshev (chess king) distance — used for 8-dir adjacency radius checks. */
   function chebyshevDist(c1, r1, c2, r2) {
     return Math.max(Math.abs(c1 - c2), Math.abs(r1 - r2));
-  }
-
-  /** Convert (col, row) to flat index. */
-  function idx(col, row) {
-    return row * BOARD_WIDTH + col;
   }
 
   // ---------------------------------------------------------------------------
@@ -223,40 +290,121 @@ canvas {
 
   function makeTile(col, row, letter) {
     return {
-      letter: letter || null,
-      icon: null,
-      isSeal: false,
+      letter:    letter || null,
+      icon:      null,
+      isSeal:    false,
       corrupted: false,
-      points: letter ? (getLetterPoints(letter) || 1) : 0,
-      col: col,
-      row: row,
-      glow: 0,
-      shake: 0,
-      dropY: 0,
-      tint: null
+      points:    letter ? (getLetterPoints(letter) || 1) : 0,
+      col:       col,
+      row:       row,
+      glow:      0,
+      shake:     0,
+      dropY:     0,
+      tint:      null,
+      planted:   false,  // true if part of a planted word (Word Hunt)
+      found:     false,  // true if the planted word has been found
     };
   }
 
   // ---------------------------------------------------------------------------
-  // Board generation
+  // Board generation — router
   // ---------------------------------------------------------------------------
 
   /**
-   * Attempt to place `count` seals with minimum separation of `minDist`
-   * (Chebyshev distance) using a rejection-sampling approach.
-   * Returns array of { col, row }.
+   * generate(board, gameMode, config, fullState)
+   *   board     — the STATE.board sub-object to write into
+   *   gameMode  — 'wordhunt' | 'siege'
+   *   config    — resolved constants object from LD.Constants.resolve()
+   *   fullState — full STATE, needed to write plantedWords into state.hunt
    */
-  function placeSealPositions(count, minDist) {
+  function generate(board, gameMode, config, fullState) {
+    config    = config    || {};
+    gameMode  = gameMode  || 'siege';
+    fullState = fullState || {};
+
+    var W = config.boardWidth  || 40;
+    var H = config.boardHeight || 40;
+    board.width  = W;
+    board.height = H;
+    board.gameMode = gameMode;
+
+    if (gameMode === 'wordhunt') {
+      generateWordHunt(board, config, fullState);
+    } else {
+      generateSiege(board, config);
+    }
+
+    return board;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Siege generation (original logic, now config-driven)
+  // ---------------------------------------------------------------------------
+
+  function generateSiege(board, config) {
+    var W = board.width;
+    var H = board.height;
+    var sealCount = config.sealCount || 6;
+
+    board.corruptionCount = 0;
+    board.seals = [];
+
+    // Fill with random letters
+    board.tiles = [];
+    for (var r = 0; r < H; r++) {
+      for (var c = 0; c < W; c++) {
+        board.tiles.push(makeTile(c, r, getRandomLetter()));
+      }
+    }
+
+    // Place seals
+    var sealPositions = placeSealPositions(sealCount, 12, W, H);
+    for (var si = 0; si < sealPositions.length; si++) {
+      var sp = sealPositions[si];
+      var sealTile = board.tiles[idx(sp.col, sp.row, W)];
+      sealTile.isSeal    = true;
+      sealTile.corrupted = false;
+      sealTile.letter    = null;
+      sealTile.icon      = null;
+      sealTile.points    = 0;
+      board.seals.push({ col: sp.col, row: sp.row, alive: true });
+    }
+
+    // Place icon tiles
+    var iconSpec = [
+      { icon: 'ember',   count: config.emberCount   || 0 },
+      { icon: 'crystal', count: config.crystalCount || 0 },
+      { icon: 'void',    count: config.voidCount    || 0 },
+      { icon: 'bomb',    count: config.bombCount    || 0 },
+    ];
+    placeIconTiles(board, iconSpec, board.seals, W, H);
+
+    // Initial corruption around each seal
+    var radius = config.initialCorruptionRadius || 1;
+    for (var sk = 0; sk < board.seals.length; sk++) {
+      var s = board.seals[sk];
+      var neighbors = getAdjacent(s.col, s.row, W, H);
+      for (var ni = 0; ni < neighbors.length; ni++) {
+        var nc = neighbors[ni][0];
+        var nr = neighbors[ni][1];
+        if (chebyshevDist(s.col, s.row, nc, nr) > radius) continue;
+        var ntile = board.tiles[idx(nc, nr, W)];
+        if (!ntile.icon && !ntile.isSeal && !ntile.corrupted) {
+          ntile.corrupted = true;
+          board.corruptionCount++;
+        }
+      }
+    }
+  }
+
+  function placeSealPositions(count, minDist, W, H) {
     var positions = [];
     var maxAttempts = 10000;
     var attempts = 0;
-
     while (positions.length < count && attempts < maxAttempts) {
       attempts++;
-      var col = rand(BOARD_WIDTH);
-      var row = rand(BOARD_HEIGHT);
-
-      // Reject positions too close to existing seals
+      var col = rand(W);
+      var row = rand(H);
       var tooClose = false;
       for (var i = 0; i < positions.length; i++) {
         if (chebyshevDist(col, row, positions[i].col, positions[i].row) < minDist) {
@@ -264,164 +412,260 @@ canvas {
           break;
         }
       }
-      if (!tooClose) {
-        positions.push({ col: col, row: row });
-      }
+      if (!tooClose) positions.push({ col: col, row: row });
     }
-
     return positions;
   }
 
-  /**
-   * `generate(state)` — Builds the complete 40×40 board and writes into state.
-   *
-   * state must be a plain object. After generation, state will contain:
-   *   state.tiles         — flat array[1600] of tile objects
-   *   state.seals         — array of { col, row, alive } objects
-   *   state.corruptionCount — integer
-   *   state.width / state.height
-   */
-  function generate(state) {
-    state.width = BOARD_WIDTH;
-    state.height = BOARD_HEIGHT;
-    state.corruptionCount = 0;
-
-    // --- Step 1: Fill all tiles with random letters ---
-    state.tiles = [];
-    for (var r = 0; r < BOARD_HEIGHT; r++) {
-      for (var c = 0; c < BOARD_WIDTH; c++) {
-        state.tiles.push(makeTile(c, r, getRandomLetter()));
-      }
-    }
-
-    // --- Step 2: Place 6 seals (min 12 tiles apart) ---
-    var sealPositions = placeSealPositions(6, 12);
-    state.seals = [];
-
-    for (var si = 0; si < sealPositions.length; si++) {
-      var sp = sealPositions[si];
-      var sealTile = state.tiles[idx(sp.col, sp.row)];
-      sealTile.isSeal = true;
-      sealTile.corrupted = false;
-      sealTile.letter = null;
-      sealTile.icon = null;
-      sealTile.points = 0;
-      state.seals.push({ col: sp.col, row: sp.row, alive: true });
-    }
-
-    // --- Step 3: Place icon tiles (must be ≥3 tiles from any seal) ---
-    var iconSpec = [
-      { icon: 'ember',   count: 6 },
-      { icon: 'crystal', count: 8 },
-      { icon: 'void',    count: 5 },
-      { icon: 'bomb',    count: 2 }
-    ];
-
+  function placeIconTiles(board, iconSpec, seals, W, H) {
     for (var ii = 0; ii < iconSpec.length; ii++) {
       var spec = iconSpec[ii];
       var placed = 0;
-      var iconAttempts = 0;
-
-      while (placed < spec.count && iconAttempts < 50000) {
-        iconAttempts++;
-        var ic = rand(BOARD_WIDTH);
-        var ir = rand(BOARD_HEIGHT);
-        var tile = state.tiles[idx(ic, ir)];
-
-        // Must not already be a seal or icon tile
-        if (tile.isSeal || tile.icon !== null) {
-          continue;
-        }
-
-        // Must be ≥3 Chebyshev distance from all seals
+      var attempts = 0;
+      while (placed < spec.count && attempts < 50000) {
+        attempts++;
+        var ic = rand(W);
+        var ir = rand(H);
+        var tile = board.tiles[idx(ic, ir, W)];
+        if (tile.isSeal || tile.icon !== null || tile.planted) continue;
         var nearSeal = false;
-        for (var sj = 0; sj < state.seals.length; sj++) {
-          var seal = state.seals[sj];
-          if (chebyshevDist(ic, ir, seal.col, seal.row) < 3) {
+        for (var sj = 0; sj < (seals || []).length; sj++) {
+          if (chebyshevDist(ic, ir, seals[sj].col, seals[sj].row) < 3) {
             nearSeal = true;
             break;
           }
         }
         if (nearSeal) continue;
-
         tile.letter = null;
-        tile.icon = spec.icon;
+        tile.icon   = spec.icon;
         tile.points = 0;
         placed++;
       }
     }
+  }
 
-    // --- Step 4: Corrupt the 8 immediate neighbors of each seal ---
-    for (var sk = 0; sk < state.seals.length; sk++) {
-      var s = state.seals[sk];
-      var neighbors = getAdjacent(s.col, s.row, BOARD_WIDTH, BOARD_HEIGHT);
-      for (var ni = 0; ni < neighbors.length; ni++) {
-        var nc = neighbors[ni][0];
-        var nr = neighbors[ni][1];
-        var ntile = state.tiles[idx(nc, nr)];
-        // Icon tiles cannot be corrupted
-        if (!ntile.icon && !ntile.isSeal && !ntile.corrupted) {
-          ntile.corrupted = true;
-          state.corruptionCount++;
+  // ---------------------------------------------------------------------------
+  // Word Hunt generation
+  // ---------------------------------------------------------------------------
+
+  function generateWordHunt(board, config, fullState) {
+    var W = board.width;
+    var H = board.height;
+
+    board.corruptionCount = 0;
+    board.seals = [];
+
+    // Step 1: Fill all tiles with random letters
+    board.tiles = [];
+    for (var r = 0; r < H; r++) {
+      for (var c = 0; c < W; c++) {
+        board.tiles.push(makeTile(c, r, getRandomLetter()));
+      }
+    }
+
+    // Step 2: Plant hidden words from dictionary
+    var plantedWords = plantWords(board, config, W, H);
+
+    // Step 3: Plant fragments (common letter sequences)
+    plantFragments(board, config, W, H);
+
+    // Step 4: Place special tiles
+    var iconSpec = [
+      { icon: 'crystal', count: config.crystalCount || 0 },
+      { icon: 'void',    count: config.voidCount    || 0 },
+      { icon: 'ember',   count: config.emberCount   || 0 },
+      // no bombs in Word Hunt
+    ];
+    placeIconTiles(board, iconSpec, [], W, H);
+
+    // Store planted words in fullState.hunt
+    if (fullState && fullState.hunt) {
+      fullState.hunt.plantedWords = plantedWords;
+    }
+  }
+
+  // Word planting ─────────────────────────────────────────────────────────────
+
+  var DIRECTIONS = [
+    [1, 0],   // right
+    [0, 1],   // down
+    [-1, 0],  // left
+    [0, -1],  // up
+    [1, 1],   // down-right
+    [-1, 1],  // down-left
+    [1, -1],  // up-right
+    [-1, -1], // up-left
+  ];
+
+  function selectPlantableWords(config) {
+    var minLen = config.plantedWordMinLen || 5;
+    var maxLen = config.plantedWordMaxLen || 7;
+    var count  = config.plantedWordCount  || 15;
+    var candidates = [];
+
+    // LD.Dict.DICT is the flat array of words
+    var dict = (window.LD && window.LD.Dict && window.LD.Dict.DICT) ? window.LD.Dict.DICT : [];
+    for (var i = 0; i < dict.length; i++) {
+      var w = dict[i];
+      if (w.length >= minLen && w.length <= maxLen) {
+        candidates.push(w.toUpperCase());
+      }
+    }
+    shuffle(candidates);
+    return candidates.slice(0, count * 3); // grab extras
+  }
+
+  function plantWords(board, config, W, H) {
+    var candidates = selectPlantableWords(config);
+    var targetCount = config.plantedWordCount || 15;
+    var diagPct     = config.plantedDiagonalPct || 0;
+    var revPct      = config.plantedReversePct  || 0;
+    var planted     = [];
+
+    for (var ci = 0; ci < candidates.length && planted.length < targetCount; ci++) {
+      var word = candidates[ci];
+      var reversed = Math.random() < revPct;
+      var actualWord = reversed ? word.split('').reverse().join('') : word;
+
+      // Build direction pool based on difficulty
+      var dirPool;
+      if (diagPct === 0) {
+        // Easy: only H and V
+        dirPool = [DIRECTIONS[0], DIRECTIONS[1], DIRECTIONS[2], DIRECTIONS[3]];
+      } else {
+        dirPool = DIRECTIONS.slice(); // all 8
+      }
+
+      var placed = false;
+      for (var attempt = 0; attempt < 100 && !placed; attempt++) {
+        var dir = dirPool[rand(dirPool.length)];
+
+        // For easy/medium, limit diagonal usage
+        if (diagPct > 0 && diagPct < 1) {
+          var isDiag = (dir[0] !== 0 && dir[1] !== 0);
+          if (isDiag && Math.random() > diagPct) {
+            dir = DIRECTIONS[rand(4)]; // pick H or V
+          }
+        }
+
+        var col = rand(W);
+        var row = rand(H);
+
+        // Check if word fits
+        var path = [];
+        var fits = true;
+        for (var li = 0; li < actualWord.length; li++) {
+          var c = col + dir[0] * li;
+          var r = row + dir[1] * li;
+          if (c < 0 || c >= W || r < 0 || r >= H) { fits = false; break; }
+          var tile = board.tiles[idx(c, r, W)];
+          // Allow overlap only if letters match
+          if (tile.planted && tile.letter !== actualWord[li]) { fits = false; break; }
+          // Don't overwrite icons or seals
+          if (tile.icon || tile.isSeal) { fits = false; break; }
+          path.push({ col: c, row: r });
+        }
+
+        if (fits) {
+          // Write letters into tiles
+          for (var li2 = 0; li2 < actualWord.length; li2++) {
+            var wt = board.tiles[idx(path[li2].col, path[li2].row, W)];
+            wt.letter  = actualWord[li2];
+            wt.points  = getLetterPoints(actualWord[li2]) || 1;
+            wt.planted = true;
+          }
+          planted.push({
+            word:     word,
+            path:     path,
+            found:    false,
+            reversed: reversed,
+          });
+          placed = true;
         }
       }
     }
 
-    return state;
+    return planted;
+  }
+
+  function plantFragments(board, config, W, H) {
+    var fragments = (window.LD && window.LD.Constants && window.LD.Constants.FRAGMENTS)
+      ? window.LD.Constants.FRAGMENTS
+      : ['ING', 'TION', 'COM', 'PRE', 'OUT', 'STR'];
+
+    var count = config.fragmentCount || 12;
+    var hv = [DIRECTIONS[0], DIRECTIONS[1]]; // H and V only
+
+    for (var fi = 0; fi < Math.min(count, fragments.length); fi++) {
+      var frag = fragments[fi % fragments.length];
+      var placed = false;
+      for (var attempt = 0; attempt < 50 && !placed; attempt++) {
+        var dir = hv[rand(2)];
+        var col = rand(W);
+        var row = rand(H);
+        var fits = true;
+        var path = [];
+        for (var li = 0; li < frag.length; li++) {
+          var c = col + dir[0] * li;
+          var r = row + dir[1] * li;
+          if (c < 0 || c >= W || r < 0 || r >= H) { fits = false; break; }
+          var tile = board.tiles[idx(c, r, W)];
+          if (tile.planted || tile.icon || tile.isSeal) { fits = false; break; }
+          path.push({ col: c, row: r });
+        }
+        if (fits) {
+          for (var li2 = 0; li2 < frag.length; li2++) {
+            var ft = board.tiles[idx(path[li2].col, path[li2].row, W)];
+            ft.letter = frag[li2];
+            ft.points = getLetterPoints(frag[li2]) || 1;
+          }
+          placed = true;
+        }
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
-  // Corruption spread
+  // Corruption spread (Siege only)
   // ---------------------------------------------------------------------------
 
-  /**
-   * `spreadCorruption(state)` — One corruption step.
-   *
-   * Each corrupted tile (and living seal positions) has a 30% chance to
-   * spread to one adjacent non-corrupted, non-icon tile.
-   * Prefers tiles with higher point values.
-   *
-   * Returns array of newly corrupted tile objects.
-   */
-  function spreadCorruption(state) {
-    var newlyCorrupted = [];
+  function spreadCorruption(board, config) {
+    // No-op in Word Hunt
+    if (board.gameMode === 'wordhunt') return [];
 
-    // Collect all source tiles: corrupted regular tiles + living seals
+    config = config || {};
+    var spreadChance = (config.corruptionSpreadChance !== undefined)
+      ? config.corruptionSpreadChance
+      : 0.30;
+
+    var W = board.width;
+    var H = board.height;
+    var newlyCorrupted = [];
     var sources = [];
-    for (var i = 0; i < state.tiles.length; i++) {
-      var t = state.tiles[i];
-      if (t.corrupted || (t.isSeal && isSealAlive(state, t.col, t.row))) {
+    for (var i = 0; i < board.tiles.length; i++) {
+      var t = board.tiles[i];
+      if (t.corrupted || (t.isSeal && isSealAlive(board, t.col, t.row))) {
         sources.push(t);
       }
     }
 
     for (var si = 0; si < sources.length; si++) {
       var source = sources[si];
+      if (Math.random() > spreadChance) continue;
 
-      // 30% chance to spread
-      if (Math.random() > 0.30) continue;
-
-      var neighbors = getAdjacent(source.col, source.row, BOARD_WIDTH, BOARD_HEIGHT);
-
-      // Filter to eligible spread targets
+      var neighbors = getAdjacent(source.col, source.row, W, H);
       var candidates = [];
       for (var ni = 0; ni < neighbors.length; ni++) {
-        var nc = neighbors[ni][0];
-        var nr = neighbors[ni][1];
-        var ntile = state.tiles[idx(nc, nr)];
+        var ntile = board.tiles[idx(neighbors[ni][0], neighbors[ni][1], W)];
         if (!ntile.corrupted && !ntile.icon && !ntile.isSeal) {
           candidates.push(ntile);
         }
       }
-
       if (candidates.length === 0) continue;
-
-      // Sort by point value descending (prefer high-value tiles)
-      candidates.sort(function (a, b) { return b.points - a.points; });
-
+      candidates.sort(function(a, b) { return b.points - a.points; });
       var target = candidates[0];
       target.corrupted = true;
-      state.corruptionCount++;
+      board.corruptionCount++;
       newlyCorrupted.push(target);
     }
 
@@ -432,25 +676,13 @@ canvas {
   // Cleansing
   // ---------------------------------------------------------------------------
 
-  /**
-   * `cleanseTilesNear(state, path, radius)` — Cleanse corruption within
-   * Manhattan distance ≤ radius of any tile in the word path.
-   *
-   * path — array of { col, row } or [col, row] pairs
-   * radius — default 2
-   *
-   * Returns array of cleansed tile objects.
-   */
-  function cleanseTilesNear(state, path, radius) {
+  function cleanseTilesNear(board, path, radius) {
     if (radius === undefined || radius === null) radius = 2;
-
+    var W = board.width;
     var cleansed = [];
-
-    for (var ti = 0; ti < state.tiles.length; ti++) {
-      var tile = state.tiles[ti];
+    for (var ti = 0; ti < board.tiles.length; ti++) {
+      var tile = board.tiles[ti];
       if (!tile.corrupted) continue;
-
-      // Check if within Manhattan distance of any path tile
       var inRange = false;
       for (var pi = 0; pi < path.length; pi++) {
         var pc = Array.isArray(path[pi]) ? path[pi][0] : path[pi].col;
@@ -460,14 +692,12 @@ canvas {
           break;
         }
       }
-
       if (inRange) {
         tile.corrupted = false;
-        state.corruptionCount = Math.max(0, state.corruptionCount - 1);
+        board.corruptionCount = Math.max(0, board.corruptionCount - 1);
         cleansed.push(tile);
       }
     }
-
     return cleansed;
   }
 
@@ -475,194 +705,168 @@ canvas {
   // Seal utilities
   // ---------------------------------------------------------------------------
 
-  function isSealAlive(state, col, row) {
-    for (var i = 0; i < state.seals.length; i++) {
-      var s = state.seals[i];
+  function isSealAlive(board, col, row) {
+    for (var i = 0; i < (board.seals || []).length; i++) {
+      var s = board.seals[i];
       if (s.col === col && s.row === row && s.alive) return true;
     }
     return false;
   }
 
-  /**
-   * `checkSealDestruction(state, path)` — Returns the index of a seal that
-   * should be destroyed, or -1.
-   *
-   * Condition: word is 6+ letters long AND at least 2 path tiles are
-   * adjacent (Chebyshev distance 1) to the seal.
-   */
-  function checkSealDestruction(state, path) {
-    // Only valid for words of 6+ letters
-    // Count letter tiles in path (exclude non-letter tiles)
+  function checkSealDestruction(board, path) {
     var letterCount = 0;
     for (var pi = 0; pi < path.length; pi++) {
       var ptile = Array.isArray(path[pi])
-        ? state.tiles[idx(path[pi][0], path[pi][1])]
-        : state.tiles[idx(path[pi].col, path[pi].row)];
+        ? board.tiles[idx(path[pi][0], path[pi][1], board.width)]
+        : board.tiles[idx(path[pi].col, path[pi].row, board.width)];
       if (ptile && ptile.letter) letterCount++;
     }
     if (letterCount < 6) return -1;
 
-    for (var si = 0; si < state.seals.length; si++) {
-      var seal = state.seals[si];
+    for (var si = 0; si < (board.seals || []).length; si++) {
+      var seal = board.seals[si];
       if (!seal.alive) continue;
-
       var adjacentCount = 0;
       for (var pi2 = 0; pi2 < path.length; pi2++) {
         var pc = Array.isArray(path[pi2]) ? path[pi2][0] : path[pi2].col;
         var pr = Array.isArray(path[pi2]) ? path[pi2][1] : path[pi2].row;
         if (chebyshevDist(pc, pr, seal.col, seal.row) === 1) {
           adjacentCount++;
-          if (adjacentCount >= 2) {
-            return si;
-          }
+          if (adjacentCount >= 2) return si;
         }
       }
     }
-
     return -1;
   }
 
-  /**
-   * `destroySeal(state, sealIndex)` — Mark seal as not alive.
-   * BFS to find all corruption connected to this seal, cleanse it all.
-   * Returns array of all cleansed tile objects.
-   */
-  function destroySeal(state, sealIndex) {
-    var seal = state.seals[sealIndex];
+  function destroySeal(board, sealIndex) {
+    var seal = board.seals[sealIndex];
     if (!seal) return [];
-
     seal.alive = false;
 
-    // Mark the seal tile itself
-    var sealTile = state.tiles[idx(seal.col, seal.row)];
-    sealTile.isSeal = false; // seal is shattered
+    var W = board.width;
+    var sealTile = board.tiles[idx(seal.col, seal.row, W)];
+    sealTile.isSeal = false;
 
-    // BFS from the seal position through connected corrupted tiles
-    var visited = new Set ? new Set() : null;
-    var visitedArr = []; // fallback for environments without Set
+    var visited = {};
     var queue = [[seal.col, seal.row]];
     var cleansed = [];
-
-    function hasVisited(c, r) {
-      var key = c + ',' + r;
-      if (visited) return visited.has(key);
-      return visitedArr.indexOf(key) !== -1;
-    }
-    function markVisited(c, r) {
-      var key = c + ',' + r;
-      if (visited) visited.add(key);
-      else visitedArr.push(key);
-    }
-
-    markVisited(seal.col, seal.row);
+    visited[seal.col + ',' + seal.row] = true;
 
     while (queue.length > 0) {
       var current = queue.shift();
       var cc = current[0];
       var cr = current[1];
-      var currentTile = state.tiles[idx(cc, cr)];
-
-      // Cleanse if corrupted
+      var currentTile = board.tiles[idx(cc, cr, W)];
       if (currentTile.corrupted) {
         currentTile.corrupted = false;
-        state.corruptionCount = Math.max(0, state.corruptionCount - 1);
+        board.corruptionCount = Math.max(0, board.corruptionCount - 1);
         cleansed.push(currentTile);
       }
-
-      // Spread BFS to adjacent corrupted tiles
-      var neighbors = getAdjacent(cc, cr, BOARD_WIDTH, BOARD_HEIGHT);
+      var neighbors = getAdjacent(cc, cr, W, board.height);
       for (var ni = 0; ni < neighbors.length; ni++) {
         var nc = neighbors[ni][0];
         var nr = neighbors[ni][1];
-        if (!hasVisited(nc, nr)) {
-          var ntile = state.tiles[idx(nc, nr)];
+        var key = nc + ',' + nr;
+        if (!visited[key]) {
+          var ntile = board.tiles[idx(nc, nr, W)];
           if (ntile.corrupted) {
-            markVisited(nc, nr);
+            visited[key] = true;
             queue.push([nc, nr]);
           }
         }
       }
     }
-
     return cleansed;
   }
 
   // ---------------------------------------------------------------------------
-  // Tile refresh
+  // Tile refresh (Siege only)
   // ---------------------------------------------------------------------------
 
-  /**
-   * `refreshTiles(state, path)` — Replace used tiles with new random letters.
-   *
-   * path — array of { col, row } or [col, row] pairs
-   */
-  function refreshTiles(state, path) {
+  function refreshTiles(board, path) {
+    // No-op in Word Hunt — tiles are fixed
+    if (board.gameMode === 'wordhunt') return;
+
+    var W = board.width;
     for (var pi = 0; pi < path.length; pi++) {
       var pc = Array.isArray(path[pi]) ? path[pi][0] : path[pi].col;
       var pr = Array.isArray(path[pi]) ? path[pi][1] : path[pi].row;
-      var tile = state.tiles[idx(pc, pr)];
-
-      // Don't replace seal tiles or icon tiles
+      var tile = board.tiles[idx(pc, pr, W)];
       if (tile.isSeal || tile.icon !== null) continue;
-
       var newLetter = getRandomLetter();
-      tile.letter = newLetter;
-      tile.points = getLetterPoints(newLetter);
+      tile.letter    = newLetter;
+      tile.points    = getLetterPoints(newLetter);
       tile.corrupted = false;
-      tile.glow = 0;
-      tile.shake = 0;
-      tile.dropY = 0;
-      tile.tint = null;
+      tile.glow      = 0;
+      tile.shake     = 0;
+      tile.dropY     = 0;
+      tile.tint      = null;
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Accessors
+  // Planted word check (Word Hunt)
   // ---------------------------------------------------------------------------
 
-  function getTile(state, col, row) {
-    if (col < 0 || col >= BOARD_WIDTH || row < 0 || row >= BOARD_HEIGHT) {
-      return null;
+  /**
+   * checkPlantedWord(board, word, path) — return matching planted word or null.
+   * Matching: same word (case-insensitive), path tiles cover planted path positions.
+   * Finding backwards counts.
+   */
+  function checkPlantedWord(board, word, path) {
+    // Needs access to state.hunt.plantedWords — but board doesn't have them.
+    // We access via window.LD.STATE (set in game.js as window.LD.STATE).
+    var plantedWords = [];
+    if (window.LD && window.LD.STATE && window.LD.STATE.hunt) {
+      plantedWords = window.LD.STATE.hunt.plantedWords;
     }
-    return state.tiles[idx(col, row)];
-  }
 
-  function getAdjacentTiles(col, row) {
-    return getAdjacent(col, row, BOARD_WIDTH, BOARD_HEIGHT);
-  }
+    var upperWord = word.toUpperCase();
+    for (var i = 0; i < plantedWords.length; i++) {
+      var pw = plantedWords[i];
+      if (pw.found) continue;
+      if (pw.word.toUpperCase() !== upperWord) continue;
 
-  function getCorruptionPercent(state) {
-    var total = BOARD_WIDTH * BOARD_HEIGHT;
-    return (state.corruptionCount / total) * 100;
+      // Check if path positions match planted path
+      var plantedKeys = {};
+      for (var pi = 0; pi < pw.path.length; pi++) {
+        plantedKeys[pw.path[pi].col + ',' + pw.path[pi].row] = true;
+      }
+      var submitKeys = {};
+      for (var si = 0; si < path.length; si++) {
+        submitKeys[path[si].col + ',' + path[si].row] = true;
+      }
+
+      // Check forward match: every planted tile is in submitted path
+      var allMatch = true;
+      var pKeys = Object.keys(plantedKeys);
+      for (var k = 0; k < pKeys.length; k++) {
+        if (!submitKeys[pKeys[k]]) { allMatch = false; break; }
+      }
+      if (allMatch) return pw;
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------------
   // Hard Mode
   // ---------------------------------------------------------------------------
 
-  /**
-   * `applyHardMode(state)` — For each tile adjacent to a corrupted tile (but
-   * not itself corrupted), apply a 50% chance to degrade it to Q/X/Z/V/J.
-   */
-  function applyHardMode(state) {
-    for (var ti = 0; ti < state.tiles.length; ti++) {
-      var tile = state.tiles[ti];
-
-      // Skip corrupted, icon, seal tiles
+  function applyHardMode(board) {
+    var W = board.width;
+    var H = board.height;
+    for (var ti = 0; ti < board.tiles.length; ti++) {
+      var tile = board.tiles[ti];
       if (tile.corrupted || tile.icon || tile.isSeal) continue;
-
-      // Check if any neighbor is corrupted
-      var neighbors = getAdjacent(tile.col, tile.row, BOARD_WIDTH, BOARD_HEIGHT);
+      var neighbors = getAdjacent(tile.col, tile.row, W, H);
       var nearCorruption = false;
       for (var ni = 0; ni < neighbors.length; ni++) {
-        var nc = neighbors[ni][0];
-        var nr = neighbors[ni][1];
-        if (state.tiles[idx(nc, nr)].corrupted) {
+        if (board.tiles[idx(neighbors[ni][0], neighbors[ni][1], W)].corrupted) {
           nearCorruption = true;
           break;
         }
       }
-
       if (nearCorruption && Math.random() < 0.5) {
         var degraded = HARD_MODE_LETTERS[rand(HARD_MODE_LETTERS.length)];
         tile.letter = degraded;
@@ -672,22 +876,43 @@ canvas {
   }
 
   // ---------------------------------------------------------------------------
+  // Accessors
+  // ---------------------------------------------------------------------------
+
+  function getTile(board, col, row) {
+    var W = board.width;
+    var H = board.height;
+    if (col < 0 || col >= W || row < 0 || row >= H) return null;
+    return board.tiles[idx(col, row, W)];
+  }
+
+  function getAdjacentTiles(board, col, row) {
+    return getAdjacent(col, row, board.width, board.height);
+  }
+
+  function getCorruptionPercent(board) {
+    var total = board.width * board.height;
+    return (board.corruptionCount / total) * 100;
+  }
+
+  // ---------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------
 
   window.LD.Board = {
-    generate: generate,
-    spreadCorruption: spreadCorruption,
-    cleanseTilesNear: cleanseTilesNear,
+    generate:            generate,
+    spreadCorruption:    spreadCorruption,
+    cleanseTilesNear:    cleanseTilesNear,
     checkSealDestruction: checkSealDestruction,
-    destroySeal: destroySeal,
-    refreshTiles: refreshTiles,
-    getTile: getTile,
-    getAdjacentTiles: getAdjacentTiles,
+    destroySeal:         destroySeal,
+    refreshTiles:        refreshTiles,
+    checkPlantedWord:    checkPlantedWord,
+    getTile:             getTile,
+    getAdjacentTiles:    getAdjacentTiles,
     getCorruptionPercent: getCorruptionPercent,
-    applyHardMode: applyHardMode,
-    getRandomLetter: getRandomLetter,
-    getLetterPoints: getLetterPoints
+    applyHardMode:       applyHardMode,
+    getRandomLetter:     getRandomLetter,
+    getLetterPoints:     getLetterPoints,
   };
 
 })();
@@ -1894,6 +2119,12 @@ canvas {
       drawTitleScreen(ctx, state);
       return;
     }
+    if (state.phase === 'settings') {
+      if (window.LD && window.LD.Settings) {
+        window.LD.Settings.render(ctx, state);
+      }
+      return;
+    }
     if (state.phase === 'gameover') {
       drawBoard(ctx, state);
       drawMinimap(ctx, state);
@@ -2745,6 +2976,477 @@ canvas {
 
 </script>
 <script>
+(function () {
+  'use strict';
+
+  window.LD = window.LD || {};
+
+  // ---------------------------------------------------------------------------
+  // Difficulty descriptions per mode
+  // ---------------------------------------------------------------------------
+
+  var DIFF_DESC = {
+    wordhunt: {
+      easy:   'More hidden words, shorter, mostly horizontal/vertical. Extra fragments.',
+      medium: 'Balanced mix. Some diagonal and reversed hidden words.',
+      hard:   'Fewer hidden words, longer, many diagonal/reversed. Few fragments.',
+    },
+    siege: {
+      easy:   '4 seals, slower corruption spread, generous loss threshold.',
+      medium: '6 seals, standard corruption. The intended challenge.',
+      hard:   '8 seals, fast corruption, letters degrade near ink.',
+    },
+  };
+
+  var COLORS = {
+    bg:        '#1a1714',
+    panel:     '#12100d',
+    border:    '#3a3028',
+    sand:      '#d4c4a0',
+    amber:     '#c8a050',
+    amberBg:   '#3a2808',
+    charcoal:  '#1a1714',
+    dim:       '#6a5a40',
+    selected:  '#c8a050',
+    cardSel:   '#2a2010',
+    cardBg:    '#1c1a16',
+    green:     '#60c060',
+    startBtn:  '#c8a050',
+    startText: '#1a1210',
+    white:     '#ffffff',
+  };
+
+  // ---------------------------------------------------------------------------
+  // Hit regions
+  // ---------------------------------------------------------------------------
+
+  var _hitRegions = [];
+  var _canvas = null;
+  var _state  = null;
+  var _hoverX = 0;
+  var _hoverY = 0;
+
+  function addHit(x, y, w, h, action) {
+    _hitRegions.push({ x: x, y: y, w: w, h: h, action: action });
+  }
+
+  function hitTest(px, py) {
+    for (var i = _hitRegions.length - 1; i >= 0; i--) {
+      var r = _hitRegions[i];
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
+        return r.action;
+      }
+    }
+    return null;
+  }
+
+  function getCanvasXY(e) {
+    var rect = _canvas.getBoundingClientRect();
+    var scaleX = _canvas.width  / rect.width;
+    var scaleY = _canvas.height / rect.height;
+    var cx, cy;
+    if (e.touches) {
+      cx = (e.touches[0].clientX - rect.left) * scaleX;
+      cy = (e.touches[0].clientY - rect.top)  * scaleY;
+    } else {
+      cx = (e.clientX - rect.left) * scaleX;
+      cy = (e.clientY - rect.top)  * scaleY;
+    }
+    return { x: cx, y: cy };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Event handlers
+  // ---------------------------------------------------------------------------
+
+  function onMouseMove(e) {
+    if (_state && _state.phase === 'settings') {
+      var pos = getCanvasXY(e);
+      _hoverX = pos.x;
+      _hoverY = pos.y;
+    }
+  }
+
+  function onMouseDown(e) {
+    if (!_state || _state.phase !== 'settings') return;
+    var pos = getCanvasXY(e);
+    var action = hitTest(pos.x, pos.y);
+    if (action) action();
+  }
+
+  function onTouchStart(e) {
+    if (!_state || _state.phase !== 'settings') return;
+    e.preventDefault();
+    var pos = getCanvasXY(e);
+    _hoverX = pos.x;
+    _hoverY = pos.y;
+    var action = hitTest(pos.x, pos.y);
+    if (action) action();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  function init(canvas, state) {
+    _canvas = canvas;
+    _state  = state;
+    canvas.addEventListener('mousemove',  onMouseMove,  { passive: true });
+    canvas.addEventListener('mousedown',  onMouseDown,  { passive: true });
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rendering helpers
+  // ---------------------------------------------------------------------------
+
+  function roundRect(ctx, x, y, w, h, r) {
+    r = r || 4;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function isHovered(x, y, w, h) {
+    return _hoverX >= x && _hoverX <= x + w && _hoverY >= y && _hoverY <= y + h;
+  }
+
+  function text(ctx, str, x, y, size, color, align) {
+    ctx.font = (size || 14) + 'px "Courier New", monospace';
+    ctx.fillStyle = color || COLORS.sand;
+    ctx.textAlign = align || 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(str, x, y);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
+  function render(ctx, state) {
+    _hitRegions = [];
+
+    var W = _canvas.width;
+    var H = _canvas.height;
+
+    // Background
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Panel dimensions — centered
+    var panelW = 620;
+    var panelH = 540;
+    var panelX = Math.floor((W - panelW) / 2);
+    var panelY = Math.floor((H - panelH) / 2);
+
+    // Title above panel
+    ctx.font = '32px "Courier New", monospace';
+    ctx.fillStyle = COLORS.amber;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('LEXICON DEEP', W / 2, panelY - 40);
+    ctx.font = '14px "Courier New", monospace';
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText('Spell to Survive', W / 2, panelY - 14);
+
+    // Panel background
+    ctx.fillStyle = COLORS.panel;
+    roundRect(ctx, panelX, panelY, panelW, panelH, 6);
+    ctx.fill();
+    ctx.strokeStyle = COLORS.border;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    var cursor = panelY + 18;
+    var pad = 20;
+
+    // ── GAME MODE ──────────────────────────────────────────────────────────
+    text(ctx, 'GAME MODE', panelX + pad, cursor + 8, 11, COLORS.dim, 'left');
+    cursor += 24;
+
+    var cardW = 240;
+    var cardH = 100;
+    var cardGap = 16;
+    var cardsTotal = cardW * 2 + cardGap;
+    var card1X = panelX + Math.floor((panelW - cardsTotal) / 2);
+    var card2X = card1X + cardW + cardGap;
+    var cardY = cursor;
+
+    drawModeCard(ctx, card1X, cardY, cardW, cardH, 'wordhunt',
+      'WORD HUNT',
+      ['Find words, complete', 'challenges, discover', 'hidden words'],
+      state.gameMode === 'wordhunt');
+
+    drawModeCard(ctx, card2X, cardY, cardW, cardH, 'siege',
+      'SIEGE',
+      ['Fight the spreading', 'corruption.', 'Destroy all seals.'],
+      state.gameMode === 'siege');
+
+    cursor += cardH + 18;
+
+    // Divider
+    ctx.strokeStyle = COLORS.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + pad, cursor);
+    ctx.lineTo(panelX + panelW - pad, cursor);
+    ctx.stroke();
+    cursor += 12;
+
+    // ── DIFFICULTY ────────────────────────────────────────────────────────
+    text(ctx, 'DIFFICULTY', panelX + pad, cursor + 8, 11, COLORS.dim, 'left');
+    cursor += 24;
+
+    var btnW = 100;
+    var btnH = 30;
+    var btnGap = 10;
+    var btnsTotal = btnW * 3 + btnGap * 2;
+    var btn1X = panelX + Math.floor((panelW - btnsTotal) / 2);
+
+    drawToggleBtn(ctx, btn1X,             cursor, btnW, btnH, 'Easy',   state.settings.difficulty === 'easy',   function() { state.settings.difficulty = 'easy'; });
+    drawToggleBtn(ctx, btn1X + btnW + btnGap, cursor, btnW, btnH, 'Medium', state.settings.difficulty === 'medium', function() { state.settings.difficulty = 'medium'; });
+    drawToggleBtn(ctx, btn1X + (btnW + btnGap)*2, cursor, btnW, btnH, 'Hard',   state.settings.difficulty === 'hard',   function() { state.settings.difficulty = 'hard'; });
+
+    cursor += btnH + 8;
+
+    // Difficulty description
+    var descKey = state.settings.difficulty || 'medium';
+    var modeKey = state.gameMode || 'wordhunt';
+    var desc = (DIFF_DESC[modeKey] || DIFF_DESC.wordhunt)[descKey] || '';
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillStyle = COLORS.dim;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(desc, panelX + panelW / 2, cursor + 8);
+    cursor += 22;
+
+    // Divider
+    ctx.strokeStyle = COLORS.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + pad, cursor);
+    ctx.lineTo(panelX + panelW - pad, cursor);
+    ctx.stroke();
+    cursor += 12;
+
+    // ── BOARD SIZE ────────────────────────────────────────────────────────
+    text(ctx, 'BOARD SIZE', panelX + pad, cursor + 8, 11, COLORS.dim, 'left');
+    cursor += 24;
+
+    drawToggleBtn(ctx, btn1X,             cursor, btnW, btnH, 'Small',  state.settings.boardSize === 'small',  function() { state.settings.boardSize = 'small'; });
+    drawToggleBtn(ctx, btn1X + btnW + btnGap, cursor, btnW, btnH, 'Medium', state.settings.boardSize === 'medium', function() { state.settings.boardSize = 'medium'; });
+    drawToggleBtn(ctx, btn1X + (btnW + btnGap)*2, cursor, btnW, btnH, 'Large',  state.settings.boardSize === 'large',  function() { state.settings.boardSize = 'large'; });
+
+    cursor += btnH + 14;
+
+    // Divider
+    ctx.strokeStyle = COLORS.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + pad, cursor);
+    ctx.lineTo(panelX + panelW - pad, cursor);
+    ctx.stroke();
+    cursor += 12;
+
+    // ── GOAL (Word Hunt only) ─────────────────────────────────────────────
+    if (state.gameMode === 'wordhunt') {
+      text(ctx, 'GOAL', panelX + pad, cursor + 8, 11, COLORS.dim, 'left');
+      cursor += 24;
+
+      var goals = [
+        { key: 'challenges', label: 'Challenges' },
+        { key: 'zen',        label: 'Zen' },
+        { key: 'timed',      label: 'Timed' },
+        { key: 'turns',      label: 'Turns' },
+      ];
+
+      var goalX = panelX + pad;
+      for (var gi = 0; gi < goals.length; gi++) {
+        var g = goals[gi];
+        var gx = goalX + gi * 145;
+        drawRadio(ctx, gx, cursor + 6, g.label, state.settings.endCondition === g.key, (function(k){ return function() { state.settings.endCondition = k; }; })(g.key));
+      }
+      cursor += 24;
+
+      // Divider
+      ctx.strokeStyle = COLORS.border;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(panelX + pad, cursor);
+      ctx.lineTo(panelX + panelW - pad, cursor);
+      ctx.stroke();
+      cursor += 12;
+    }
+
+    // ── OPTIONS ───────────────────────────────────────────────────────────
+    text(ctx, 'OPTIONS', panelX + pad, cursor + 8, 11, COLORS.dim, 'left');
+    cursor += 24;
+
+    var optX = panelX + pad;
+    drawCheckbox(ctx, optX,       cursor, 'Special tiles (crystal, void, ember)', state.settings.specialTiles, function() { state.settings.specialTiles = !state.settings.specialTiles; });
+    cursor += 24;
+    drawCheckbox(ctx, optX,       cursor, 'Sound effects',   state.settings.soundEnabled,     function() { state.settings.soundEnabled = !state.settings.soundEnabled; });
+    cursor += 24;
+    drawCheckbox(ctx, optX,       cursor, 'Particle effects', state.settings.particlesEnabled, function() { state.settings.particlesEnabled = !state.settings.particlesEnabled; });
+    cursor += 30;
+
+    // ── START BUTTON ──────────────────────────────────────────────────────
+    var startW = 220;
+    var startH = 44;
+    var startX = panelX + Math.floor((panelW - startW) / 2);
+    var startY = panelY + panelH - startH - 16;
+
+    var startHovered = isHovered(startX, startY, startW, startH);
+    ctx.fillStyle = startHovered ? '#e0b860' : COLORS.startBtn;
+    roundRect(ctx, startX, startY, startW, startH, 6);
+    ctx.fill();
+
+    ctx.font = '16px "Courier New", monospace';
+    ctx.fillStyle = COLORS.startText;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('► START GAME', startX + startW / 2, startY + startH / 2);
+
+    addHit(startX, startY, startW, startH, function() {
+      if (window.LD && window.LD.Game && window.LD.Game.startGame) {
+        window.LD.Game.startGame();
+      }
+    });
+
+    // Hint text
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillStyle = COLORS.dim;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Press ? for help', W / 2, startY + startH + 14);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drawing sub-components
+  // ---------------------------------------------------------------------------
+
+  function drawModeCard(ctx, x, y, w, h, modeKey, title, lines, selected) {
+    var hov = isHovered(x, y, w, h);
+    ctx.fillStyle = selected ? COLORS.cardSel : (hov ? '#222018' : COLORS.cardBg);
+    roundRect(ctx, x, y, w, h, 5);
+    ctx.fill();
+    ctx.strokeStyle = selected ? COLORS.amber : COLORS.border;
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.stroke();
+
+    // Title
+    ctx.font = 'bold 13px "Courier New", monospace';
+    ctx.fillStyle = selected ? COLORS.amber : COLORS.sand;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(title, x + w / 2, y + 22);
+
+    if (selected) {
+      ctx.font = '10px "Courier New", monospace';
+      ctx.fillStyle = COLORS.amber;
+      ctx.fillText('▲ selected', x + w / 2, y + 38);
+    }
+
+    // Description lines
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillStyle = COLORS.dim;
+    var lineStart = selected ? 54 : 44;
+    for (var i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], x + w / 2, y + lineStart + i * 14);
+    }
+
+    addHit(x, y, w, h, (function(k) { return function() { _state.gameMode = k; }; })(modeKey));
+  }
+
+  function drawToggleBtn(ctx, x, y, w, h, label, selected, action) {
+    var hov = isHovered(x, y, w, h);
+    ctx.fillStyle = selected ? COLORS.amber : (hov ? '#2a2418' : '#1c1a16');
+    roundRect(ctx, x, y, w, h, 4);
+    ctx.fill();
+    ctx.strokeStyle = selected ? COLORS.amber : COLORS.border;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = '12px "Courier New", monospace';
+    ctx.fillStyle = selected ? COLORS.charcoal : (hov ? COLORS.sand : COLORS.dim);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + w / 2, y + h / 2);
+
+    addHit(x, y, w, h, action);
+  }
+
+  function drawRadio(ctx, x, y, label, selected, action) {
+    var r = 6;
+    ctx.beginPath();
+    ctx.arc(x + r, y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = selected ? COLORS.amber : COLORS.dim;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    if (selected) {
+      ctx.beginPath();
+      ctx.arc(x + r, y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = COLORS.amber;
+      ctx.fill();
+    }
+    ctx.font = '12px "Courier New", monospace';
+    ctx.fillStyle = selected ? COLORS.sand : COLORS.dim;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + r * 2 + 4, y);
+
+    addHit(x, y - 8, 120, 16, action);
+  }
+
+  function drawCheckbox(ctx, x, y, label, checked, action) {
+    var sz = 14;
+    ctx.strokeStyle = checked ? COLORS.amber : COLORS.dim;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, x, y - sz / 2, sz, sz, 2);
+    ctx.stroke();
+    ctx.fillStyle = checked ? COLORS.amberBg : 'transparent';
+    if (checked) { ctx.fill(); }
+
+    if (checked) {
+      ctx.strokeStyle = COLORS.amber;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 3, y);
+      ctx.lineTo(x + 6, y + 4);
+      ctx.lineTo(x + 11, y - 4);
+      ctx.stroke();
+    }
+
+    ctx.font = '12px "Courier New", monospace';
+    ctx.fillStyle = checked ? COLORS.sand : COLORS.dim;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + sz + 8, y);
+
+    addHit(x, y - sz / 2, 400, sz, action);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Expose
+  // ---------------------------------------------------------------------------
+
+  window.LD.Settings = {
+    init:   init,
+    render: render,
+  };
+
+})();
+
+</script>
+<script>
 /**
  * LEXICON DEEP — Input Module
  * window.LD.Input
@@ -2849,6 +3551,11 @@ canvas {
     vp.col = Math.max(0, Math.min(maxCol, vp.col + dCol));
     vp.row = Math.max(0, Math.min(maxRow, vp.row + dRow));
 
+    // Reset combo on scroll in Word Hunt
+    if (_state.gameMode === 'wordhunt' && _state.hunt && _state.config && _state.config.comboBonuses) {
+      _state.hunt.combo = 0;
+    }
+
     // Clear word input on scroll — path is now stale
     clearInput();
   }
@@ -2923,6 +3630,192 @@ canvas {
     return 2;
   }
 
+  // ---------------------------------------------------------------------------
+  // Word Hunt path-shape helpers
+  // ---------------------------------------------------------------------------
+
+  function computePathShape(path) {
+    if (path.length < 2) return { isStraight: false, isHorizontal: false, isVertical: false, corners: 0 };
+    const dc0 = path[1].col - path[0].col;
+    const dr0 = path[1].row - path[0].row;
+    let isStraight = true;
+    let corners = 0;
+    for (let i = 2; i < path.length; i++) {
+      const dc = path[i].col - path[i-1].col;
+      const dr = path[i].row - path[i-1].row;
+      if (dc !== (path[i-1].col - path[i-2].col) || dr !== (path[i-1].row - path[i-2].row)) {
+        isStraight = false;
+        corners++;
+      }
+    }
+    return {
+      isStraight,
+      isHorizontal: isStraight && dr0 === 0,
+      isVertical:   isStraight && dc0 === 0,
+      corners,
+    };
+  }
+
+  function getPathShapeMultiplier(path) {
+    if (path.length < 2) return 1.0;
+    const shape = computePathShape(path);
+    if (shape.isStraight) {
+      if (shape.isHorizontal || shape.isVertical) return 2.0;
+      return 1.5; // diagonal straight
+    }
+    if (shape.corners <= 1) return 1.0;
+    return Math.max(0.7, 1.0 - shape.corners * 0.1);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Word Hunt scoring
+  // ---------------------------------------------------------------------------
+
+  function lengthMultiplier(len) {
+    if (len <= 3) return 1.0;
+    if (len === 4) return 1.5;
+    if (len === 5) return 2.0;
+    if (len === 6) return 3.0;
+    if (len === 7) return 5.0;
+    return 8.0;
+  }
+
+  function submitWordHunt() {
+    const typed = _state.input.typed;
+    const path  = _state.input.path.slice();
+    const board = _state.board;
+    const config = _state.config || {};
+    const hunt  = _state.hunt;
+
+    const pathTiles = path.map(({ col, row }) => board.tiles[row * board.width + col]);
+
+    // 1. Base score (letter points × length multiplier)
+    let earned = 0;
+    for (let i = 0; i < pathTiles.length; i++) {
+      earned += pathTiles[i].points || 1;
+    }
+    earned = Math.round(earned * lengthMultiplier(typed.length));
+
+    // 2. Path shape multiplier
+    let shapeMult = 1.0;
+    const shape = computePathShape(path);
+    if (config.pathBonuses) {
+      shapeMult = getPathShapeMultiplier(path);
+      earned = Math.round(earned * shapeMult);
+    }
+
+    // 3. Combo
+    let comboMult = 1.0;
+    if (config.comboBonuses && hunt) {
+      hunt.combo++;
+      if (hunt.combo > hunt.bestCombo) hunt.bestCombo = hunt.combo;
+      comboMult = 1.0 + (hunt.combo - 1) * 0.1;
+      earned = Math.round(earned * comboMult);
+    }
+
+    // 4. Crystal / Ember
+    let crystalBonus = false;
+    let emberBonus = 0;
+    for (let i = 0; i < pathTiles.length; i++) {
+      if (pathTiles[i].icon === 'crystal') { crystalBonus = true; }
+      if (pathTiles[i].icon === 'ember')   { emberBonus += 20; }
+    }
+    if (crystalBonus) earned *= 2;
+    earned += emberBonus;
+    earned = Math.round(earned);
+
+    // 5. Check planted words
+    const planted = safeCall(window.LD?.Board?.checkPlantedWord, board, typed, path);
+    if (planted) {
+      planted.found = true;
+      earned += 100;
+      if (hunt) hunt.completedCount = (hunt.completedCount || 0); // updated by challenges check
+      // Discovery visual
+      const vp = _state.viewport;
+      const ts = vp.tileSize || 32;
+      const toPixel = (t) => ({ x: vp.offsetX + (t.col - vp.col) * ts + ts/2, y: vp.offsetY + (t.row - vp.row) * ts + ts/2 });
+      const midTile = path[Math.floor(path.length / 2)];
+      if (window.LD?.Particles?.text) {
+        const mp = toPixel(midTile);
+        LD.Particles.text(mp.x, mp.y - 30, 'DISCOVERED: ' + typed + '!', '#f0d070', 18);
+      }
+      safeCall(window.LD?.Audio?.play, 'challenge_complete');
+    }
+
+    // 6. Check challenges
+    const wordData = {
+      word:         typed,
+      path:         path,
+      score:        earned,
+      isStraight:   shape.isStraight,
+      isHorizontal: shape.isHorizontal,
+      isVertical:   shape.isVertical,
+      corners:      shape.corners,
+      isPlantedWord: !!planted,
+      tilesUsed:    path,
+    };
+    const newlyCompleted = (window.LD?.Challenges?.checkAll)
+      ? window.LD.Challenges.checkAll(_state, wordData)
+      : [];
+
+    for (let i = 0; i < newlyCompleted.length; i++) {
+      const challenge = (hunt && hunt.challenges)
+        ? hunt.challenges.find(c => c.id === newlyCompleted[i])
+        : null;
+      const reward = challenge ? (challenge.reward || 100) : 100;
+      earned += reward;
+      if (hunt) hunt.completedCount = (hunt.completedCount || 0) + 1;
+    }
+
+    // 7. Update stats
+    _state.score        = (_state.score || 0) + earned;
+    _state.wordsSpelled = (_state.wordsSpelled || 0) + 1;
+    if (typed.length > ((_state.longestWord || '').length)) _state.longestWord = typed;
+    if (hunt) {
+      if (_state.settings.endCondition === 'turns') hunt.turnsRemaining--;
+      hunt.wordsThisRound.push({ word: typed, score: earned });
+    }
+
+    // 8. Track used tiles for cross-word challenge
+    path.forEach(p => {
+      if (hunt && hunt.usedTileKeys) hunt.usedTileKeys.add(p.col + ',' + p.row);
+    });
+
+    // 9. Win/lose check
+    if (_state.settings.endCondition === 'challenges') {
+      const total = (hunt && hunt.challenges) ? hunt.challenges.length : 0;
+      if (total > 0 && (hunt.completedCount || 0) >= total) {
+        _state.phase = 'victory';
+      }
+    } else if (_state.settings.endCondition === 'turns') {
+      if (hunt && hunt.turnsRemaining <= 0) _state.phase = 'gameover';
+    }
+    // timed: handled in game loop
+
+    // 10. Particles & Audio
+    const vp = _state.viewport;
+    const ts = vp.tileSize || 32;
+    const toPixel2 = (t) => ({ x: vp.offsetX + (t.col - vp.col) * ts + ts/2, y: vp.offsetY + (t.row - vp.row) * ts + ts/2, col: t.col, row: t.row });
+
+    if (window.LD?.Particles?.wordActivation) {
+      LD.Particles.wordActivation(path.map(toPixel2), ts);
+    }
+    if (window.LD?.Particles?.text && path.length > 0) {
+      const mid = toPixel2(path[Math.floor(path.length / 2)]);
+      let popupText = '+' + earned;
+      if (config.pathBonuses && shapeMult !== 1.0) {
+        popupText += ' ×' + shapeMult.toFixed(1);
+      }
+      LD.Particles.text(mid.x, mid.y - 20, popupText, '#ffd700', 18);
+    }
+    if (window.LD?.Audio) {
+      safeCall(window.LD.Audio.play, 'word_valid');
+      if (_state.hunt && _state.hunt.combo > 1) safeCall(window.LD.Audio.play, 'combo');
+    }
+
+    clearInput();
+  }
+
   /**
    * Execute a valid, path-confirmed word submission.
    *
@@ -2940,6 +3833,11 @@ canvas {
    *  11. Clear input
    */
   function submitWord() {
+    // Route to Word Hunt or Siege submission
+    if (_state.gameMode === 'wordhunt') {
+      return submitWordHunt();
+    }
+
     const typed    = _state.input.typed;
     const path     = _state.input.path.slice(); // snapshot before clear
 
@@ -2969,7 +3867,7 @@ canvas {
     safeCall(window.LD?.Board?.refreshTiles, board, path);
 
     // ── 6. Spread corruption ─────────────────────────────────────────────────
-    const newCorruption = safeCall(window.LD?.Board?.spreadCorruption, board) || [];
+    const newCorruption = safeCall(window.LD?.Board?.spreadCorruption, board, _state.config) || [];
 
     // ── 7. Update stats ───────────────────────────────────────────────────────
     _state.score        = (_state.score        || 0) + earned;
@@ -2985,7 +3883,8 @@ canvas {
       _state.phase = 'victory';
     } else {
       const corruptPct = safeCall(window.LD?.Board?.getCorruptionPercent, board) ?? 0;
-      if (corruptPct >= 40) {
+      const lossThreshold = (_state.config && _state.config.corruptionLossThreshold) ? _state.config.corruptionLossThreshold : 40;
+      if (corruptPct >= lossThreshold) {
         _state.phase = 'gameover';
       }
     }
@@ -3210,10 +4109,11 @@ canvas {
 
   // ── State ──────────────────────────────────────────────────────────────────
   const STATE = {
-    phase: 'title',
+    phase: 'settings',
+    gameMode: 'wordhunt',  // 'wordhunt' | 'siege'
     board: {
-      width: 40,
-      height: 40,
+      width: 30,
+      height: 25,
       tiles: [],
       seals: [],
       corruptionCount: 0,
@@ -3244,7 +4144,32 @@ canvas {
     particles: [],
     floatingTexts: [],
     animations: [],
-    settings: { hardMode: false },
+    settings: {
+      difficulty:       'medium',
+      boardSize:        'medium',
+      soundEnabled:     true,
+      particlesEnabled: true,
+      specialTiles:     true,
+      endCondition:     'challenges',
+    },
+    config: {},
+    hunt: {
+      round:          1,
+      challenges:     [],
+      completedCount: 0,
+      plantedWords:   [],
+      timeRemaining:  0,
+      turnsRemaining: 0,
+      combo:          0,
+      bestCombo:      0,
+      wordsThisRound: [],
+      usedTileKeys:   new Set(),
+    },
+    touch: {
+      enabled: false,
+      selectedTiles: [],
+      lastTap: null,
+    },
     time: 0,
     dt: 0,
   };
@@ -3279,27 +4204,59 @@ canvas {
   }
 
   function startGame() {
+    // Resolve constants for this game
+    if (LD.Constants) {
+      STATE.config = LD.Constants.resolve(STATE.gameMode, STATE.settings);
+    } else {
+      STATE.config = { boardWidth: 30, boardHeight: 25 };
+    }
+
     STATE.phase = 'playing';
     STATE.score = 0;
     STATE.wordsSpelled = 0;
     STATE.turns = 0;
     STATE.longestWord = '';
     STATE.seedsDestroyed = 0;
+    STATE.totalSeeds = STATE.config.sealCount || 6;
     STATE.input.typed = '';
     STATE.input.path = [];
     STATE.input.valid = false;
     STATE.input.hasPath = false;
 
-    // Generate board
-    LD.Board.generate(STATE.board);
+    // Update board size from config
+    STATE.board.width  = STATE.config.boardWidth  || 30;
+    STATE.board.height = STATE.config.boardHeight || 25;
+
+    // Reset Word Hunt runtime state
+    STATE.hunt = {
+      round:          STATE.hunt ? STATE.hunt.round : 1,
+      challenges:     [],
+      completedCount: 0,
+      plantedWords:   [],
+      timeRemaining:  STATE.config.timeLimit  || 300,
+      turnsRemaining: STATE.config.turnLimit  || 50,
+      combo:          0,
+      bestCombo:      0,
+      wordsThisRound: [],
+      usedTileKeys:   new Set(),
+    };
+
+    // Generate board (pass board sub-object, gameMode, config)
+    LD.Board.generate(STATE.board, STATE.gameMode, STATE.config, STATE);
 
     // Center viewport on the board
-    STATE.viewport.col = Math.floor((STATE.board.width - STATE.viewport.cols) / 2);
-    STATE.viewport.row = Math.floor((STATE.board.height - STATE.viewport.rows) / 2);
+    STATE.viewport.col = Math.max(0, Math.floor((STATE.board.width  - STATE.viewport.cols) / 2));
+    STATE.viewport.row = Math.max(0, Math.floor((STATE.board.height - STATE.viewport.rows) / 2));
+
+    // Re-run renderer resize to pick up new board dims
+    if (LD.Renderer) LD.Renderer.init(canvas, STATE);
 
     // Clear particles
     if (LD.Particles && LD.Particles.clear) LD.Particles.clear();
   }
+
+  // Expose startGame for Settings module's Start button
+  window.LD.Game = { startGame: startGame };
 
   function initAudio() {
     if (!audioInitialized && LD.Audio) {
@@ -3317,6 +4274,13 @@ canvas {
     if (STATE.phase === 'title' && e.key === 'Enter') {
       e.preventDefault();
       e.stopImmediatePropagation();
+      STATE.phase = 'settings';
+      return;
+    }
+
+    if (STATE.phase === 'settings' && e.key === 'Enter') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
       startGame();
       return;
     }
@@ -3324,7 +4288,7 @@ canvas {
     if ((STATE.phase === 'gameover' || STATE.phase === 'victory') && e.key === 'Enter') {
       e.preventDefault();
       e.stopImmediatePropagation();
-      startGame();
+      STATE.phase = 'settings';
       return;
     }
   }, true); // capture phase — fires before input.js
@@ -3333,7 +4297,7 @@ canvas {
   window.addEventListener('click', function() {
     initAudio();
     if (STATE.phase === 'title') {
-      startGame();
+      STATE.phase = 'settings';
     }
   }, { once: false });
 
@@ -3369,8 +4333,17 @@ canvas {
   function boot() {
     initCanvas();
 
+    // Detect touch
+    STATE.touch.enabled = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+    // Initialize Settings module (before Input so settings screen can respond to clicks)
+    if (LD.Settings) LD.Settings.init(canvas, STATE);
+
     // Initialize input system
     if (LD.Input) LD.Input.init(STATE);
+
+    // Start in settings phase
+    STATE.phase = 'settings';
 
     // Start render loop
     requestAnimationFrame(gameLoop);

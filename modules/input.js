@@ -102,6 +102,11 @@
     vp.col = Math.max(0, Math.min(maxCol, vp.col + dCol));
     vp.row = Math.max(0, Math.min(maxRow, vp.row + dRow));
 
+    // Reset combo on scroll in Word Hunt
+    if (_state.gameMode === 'wordhunt' && _state.hunt && _state.config && _state.config.comboBonuses) {
+      _state.hunt.combo = 0;
+    }
+
     // Clear word input on scroll — path is now stale
     clearInput();
   }
@@ -176,6 +181,192 @@
     return 2;
   }
 
+  // ---------------------------------------------------------------------------
+  // Word Hunt path-shape helpers
+  // ---------------------------------------------------------------------------
+
+  function computePathShape(path) {
+    if (path.length < 2) return { isStraight: false, isHorizontal: false, isVertical: false, corners: 0 };
+    const dc0 = path[1].col - path[0].col;
+    const dr0 = path[1].row - path[0].row;
+    let isStraight = true;
+    let corners = 0;
+    for (let i = 2; i < path.length; i++) {
+      const dc = path[i].col - path[i-1].col;
+      const dr = path[i].row - path[i-1].row;
+      if (dc !== (path[i-1].col - path[i-2].col) || dr !== (path[i-1].row - path[i-2].row)) {
+        isStraight = false;
+        corners++;
+      }
+    }
+    return {
+      isStraight,
+      isHorizontal: isStraight && dr0 === 0,
+      isVertical:   isStraight && dc0 === 0,
+      corners,
+    };
+  }
+
+  function getPathShapeMultiplier(path) {
+    if (path.length < 2) return 1.0;
+    const shape = computePathShape(path);
+    if (shape.isStraight) {
+      if (shape.isHorizontal || shape.isVertical) return 2.0;
+      return 1.5; // diagonal straight
+    }
+    if (shape.corners <= 1) return 1.0;
+    return Math.max(0.7, 1.0 - shape.corners * 0.1);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Word Hunt scoring
+  // ---------------------------------------------------------------------------
+
+  function lengthMultiplier(len) {
+    if (len <= 3) return 1.0;
+    if (len === 4) return 1.5;
+    if (len === 5) return 2.0;
+    if (len === 6) return 3.0;
+    if (len === 7) return 5.0;
+    return 8.0;
+  }
+
+  function submitWordHunt() {
+    const typed = _state.input.typed;
+    const path  = _state.input.path.slice();
+    const board = _state.board;
+    const config = _state.config || {};
+    const hunt  = _state.hunt;
+
+    const pathTiles = path.map(({ col, row }) => board.tiles[row * board.width + col]);
+
+    // 1. Base score (letter points × length multiplier)
+    let earned = 0;
+    for (let i = 0; i < pathTiles.length; i++) {
+      earned += pathTiles[i].points || 1;
+    }
+    earned = Math.round(earned * lengthMultiplier(typed.length));
+
+    // 2. Path shape multiplier
+    let shapeMult = 1.0;
+    const shape = computePathShape(path);
+    if (config.pathBonuses) {
+      shapeMult = getPathShapeMultiplier(path);
+      earned = Math.round(earned * shapeMult);
+    }
+
+    // 3. Combo
+    let comboMult = 1.0;
+    if (config.comboBonuses && hunt) {
+      hunt.combo++;
+      if (hunt.combo > hunt.bestCombo) hunt.bestCombo = hunt.combo;
+      comboMult = 1.0 + (hunt.combo - 1) * 0.1;
+      earned = Math.round(earned * comboMult);
+    }
+
+    // 4. Crystal / Ember
+    let crystalBonus = false;
+    let emberBonus = 0;
+    for (let i = 0; i < pathTiles.length; i++) {
+      if (pathTiles[i].icon === 'crystal') { crystalBonus = true; }
+      if (pathTiles[i].icon === 'ember')   { emberBonus += 20; }
+    }
+    if (crystalBonus) earned *= 2;
+    earned += emberBonus;
+    earned = Math.round(earned);
+
+    // 5. Check planted words
+    const planted = safeCall(window.LD?.Board?.checkPlantedWord, board, typed, path);
+    if (planted) {
+      planted.found = true;
+      earned += 100;
+      if (hunt) hunt.completedCount = (hunt.completedCount || 0); // updated by challenges check
+      // Discovery visual
+      const vp = _state.viewport;
+      const ts = vp.tileSize || 32;
+      const toPixel = (t) => ({ x: vp.offsetX + (t.col - vp.col) * ts + ts/2, y: vp.offsetY + (t.row - vp.row) * ts + ts/2 });
+      const midTile = path[Math.floor(path.length / 2)];
+      if (window.LD?.Particles?.text) {
+        const mp = toPixel(midTile);
+        LD.Particles.text(mp.x, mp.y - 30, 'DISCOVERED: ' + typed + '!', '#f0d070', 18);
+      }
+      safeCall(window.LD?.Audio?.play, 'challenge_complete');
+    }
+
+    // 6. Check challenges
+    const wordData = {
+      word:         typed,
+      path:         path,
+      score:        earned,
+      isStraight:   shape.isStraight,
+      isHorizontal: shape.isHorizontal,
+      isVertical:   shape.isVertical,
+      corners:      shape.corners,
+      isPlantedWord: !!planted,
+      tilesUsed:    path,
+    };
+    const newlyCompleted = (window.LD?.Challenges?.checkAll)
+      ? window.LD.Challenges.checkAll(_state, wordData)
+      : [];
+
+    for (let i = 0; i < newlyCompleted.length; i++) {
+      const challenge = (hunt && hunt.challenges)
+        ? hunt.challenges.find(c => c.id === newlyCompleted[i])
+        : null;
+      const reward = challenge ? (challenge.reward || 100) : 100;
+      earned += reward;
+      if (hunt) hunt.completedCount = (hunt.completedCount || 0) + 1;
+    }
+
+    // 7. Update stats
+    _state.score        = (_state.score || 0) + earned;
+    _state.wordsSpelled = (_state.wordsSpelled || 0) + 1;
+    if (typed.length > ((_state.longestWord || '').length)) _state.longestWord = typed;
+    if (hunt) {
+      if (_state.settings.endCondition === 'turns') hunt.turnsRemaining--;
+      hunt.wordsThisRound.push({ word: typed, score: earned });
+    }
+
+    // 8. Track used tiles for cross-word challenge
+    path.forEach(p => {
+      if (hunt && hunt.usedTileKeys) hunt.usedTileKeys.add(p.col + ',' + p.row);
+    });
+
+    // 9. Win/lose check
+    if (_state.settings.endCondition === 'challenges') {
+      const total = (hunt && hunt.challenges) ? hunt.challenges.length : 0;
+      if (total > 0 && (hunt.completedCount || 0) >= total) {
+        _state.phase = 'victory';
+      }
+    } else if (_state.settings.endCondition === 'turns') {
+      if (hunt && hunt.turnsRemaining <= 0) _state.phase = 'gameover';
+    }
+    // timed: handled in game loop
+
+    // 10. Particles & Audio
+    const vp = _state.viewport;
+    const ts = vp.tileSize || 32;
+    const toPixel2 = (t) => ({ x: vp.offsetX + (t.col - vp.col) * ts + ts/2, y: vp.offsetY + (t.row - vp.row) * ts + ts/2, col: t.col, row: t.row });
+
+    if (window.LD?.Particles?.wordActivation) {
+      LD.Particles.wordActivation(path.map(toPixel2), ts);
+    }
+    if (window.LD?.Particles?.text && path.length > 0) {
+      const mid = toPixel2(path[Math.floor(path.length / 2)]);
+      let popupText = '+' + earned;
+      if (config.pathBonuses && shapeMult !== 1.0) {
+        popupText += ' ×' + shapeMult.toFixed(1);
+      }
+      LD.Particles.text(mid.x, mid.y - 20, popupText, '#ffd700', 18);
+    }
+    if (window.LD?.Audio) {
+      safeCall(window.LD.Audio.play, 'word_valid');
+      if (_state.hunt && _state.hunt.combo > 1) safeCall(window.LD.Audio.play, 'combo');
+    }
+
+    clearInput();
+  }
+
   /**
    * Execute a valid, path-confirmed word submission.
    *
@@ -193,6 +384,11 @@
    *  11. Clear input
    */
   function submitWord() {
+    // Route to Word Hunt or Siege submission
+    if (_state.gameMode === 'wordhunt') {
+      return submitWordHunt();
+    }
+
     const typed    = _state.input.typed;
     const path     = _state.input.path.slice(); // snapshot before clear
 
@@ -222,7 +418,7 @@
     safeCall(window.LD?.Board?.refreshTiles, board, path);
 
     // ── 6. Spread corruption ─────────────────────────────────────────────────
-    const newCorruption = safeCall(window.LD?.Board?.spreadCorruption, board) || [];
+    const newCorruption = safeCall(window.LD?.Board?.spreadCorruption, board, _state.config) || [];
 
     // ── 7. Update stats ───────────────────────────────────────────────────────
     _state.score        = (_state.score        || 0) + earned;
@@ -238,7 +434,8 @@
       _state.phase = 'victory';
     } else {
       const corruptPct = safeCall(window.LD?.Board?.getCorruptionPercent, board) ?? 0;
-      if (corruptPct >= 40) {
+      const lossThreshold = (_state.config && _state.config.corruptionLossThreshold) ? _state.config.corruptionLossThreshold : 40;
+      if (corruptPct >= lossThreshold) {
         _state.phase = 'gameover';
       }
     }

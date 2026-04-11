@@ -87,6 +87,12 @@
       drawTitleScreen(ctx, state);
       return;
     }
+    if (state.phase === 'settings') {
+      if (window.LD && window.LD.Settings) {
+        window.LD.Settings.render(ctx, state);
+      }
+      return;
+    }
     if (state.phase === 'gameover') {
       drawBoard(ctx, state);
       drawMinimap(ctx, state);
