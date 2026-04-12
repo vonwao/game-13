@@ -59,11 +59,11 @@
   /**
    * Whether a tile's letter matches the required character.
    * Icon tiles act as wildcards (match any letter).
-   * Used tiles (already consumed in Word Hunt) are skipped.
+   * Fully consumed tiles (useCount >= 2) are never available.
    */
   function tileMatchesChar(tile, ch) {
     if (!tile || tile.corrupted) return false;
-    if (tile.used || tile.found) return false; // consumed in Word Hunt
+    if ((tile.useCount || 0) >= 2) return false; // fully consumed
     if (tile.icon) return true; // wildcard
     return tile.letter === ch;
   }
@@ -142,19 +142,31 @@
     // visited: flat index → boolean (reused across DFS branches via add/delete)
     const visited = new Set();
 
-    function dfs(col, row, depth, currentPath) {
+    // sharedCount: how many already-used tiles are in currentPath so far.
+    // A new word may share at most 1 tile with previously submitted words.
+    function dfs(col, row, depth, currentPath, sharedCount) {
       const tile = getTile(state, col, row);
       if (!tile) return;
 
       const idx = row * width + col;
 
-      // Must be in viewport, not visited, not corrupted, and match current char
+      // Must be in viewport and not already in this path
       if (!viewportSet.has(idx)) return;
       if (visited.has(idx)) return;
+
+      // Check tile availability
+      const useCount = tile.useCount || 0;
+      if (useCount >= 2) return; // fully consumed
+
+      // Enforce: at most 1 shared tile per word (cross-word reuse limit)
+      const isShared = useCount > 0;
+      if (isShared && sharedCount >= 1) return;
+
       if (!tileMatchesChar(tile, upperWord[depth])) return;
 
       visited.add(idx);
       currentPath.push({ col, row });
+      const newSharedCount = sharedCount + (isShared ? 1 : 0);
 
       if (depth === wordLen - 1) {
         // Complete path found — score it
@@ -167,7 +179,7 @@
         // Recurse into all 8 neighbours
         const neighbours = getAdjacent(col, row, width, height);
         for (let i = 0; i < neighbours.length; i++) {
-          dfs(neighbours[i][0], neighbours[i][1], depth + 1, currentPath);
+          dfs(neighbours[i][0], neighbours[i][1], depth + 1, currentPath, newSharedCount);
         }
       }
 
@@ -182,7 +194,7 @@
 
     for (let r = vpRow; r < endRow; r++) {
       for (let c = vpCol; c < endCol; c++) {
-        dfs(c, r, 0, []);
+        dfs(c, r, 0, [], 0);
       }
     }
 

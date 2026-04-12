@@ -17,6 +17,20 @@
   let _state = null;       // reference set by init()
   let _attached = false;   // guard against double-attaching listeners
 
+  // Word color palette — cycles with each submitted word
+  const WORD_COLORS = [
+    '#e05858', // red
+    '#5090e0', // blue
+    '#50c878', // green
+    '#e09030', // orange
+    '#a050e0', // purple
+    '#e05090', // pink
+    '#30c8c0', // teal
+    '#c8c030', // yellow
+    '#e07040', // coral
+    '#4090c0', // steel blue
+  ];
+
   // ---------------------------------------------------------------------------
   // Helpers — safe module calls (graceful no-ops if a module isn't loaded yet)
   // ---------------------------------------------------------------------------
@@ -279,11 +293,14 @@
     const planted = safeCall(window.LD?.Board?.checkPlantedWord, board, typed, path);
     if (planted) {
       planted.found = true;
-      // Mark individual tile objects as found (for golden tint rendering)
+      // Mark individual tile objects as found (golden tint) + count as 1 use
       for (let i = 0; i < planted.path.length; i++) {
         const pt = planted.path[i];
         const t = board.tiles[pt.row * board.width + pt.col];
-        if (t) { t.found = true; }
+        if (t) {
+          t.found = true;
+          // useCount already incremented below in step 8 — don't double-count
+        }
       }
       earned += 100;
       // Discovery visual
@@ -332,10 +349,15 @@
       hunt.wordsThisRound.push({ word: typed, score: earned });
     }
 
-    // 8. Mark tiles as used (cannot be used in future words) + track for cross challenge
+    // 8. Mark tiles with word color + increment useCount; track for cross challenge
+    const wordColor = WORD_COLORS[(_state.wordsSpelled - 1) % WORD_COLORS.length];
     path.forEach(p => {
       const t = board.tiles[p.row * board.width + p.col];
-      if (t) t.used = true;
+      if (t) {
+        t.useCount = (t.useCount || 0) + 1;
+        if (!t.wordColors) t.wordColors = [];
+        t.wordColors.push(wordColor);
+      }
       if (hunt && hunt.usedTileKeys) hunt.usedTileKeys.add(p.col + ',' + p.row);
     });
 

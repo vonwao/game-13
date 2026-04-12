@@ -301,9 +301,10 @@ canvas {
       shake:     0,
       dropY:     0,
       tint:      null,
-      planted:   false,  // true if part of a planted word (Word Hunt)
-      found:     false,  // true if the planted word has been found
-      used:      false,  // true if tile has been consumed in any submitted word
+      planted:    false, // true if part of a planted word (Word Hunt)
+      found:      false, // true if the planted word has been found
+      useCount:   0,     // 0–2: how many words have consumed this tile
+      wordColors: [],    // colors of words that used this tile (max 2)
     };
   }
 
@@ -981,11 +982,11 @@ canvas {
   /**
    * Whether a tile's letter matches the required character.
    * Icon tiles act as wildcards (match any letter).
-   * Used tiles (already consumed in Word Hunt) are skipped.
+   * Fully consumed tiles (useCount >= 2) are never available.
    */
   function tileMatchesChar(tile, ch) {
     if (!tile || tile.corrupted) return false;
-    if (tile.used || tile.found) return false; // consumed in Word Hunt
+    if ((tile.useCount || 0) >= 2) return false; // fully consumed
     if (tile.icon) return true; // wildcard
     return tile.letter === ch;
   }
@@ -1064,19 +1065,31 @@ canvas {
     // visited: flat index → boolean (reused across DFS branches via add/delete)
     const visited = new Set();
 
-    function dfs(col, row, depth, currentPath) {
+    // sharedCount: how many already-used tiles are in currentPath so far.
+    // A new word may share at most 1 tile with previously submitted words.
+    function dfs(col, row, depth, currentPath, sharedCount) {
       const tile = getTile(state, col, row);
       if (!tile) return;
 
       const idx = row * width + col;
 
-      // Must be in viewport, not visited, not corrupted, and match current char
+      // Must be in viewport and not already in this path
       if (!viewportSet.has(idx)) return;
       if (visited.has(idx)) return;
+
+      // Check tile availability
+      const useCount = tile.useCount || 0;
+      if (useCount >= 2) return; // fully consumed
+
+      // Enforce: at most 1 shared tile per word (cross-word reuse limit)
+      const isShared = useCount > 0;
+      if (isShared && sharedCount >= 1) return;
+
       if (!tileMatchesChar(tile, upperWord[depth])) return;
 
       visited.add(idx);
       currentPath.push({ col, row });
+      const newSharedCount = sharedCount + (isShared ? 1 : 0);
 
       if (depth === wordLen - 1) {
         // Complete path found — score it
@@ -1089,7 +1102,7 @@ canvas {
         // Recurse into all 8 neighbours
         const neighbours = getAdjacent(col, row, width, height);
         for (let i = 0; i < neighbours.length; i++) {
-          dfs(neighbours[i][0], neighbours[i][1], depth + 1, currentPath);
+          dfs(neighbours[i][0], neighbours[i][1], depth + 1, currentPath, newSharedCount);
         }
       }
 
@@ -1104,7 +1117,7 @@ canvas {
 
     for (let r = vpRow; r < endRow; r++) {
       for (let c = vpCol; c < endCol; c++) {
-        dfs(c, r, 0, []);
+        dfs(c, r, 0, [], 0);
       }
     }
 
@@ -2734,12 +2747,13 @@ canvas {
 
     // Word Hunt: found planted word — golden tint
     const isFoundPlanted = tile.planted && tile.found;
-    // Word Hunt: used (consumed) tile — dimmed
-    const isUsed = tile.used && !isFoundPlanted;
+    // Word Hunt: fully consumed tile (useCount >= 2) — dimmed
+    const useCount = tile.useCount || 0;
+    const isExhausted = useCount >= 2 && !isFoundPlanted;
 
     let tileFill = COLORS.tileFill;
     if (isFoundPlanted) tileFill = '#c8a840';
-    else if (isUsed)    tileFill = '#6a6050';
+    else if (isExhausted) tileFill = '#6a6050';
     else if (isMatch)   tileFill = '#e0c880';
 
     ctx.fillStyle = tileFill;
@@ -2750,7 +2764,7 @@ canvas {
       ctx.lineWidth = 2;
       ctx.strokeRect(x + pad, y + pad, inner, inner);
       ctx.lineWidth = 1;
-    } else if (isUsed) {
+    } else if (isExhausted) {
       ctx.strokeStyle = '#4a4038';
       ctx.lineWidth = 1;
       ctx.strokeRect(x + pad, y + pad, inner, inner);
@@ -2764,6 +2778,24 @@ canvas {
       ctx.strokeRect(x + pad, y + pad, inner, inner);
     }
 
+    // Word color stripe(s) at the bottom of each used tile
+    const wc = tile.wordColors;
+    if (wc && wc.length > 0 && !isFoundPlanted) {
+      const stripeH = Math.max(3, Math.floor(ts * 0.08));
+      const stripeY = y + ts - stripeH - 1;
+      if (wc.length === 1) {
+        ctx.fillStyle = wc[0];
+        ctx.fillRect(x + 2, stripeY, ts - 4, stripeH);
+      } else {
+        // Two colors — split left/right
+        const half = Math.floor((ts - 4) / 2);
+        ctx.fillStyle = wc[0];
+        ctx.fillRect(x + 2, stripeY, half, stripeH);
+        ctx.fillStyle = wc[1];
+        ctx.fillRect(x + 2 + half, stripeY, ts - 4 - half, stripeH);
+      }
+    }
+
     // Tile tint (for effects)
     if (tile.tint) {
       ctx.globalAlpha = 0.3;
@@ -2775,9 +2807,9 @@ canvas {
     if (tile.letter) {
       let letterColor  = COLORS.tileText;
       let embossColor  = COLORS.tileTextEmboss;
-      if (isMatch)        { letterColor = '#5a3a10'; embossColor = '#f0d890'; }
-      else if (isUsed)    { letterColor = '#9a8868'; embossColor = null; }
-      drawLetter(ctx, tile.letter, x, y, ts, letterColor, embossColor, isUsed ? 0 : tile.points);
+      if (isMatch)          { letterColor = '#5a3a10'; embossColor = '#f0d890'; }
+      else if (isExhausted) { letterColor = '#9a8868'; embossColor = null; }
+      drawLetter(ctx, tile.letter, x, y, ts, letterColor, embossColor, isExhausted ? 0 : tile.points);
     }
   }
 
@@ -2965,9 +2997,14 @@ canvas {
           ctx.fillRect(px, py, dotSize, dotSize);
           continue;
         }
-        // Word Hunt: dark dots for used tiles
-        if (state.gameMode === 'wordhunt' && tile.used) {
+        // Word Hunt: dim dots for used tiles (darker = more used)
+        if (state.gameMode === 'wordhunt' && (tile.useCount || 0) >= 2) {
           ctx.fillStyle = '#3a3028';
+          ctx.fillRect(px, py, 2, 2);
+          continue;
+        }
+        if (state.gameMode === 'wordhunt' && (tile.useCount || 0) === 1) {
+          ctx.fillStyle = '#7a6a50';
           ctx.fillRect(px, py, 2, 2);
           continue;
         }
@@ -4490,6 +4527,20 @@ canvas {
   let _state = null;       // reference set by init()
   let _attached = false;   // guard against double-attaching listeners
 
+  // Word color palette — cycles with each submitted word
+  const WORD_COLORS = [
+    '#e05858', // red
+    '#5090e0', // blue
+    '#50c878', // green
+    '#e09030', // orange
+    '#a050e0', // purple
+    '#e05090', // pink
+    '#30c8c0', // teal
+    '#c8c030', // yellow
+    '#e07040', // coral
+    '#4090c0', // steel blue
+  ];
+
   // ---------------------------------------------------------------------------
   // Helpers — safe module calls (graceful no-ops if a module isn't loaded yet)
   // ---------------------------------------------------------------------------
@@ -4752,11 +4803,14 @@ canvas {
     const planted = safeCall(window.LD?.Board?.checkPlantedWord, board, typed, path);
     if (planted) {
       planted.found = true;
-      // Mark individual tile objects as found (for golden tint rendering)
+      // Mark individual tile objects as found (golden tint) + count as 1 use
       for (let i = 0; i < planted.path.length; i++) {
         const pt = planted.path[i];
         const t = board.tiles[pt.row * board.width + pt.col];
-        if (t) { t.found = true; }
+        if (t) {
+          t.found = true;
+          // useCount already incremented below in step 8 — don't double-count
+        }
       }
       earned += 100;
       // Discovery visual
@@ -4805,10 +4859,15 @@ canvas {
       hunt.wordsThisRound.push({ word: typed, score: earned });
     }
 
-    // 8. Mark tiles as used (cannot be used in future words) + track for cross challenge
+    // 8. Mark tiles with word color + increment useCount; track for cross challenge
+    const wordColor = WORD_COLORS[(_state.wordsSpelled - 1) % WORD_COLORS.length];
     path.forEach(p => {
       const t = board.tiles[p.row * board.width + p.col];
-      if (t) t.used = true;
+      if (t) {
+        t.useCount = (t.useCount || 0) + 1;
+        if (!t.wordColors) t.wordColors = [];
+        t.wordColors.push(wordColor);
+      }
       if (hunt && hunt.usedTileKeys) hunt.usedTileKeys.add(p.col + ',' + p.row);
     });
 

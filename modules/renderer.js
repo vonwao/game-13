@@ -297,12 +297,13 @@
 
     // Word Hunt: found planted word — golden tint
     const isFoundPlanted = tile.planted && tile.found;
-    // Word Hunt: used (consumed) tile — dimmed
-    const isUsed = tile.used && !isFoundPlanted;
+    // Word Hunt: fully consumed tile (useCount >= 2) — dimmed
+    const useCount = tile.useCount || 0;
+    const isExhausted = useCount >= 2 && !isFoundPlanted;
 
     let tileFill = COLORS.tileFill;
     if (isFoundPlanted) tileFill = '#c8a840';
-    else if (isUsed)    tileFill = '#6a6050';
+    else if (isExhausted) tileFill = '#6a6050';
     else if (isMatch)   tileFill = '#e0c880';
 
     ctx.fillStyle = tileFill;
@@ -313,7 +314,7 @@
       ctx.lineWidth = 2;
       ctx.strokeRect(x + pad, y + pad, inner, inner);
       ctx.lineWidth = 1;
-    } else if (isUsed) {
+    } else if (isExhausted) {
       ctx.strokeStyle = '#4a4038';
       ctx.lineWidth = 1;
       ctx.strokeRect(x + pad, y + pad, inner, inner);
@@ -327,6 +328,24 @@
       ctx.strokeRect(x + pad, y + pad, inner, inner);
     }
 
+    // Word color stripe(s) at the bottom of each used tile
+    const wc = tile.wordColors;
+    if (wc && wc.length > 0 && !isFoundPlanted) {
+      const stripeH = Math.max(3, Math.floor(ts * 0.08));
+      const stripeY = y + ts - stripeH - 1;
+      if (wc.length === 1) {
+        ctx.fillStyle = wc[0];
+        ctx.fillRect(x + 2, stripeY, ts - 4, stripeH);
+      } else {
+        // Two colors — split left/right
+        const half = Math.floor((ts - 4) / 2);
+        ctx.fillStyle = wc[0];
+        ctx.fillRect(x + 2, stripeY, half, stripeH);
+        ctx.fillStyle = wc[1];
+        ctx.fillRect(x + 2 + half, stripeY, ts - 4 - half, stripeH);
+      }
+    }
+
     // Tile tint (for effects)
     if (tile.tint) {
       ctx.globalAlpha = 0.3;
@@ -338,9 +357,9 @@
     if (tile.letter) {
       let letterColor  = COLORS.tileText;
       let embossColor  = COLORS.tileTextEmboss;
-      if (isMatch)        { letterColor = '#5a3a10'; embossColor = '#f0d890'; }
-      else if (isUsed)    { letterColor = '#9a8868'; embossColor = null; }
-      drawLetter(ctx, tile.letter, x, y, ts, letterColor, embossColor, isUsed ? 0 : tile.points);
+      if (isMatch)          { letterColor = '#5a3a10'; embossColor = '#f0d890'; }
+      else if (isExhausted) { letterColor = '#9a8868'; embossColor = null; }
+      drawLetter(ctx, tile.letter, x, y, ts, letterColor, embossColor, isExhausted ? 0 : tile.points);
     }
   }
 
@@ -528,9 +547,14 @@
           ctx.fillRect(px, py, dotSize, dotSize);
           continue;
         }
-        // Word Hunt: dark dots for used tiles
-        if (state.gameMode === 'wordhunt' && tile.used) {
+        // Word Hunt: dim dots for used tiles (darker = more used)
+        if (state.gameMode === 'wordhunt' && (tile.useCount || 0) >= 2) {
           ctx.fillStyle = '#3a3028';
+          ctx.fillRect(px, py, 2, 2);
+          continue;
+        }
+        if (state.gameMode === 'wordhunt' && (tile.useCount || 0) === 1) {
+          ctx.fillStyle = '#7a6a50';
           ctx.fillRect(px, py, 2, 2);
           continue;
         }

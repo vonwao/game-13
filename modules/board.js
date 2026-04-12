@@ -105,9 +105,10 @@
       shake:     0,
       dropY:     0,
       tint:      null,
-      planted:   false,  // true if part of a planted word (Word Hunt)
-      found:     false,  // true if the planted word has been found
-      used:      false,  // true if tile has been consumed in any submitted word
+      planted:    false, // true if part of a planted word (Word Hunt)
+      found:      false, // true if the planted word has been found
+      useCount:   0,     // 0–2: how many words have consumed this tile
+      wordColors: [],    // colors of words that used this tile (max 2)
     };
   }
 
