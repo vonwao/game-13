@@ -67,10 +67,11 @@
     const typed = _state.input.typed;
 
     if (typed.length === 0) {
-      _state.input.valid       = false;
-      _state.input.hasPath     = false;
-      _state.input.path        = [];
+      _state.input.valid        = false;
+      _state.input.hasPath      = false;
+      _state.input.path         = [];
       _state.input.matchingTiles = [];
+      _state.input.scorePreview = null;
       return;
     }
 
@@ -85,7 +86,14 @@
     _state.input.path    = path;
     _state.input.hasPath = path.length > 0;
 
-    // 3. Highlight ALL visible tiles that match any letter in the typed word
+    // 3. Score preview (Word Hunt — computed even before word is fully valid)
+    if (_state.gameMode === 'wordhunt' && path.length > 0) {
+      _state.input.scorePreview = computeScorePreview(path, typed);
+    } else {
+      _state.input.scorePreview = null;
+    }
+
+    // 4. Highlight ALL visible tiles that match any letter in the typed word
     const vp = _state.viewport;
     const board = _state.board;
     const typedLetters = new Set(typed.toUpperCase().split(''));
@@ -194,6 +202,54 @@
       if (tile && tile.icon === 'crystal') return 4;
     }
     return 2;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Score preview (live breakdown while typing)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Compute an estimated score breakdown for the current path + word.
+   * Used by the renderer to show math as the player types.
+   */
+  function computeScorePreview(path, word) {
+    const board  = _state.board;
+    const config = _state.config || {};
+    const hunt   = _state.hunt   || {};
+
+    // Base: sum of tile letter points
+    let basePts = 0;
+    for (let i = 0; i < path.length; i++) {
+      const t = board.tiles[path[i].row * board.width + path[i].col];
+      basePts += t ? (t.points || 1) : 1;
+    }
+
+    const lenMult = lengthMultiplier(word.length);
+
+    // Shape
+    let shapeMult  = 1.0;
+    let shapeLabel = '';
+    if (config.pathBonuses) {
+      const shape = computePathShape(path);
+      shapeMult = getPathShapeMultiplier(path);
+      if (shape.isStraight) {
+        if (shape.isHorizontal) shapeLabel = 'horizontal';
+        else if (shape.isVertical) shapeLabel = 'vertical';
+        else shapeLabel = 'diagonal';
+      } else {
+        shapeLabel = shape.corners + (shape.corners === 1 ? ' turn' : ' turns');
+      }
+    }
+
+    // Combo: preview next combo value (after this word would be submitted)
+    let comboMult = 1.0;
+    if (config.comboBonuses) {
+      const nextCombo = (hunt.combo || 0) + 1;
+      comboMult = 1.0 + (nextCombo - 1) * 0.1;
+    }
+
+    const total = Math.round(basePts * lenMult * shapeMult * comboMult);
+    return { basePts, lenMult, shapeMult, shapeLabel, comboMult, total };
   }
 
   // ---------------------------------------------------------------------------
@@ -347,7 +403,20 @@
     if (typed.length > ((_state.longestWord || '').length)) _state.longestWord = typed;
     if (hunt) {
       if (_state.settings.endCondition === 'turns') hunt.turnsRemaining--;
-      hunt.wordsThisRound.push({ word: typed, score: earned });
+      let histShapeLabel = '';
+      if (shape.isStraight) {
+        histShapeLabel = (shape.isHorizontal || shape.isVertical) ? 'straight' : 'diagonal';
+      } else {
+        histShapeLabel = shape.corners + 't';
+      }
+      hunt.wordsThisRound.push({
+        word: typed,
+        score: earned,
+        lenMult: lengthMultiplier(typed.length),
+        shapeMult,
+        shapeLabel: histShapeLabel,
+        comboMult,
+      });
     }
 
     // 8. Mark tiles with word color + increment useCount; track for cross challenge

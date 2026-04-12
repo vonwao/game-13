@@ -1037,14 +1037,55 @@ canvas {
   }
 
   // ---------------------------------------------------------------------------
+  // Word Hunt path ranking — picks highest-scoring path
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Compute the shape multiplier for a path (mirrors input.js logic).
+   * Used to rank Word Hunt paths: straight > diagonal > zigzag.
+   */
+  function pathShapeMultiplier(path) {
+    if (path.length < 2) return 1.0;
+    const dc0 = path[1].col - path[0].col;
+    const dr0 = path[1].row - path[0].row;
+    let isStraight = true;
+    let corners = 0;
+    for (let i = 2; i < path.length; i++) {
+      const dc = path[i].col - path[i-1].col;
+      const dr = path[i].row - path[i-1].row;
+      if (dc !== (path[i-1].col - path[i-2].col) || dr !== (path[i-1].row - path[i-2].row)) {
+        isStraight = false;
+        corners++;
+      }
+    }
+    if (isStraight) {
+      return (dr0 === 0 || dc0 === 0) ? 2.0 : 1.5;
+    }
+    return Math.max(0.4, 1.0 - corners * 0.2);
+  }
+
+  /**
+   * Rank score for a Word Hunt path: higher is better.
+   * Maximises sum(tile.points) × shapeMult.
+   */
+  function wordHuntRank(path, state) {
+    let pts = 0;
+    for (let i = 0; i < path.length; i++) {
+      const t = getTile(state, path[i].col, path[i].row);
+      pts += t ? (t.points || 1) : 1;
+    }
+    return pts * pathShapeMultiplier(path);
+  }
+
+  // ---------------------------------------------------------------------------
   // Core DFS
   // ---------------------------------------------------------------------------
 
   /**
    * DFS with backtracking over the visible viewport.
    *
-   * When multiple complete paths are found, keeps the one with the lowest
-   * average Manhattan distance to the nearest corrupted tile.
+   * Word Hunt: keeps the path with the highest sum(points) × shapeMult.
+   * Siege:     keeps the path closest (lowest avg distance) to corruption.
    *
    * @param {object}   state
    * @param {string}   word        - uppercase word to find
@@ -1055,12 +1096,14 @@ canvas {
 
     const { width, height } = state.board;
     const viewportSet = getViewportIndexSet(state);
-    const distFn = buildCorruptionDistanceFn(state);
+    const isWordHunt = state.gameMode === 'wordhunt';
+    const distFn = isWordHunt ? null : buildCorruptionDistanceFn(state);
     const upperWord = word.toUpperCase();
     const wordLen = upperWord.length;
 
     let bestPath = null;
-    let bestScore = Infinity;
+    // Word Hunt: maximise rank (higher = better). Siege: minimise score (lower = better).
+    let bestScore = isWordHunt ? -Infinity : Infinity;
 
     // visited: flat index → boolean (reused across DFS branches via add/delete)
     const visited = new Set();
@@ -1092,11 +1135,19 @@ canvas {
       const newSharedCount = sharedCount + (isShared ? 1 : 0);
 
       if (depth === wordLen - 1) {
-        // Complete path found — score it
-        const score = pathScore(currentPath, distFn);
-        if (score < bestScore) {
-          bestScore = score;
-          bestPath = currentPath.slice(); // copy
+        // Complete path found — rank it
+        if (isWordHunt) {
+          const rank = wordHuntRank(currentPath, state);
+          if (rank > bestScore) {
+            bestScore = rank;
+            bestPath = currentPath.slice();
+          }
+        } else {
+          const score = pathScore(currentPath, distFn);
+          if (score < bestScore) {
+            bestScore = score;
+            bestPath = currentPath.slice();
+          }
         }
       } else {
         // Recurse into all 8 neighbours
@@ -2596,6 +2647,7 @@ canvas {
       if (window.LD && window.LD.Challenges) {
         LD.Challenges.renderSidebar(ctx, state, mouseX, mouseY);
       }
+      drawWordHistory(ctx, state);
     }
 
     // Help overlay
@@ -3221,55 +3273,145 @@ canvas {
         // Enter hint
         ctx.fillStyle = '#888';
         ctx.font = '12px "Courier New", monospace';
-        ctx.fillText('[Enter to cast]', lx + 80, barY + 22);
+        ctx.fillText('[Enter]', lx + 80, barY + 22);
       } else if (valid && !hasPath) {
         ctx.fillStyle = '#c0c040';
         ctx.fillText('? no path', lx, barY + 22);
-      } else if (typed.length >= 3) {
+      } else if (state.gameMode === 'wordhunt' && typed.length > 0 && typed.length < 4) {
+        ctx.fillStyle = '#c08040';
+        ctx.fillText('need 4+ letters', lx, barY + 22);
+      } else if (typed.length >= 2) {
         ctx.fillStyle = '#c04040';
-        ctx.fillText('✗ invalid', lx, barY + 22);
+        ctx.fillText('✗ not a word', lx, barY + 22);
       }
     }
 
-    // Word Hunt: show path shape info on second line
-    if (state.gameMode === 'wordhunt' && state.input.hasPath && state.input.path && state.input.path.length >= 2) {
-      const path = state.input.path;
-      const dc0 = path[1].col - path[0].col;
-      const dr0 = path[1].row - path[0].row;
-      let straight = true, corners = 0;
-      for (let i = 2; i < path.length; i++) {
-        const dc = path[i].col - path[i-1].col;
-        const dr = path[i].row - path[i-1].row;
-        if (dc !== (path[i-1].col - path[i-2].col) || dr !== (path[i-1].row - path[i-2].row)) {
-          straight = false; corners++;
-        }
-      }
-      let shapeStr = '';
-      if (straight) {
-        const isH = dr0 === 0;
-        const isV = dc0 === 0;
-        if (isH || isV) shapeStr = 'Straight 2.0×!';
-        else shapeStr = 'Diagonal 1.5×';
-      } else if (corners <= 1) {
-        shapeStr = '1 corner (1.0×)';
-      } else {
-        const mult = Math.max(0.7, 1.0 - corners * 0.1).toFixed(1);
-        shapeStr = corners + ' corners (' + mult + '×)';
-      }
-      ctx.fillStyle = straight ? '#80d080' : '#888';
+    // Second line: score breakdown (Word Hunt) or hint text
+    const sp = state.input.scorePreview;
+    if (state.gameMode === 'wordhunt' && sp && state.input.hasPath) {
+      // Draw score formula: base × lenMult × shapeMult × comboMult = total
       ctx.font = '11px "Courier New", monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText(shapeStr, 20, barY + 42);
+      ctx.textBaseline = 'middle';
+      let fx = 20;
+      const fy = barY + 41;
+
+      // base points
+      ctx.fillStyle = '#a09080';
+      ctx.fillText(sp.basePts + 'pts', fx, fy);
+      fx += ctx.measureText(sp.basePts + 'pts').width + 4;
+
+      // length multiplier
+      if (sp.lenMult > 1.0) {
+        ctx.fillStyle = '#555';
+        ctx.fillText('×', fx, fy); fx += 12;
+        ctx.fillStyle = '#80b0e0';
+        ctx.fillText(sp.lenMult.toFixed(1) + ' (' + typed.length + 'L)', fx, fy);
+        fx += ctx.measureText(sp.lenMult.toFixed(1) + ' (' + typed.length + 'L)').width + 4;
+      }
+
+      // shape multiplier
+      if (sp.shapeMult !== 1.0) {
+        ctx.fillStyle = '#555';
+        ctx.fillText('×', fx, fy); fx += 12;
+        const shapeColor = sp.shapeMult >= 2.0 ? '#60e060'
+          : sp.shapeMult >= 1.5 ? '#90d060'
+          : sp.shapeMult < 1.0  ? '#e08040' : '#a09080';
+        ctx.fillStyle = shapeColor;
+        ctx.fillText(sp.shapeMult.toFixed(1) + ' ' + sp.shapeLabel, fx, fy);
+        fx += ctx.measureText(sp.shapeMult.toFixed(1) + ' ' + sp.shapeLabel).width + 4;
+      }
+
+      // combo multiplier
+      if (sp.comboMult > 1.0) {
+        ctx.fillStyle = '#555';
+        ctx.fillText('×', fx, fy); fx += 12;
+        ctx.fillStyle = '#f0d070';
+        ctx.fillText(sp.comboMult.toFixed(1) + ' combo', fx, fy);
+        fx += ctx.measureText(sp.comboMult.toFixed(1) + ' combo').width + 4;
+      }
+
+      // total
+      ctx.fillStyle = '#555';
+      ctx.fillText('=', fx, fy); fx += 16;
+      ctx.fillStyle = valid ? '#ffd700' : '#888';
+      ctx.font = 'bold 11px "Courier New", monospace';
+      ctx.fillText('~' + sp.total + ' pts', fx, fy);
     } else {
-      // Hint text
-      const modeHint = state.gameMode === 'wordhunt'
-        ? 'Type a word, press Enter to cast. Arrow keys to scroll. Press ? for help.'
-        : 'Type a word, press Enter to cast. Arrow keys to scroll. Press ? for help.';
       ctx.fillStyle = '#555';
       ctx.font = '11px "Courier New", monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(modeHint, 20, barY + 42);
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Type a word · Enter to submit · Arrow keys to scroll · ? for help', 20, barY + 41);
     }
+  }
+
+  /**
+   * Draw a floating word history panel in the lower-left of the board area.
+   * Shows the last 8 submitted words with score breakdowns.
+   */
+  function drawWordHistory(ctx, state) {
+    const hunt = state.hunt;
+    if (!hunt || !hunt.wordsThisRound || hunt.wordsThisRound.length === 0) return;
+
+    const history = hunt.wordsThisRound;
+    const maxShow = Math.min(8, history.length);
+    const lineH   = 15;
+    const padX    = 8;
+    const padY    = 6;
+    const panelW  = 210;
+    const panelH  = maxShow * lineH + padY * 2 + 16; // +16 for header
+    const vp      = state.viewport;
+    const boardBottom = vp.offsetY + vp.rows * vp.tileSize;
+    const panelX  = vp.offsetX + 2;
+    const panelY  = boardBottom - panelH - 4;
+
+    // Background
+    ctx.fillStyle = 'rgba(10, 8, 6, 0.88)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = '#2a2420';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+    // Header
+    ctx.font = '10px "Courier New", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#5a4a30';
+    ctx.fillText('WORDS PLAYED', panelX + padX, panelY + padY);
+
+    const listY = panelY + padY + 14;
+
+    for (let i = 0; i < maxShow; i++) {
+      const entry  = history[history.length - maxShow + i];
+      const isLast = i === maxShow - 1;
+      const ey     = listY + i * lineH;
+
+      // Word
+      ctx.fillStyle = isLast ? '#f0d070' : '#8a7a60';
+      ctx.font = (isLast ? 'bold ' : '') + '12px "Courier New", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(entry.word, panelX + padX, ey);
+
+      // Score
+      ctx.fillStyle = isLast ? '#c8a050' : '#5a4a30';
+      ctx.font = '11px "Courier New", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('+' + entry.score, panelX + panelW - padX - 60, ey);
+
+      // Multiplier hint (shape)
+      if (entry.shapeMult != null && entry.shapeMult !== 1.0) {
+        const smColor = entry.shapeMult >= 2.0 ? '#60b060'
+          : entry.shapeMult >= 1.5 ? '#80a050'
+          : '#884820';
+        ctx.fillStyle = smColor;
+        ctx.fillText('×' + entry.shapeMult.toFixed(1), panelX + panelW - padX, ey);
+      } else if (entry.shapeMult === 1.0) {
+        ctx.fillStyle = '#3a3028';
+        ctx.fillText('×1.0', panelX + panelW - padX, ey);
+      }
+    }
+
+    ctx.textBaseline = 'middle';
   }
 
   function drawTitleScreen(ctx, state) {
@@ -4398,12 +4540,26 @@ canvas {
     ctx.fillText(
       isEmpty ? '(tap tiles to spell)' : word.split('').join(' - '),
       W / 2,
-      barY + 16
+      barY + 14
     );
     if (!isEmpty) {
-      ctx.font = '11px "Courier New", monospace';
-      ctx.fillStyle = isValid ? '#60c060' : '#c04040';
-      ctx.fillText(isValid ? '✓ valid' : '✗ invalid', W / 2, barY + 30);
+      // Score preview or validity
+      var sp = state.input.scorePreview;
+      if (sp && state.input.hasPath) {
+        var breakdown = sp.basePts + 'pts';
+        if (sp.lenMult > 1.0) breakdown += ' ×' + sp.lenMult.toFixed(1);
+        if (sp.shapeMult !== 1.0) breakdown += ' ×' + sp.shapeMult.toFixed(1) + ' ' + sp.shapeLabel;
+        if (sp.comboMult > 1.0) breakdown += ' ×' + sp.comboMult.toFixed(1) + ' combo';
+        breakdown += ' = ~' + sp.total + ' pts';
+        ctx.font = '10px "Courier New", monospace';
+        ctx.fillStyle = isValid ? '#ffd700' : '#888';
+        ctx.fillText(breakdown, W / 2, barY + 28);
+      } else {
+        ctx.font = '11px "Courier New", monospace';
+        var tooShort = state.gameMode === 'wordhunt' && word.length < 4;
+        ctx.fillStyle = isValid ? '#60c060' : (tooShort ? '#c08040' : '#c04040');
+        ctx.fillText(isValid ? '✓ valid' : (tooShort ? 'need 4+ letters' : '✗ invalid'), W / 2, barY + 28);
+      }
     }
 
     // Buttons
@@ -4578,10 +4734,11 @@ canvas {
     const typed = _state.input.typed;
 
     if (typed.length === 0) {
-      _state.input.valid       = false;
-      _state.input.hasPath     = false;
-      _state.input.path        = [];
+      _state.input.valid        = false;
+      _state.input.hasPath      = false;
+      _state.input.path         = [];
       _state.input.matchingTiles = [];
+      _state.input.scorePreview = null;
       return;
     }
 
@@ -4596,7 +4753,14 @@ canvas {
     _state.input.path    = path;
     _state.input.hasPath = path.length > 0;
 
-    // 3. Highlight ALL visible tiles that match any letter in the typed word
+    // 3. Score preview (Word Hunt — computed even before word is fully valid)
+    if (_state.gameMode === 'wordhunt' && path.length > 0) {
+      _state.input.scorePreview = computeScorePreview(path, typed);
+    } else {
+      _state.input.scorePreview = null;
+    }
+
+    // 4. Highlight ALL visible tiles that match any letter in the typed word
     const vp = _state.viewport;
     const board = _state.board;
     const typedLetters = new Set(typed.toUpperCase().split(''));
@@ -4705,6 +4869,54 @@ canvas {
       if (tile && tile.icon === 'crystal') return 4;
     }
     return 2;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Score preview (live breakdown while typing)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Compute an estimated score breakdown for the current path + word.
+   * Used by the renderer to show math as the player types.
+   */
+  function computeScorePreview(path, word) {
+    const board  = _state.board;
+    const config = _state.config || {};
+    const hunt   = _state.hunt   || {};
+
+    // Base: sum of tile letter points
+    let basePts = 0;
+    for (let i = 0; i < path.length; i++) {
+      const t = board.tiles[path[i].row * board.width + path[i].col];
+      basePts += t ? (t.points || 1) : 1;
+    }
+
+    const lenMult = lengthMultiplier(word.length);
+
+    // Shape
+    let shapeMult  = 1.0;
+    let shapeLabel = '';
+    if (config.pathBonuses) {
+      const shape = computePathShape(path);
+      shapeMult = getPathShapeMultiplier(path);
+      if (shape.isStraight) {
+        if (shape.isHorizontal) shapeLabel = 'horizontal';
+        else if (shape.isVertical) shapeLabel = 'vertical';
+        else shapeLabel = 'diagonal';
+      } else {
+        shapeLabel = shape.corners + (shape.corners === 1 ? ' turn' : ' turns');
+      }
+    }
+
+    // Combo: preview next combo value (after this word would be submitted)
+    let comboMult = 1.0;
+    if (config.comboBonuses) {
+      const nextCombo = (hunt.combo || 0) + 1;
+      comboMult = 1.0 + (nextCombo - 1) * 0.1;
+    }
+
+    const total = Math.round(basePts * lenMult * shapeMult * comboMult);
+    return { basePts, lenMult, shapeMult, shapeLabel, comboMult, total };
   }
 
   // ---------------------------------------------------------------------------
@@ -4858,7 +5070,20 @@ canvas {
     if (typed.length > ((_state.longestWord || '').length)) _state.longestWord = typed;
     if (hunt) {
       if (_state.settings.endCondition === 'turns') hunt.turnsRemaining--;
-      hunt.wordsThisRound.push({ word: typed, score: earned });
+      let histShapeLabel = '';
+      if (shape.isStraight) {
+        histShapeLabel = (shape.isHorizontal || shape.isVertical) ? 'straight' : 'diagonal';
+      } else {
+        histShapeLabel = shape.corners + 't';
+      }
+      hunt.wordsThisRound.push({
+        word: typed,
+        score: earned,
+        lenMult: lengthMultiplier(typed.length),
+        shapeMult,
+        shapeLabel: histShapeLabel,
+        comboMult,
+      });
     }
 
     // 8. Mark tiles with word color + increment useCount; track for cross challenge

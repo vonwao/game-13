@@ -114,14 +114,55 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Word Hunt path ranking — picks highest-scoring path
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Compute the shape multiplier for a path (mirrors input.js logic).
+   * Used to rank Word Hunt paths: straight > diagonal > zigzag.
+   */
+  function pathShapeMultiplier(path) {
+    if (path.length < 2) return 1.0;
+    const dc0 = path[1].col - path[0].col;
+    const dr0 = path[1].row - path[0].row;
+    let isStraight = true;
+    let corners = 0;
+    for (let i = 2; i < path.length; i++) {
+      const dc = path[i].col - path[i-1].col;
+      const dr = path[i].row - path[i-1].row;
+      if (dc !== (path[i-1].col - path[i-2].col) || dr !== (path[i-1].row - path[i-2].row)) {
+        isStraight = false;
+        corners++;
+      }
+    }
+    if (isStraight) {
+      return (dr0 === 0 || dc0 === 0) ? 2.0 : 1.5;
+    }
+    return Math.max(0.4, 1.0 - corners * 0.2);
+  }
+
+  /**
+   * Rank score for a Word Hunt path: higher is better.
+   * Maximises sum(tile.points) × shapeMult.
+   */
+  function wordHuntRank(path, state) {
+    let pts = 0;
+    for (let i = 0; i < path.length; i++) {
+      const t = getTile(state, path[i].col, path[i].row);
+      pts += t ? (t.points || 1) : 1;
+    }
+    return pts * pathShapeMultiplier(path);
+  }
+
+  // ---------------------------------------------------------------------------
   // Core DFS
   // ---------------------------------------------------------------------------
 
   /**
    * DFS with backtracking over the visible viewport.
    *
-   * When multiple complete paths are found, keeps the one with the lowest
-   * average Manhattan distance to the nearest corrupted tile.
+   * Word Hunt: keeps the path with the highest sum(points) × shapeMult.
+   * Siege:     keeps the path closest (lowest avg distance) to corruption.
    *
    * @param {object}   state
    * @param {string}   word        - uppercase word to find
@@ -132,12 +173,14 @@
 
     const { width, height } = state.board;
     const viewportSet = getViewportIndexSet(state);
-    const distFn = buildCorruptionDistanceFn(state);
+    const isWordHunt = state.gameMode === 'wordhunt';
+    const distFn = isWordHunt ? null : buildCorruptionDistanceFn(state);
     const upperWord = word.toUpperCase();
     const wordLen = upperWord.length;
 
     let bestPath = null;
-    let bestScore = Infinity;
+    // Word Hunt: maximise rank (higher = better). Siege: minimise score (lower = better).
+    let bestScore = isWordHunt ? -Infinity : Infinity;
 
     // visited: flat index → boolean (reused across DFS branches via add/delete)
     const visited = new Set();
@@ -169,11 +212,19 @@
       const newSharedCount = sharedCount + (isShared ? 1 : 0);
 
       if (depth === wordLen - 1) {
-        // Complete path found — score it
-        const score = pathScore(currentPath, distFn);
-        if (score < bestScore) {
-          bestScore = score;
-          bestPath = currentPath.slice(); // copy
+        // Complete path found — rank it
+        if (isWordHunt) {
+          const rank = wordHuntRank(currentPath, state);
+          if (rank > bestScore) {
+            bestScore = rank;
+            bestPath = currentPath.slice();
+          }
+        } else {
+          const score = pathScore(currentPath, distFn);
+          if (score < bestScore) {
+            bestScore = score;
+            bestPath = currentPath.slice();
+          }
         }
       } else {
         // Recurse into all 8 neighbours

@@ -146,6 +146,7 @@
       if (window.LD && window.LD.Challenges) {
         LD.Challenges.renderSidebar(ctx, state, mouseX, mouseY);
       }
+      drawWordHistory(ctx, state);
     }
 
     // Help overlay
@@ -771,55 +772,145 @@
         // Enter hint
         ctx.fillStyle = '#888';
         ctx.font = '12px "Courier New", monospace';
-        ctx.fillText('[Enter to cast]', lx + 80, barY + 22);
+        ctx.fillText('[Enter]', lx + 80, barY + 22);
       } else if (valid && !hasPath) {
         ctx.fillStyle = '#c0c040';
         ctx.fillText('? no path', lx, barY + 22);
-      } else if (typed.length >= 3) {
+      } else if (state.gameMode === 'wordhunt' && typed.length > 0 && typed.length < 4) {
+        ctx.fillStyle = '#c08040';
+        ctx.fillText('need 4+ letters', lx, barY + 22);
+      } else if (typed.length >= 2) {
         ctx.fillStyle = '#c04040';
-        ctx.fillText('✗ invalid', lx, barY + 22);
+        ctx.fillText('✗ not a word', lx, barY + 22);
       }
     }
 
-    // Word Hunt: show path shape info on second line
-    if (state.gameMode === 'wordhunt' && state.input.hasPath && state.input.path && state.input.path.length >= 2) {
-      const path = state.input.path;
-      const dc0 = path[1].col - path[0].col;
-      const dr0 = path[1].row - path[0].row;
-      let straight = true, corners = 0;
-      for (let i = 2; i < path.length; i++) {
-        const dc = path[i].col - path[i-1].col;
-        const dr = path[i].row - path[i-1].row;
-        if (dc !== (path[i-1].col - path[i-2].col) || dr !== (path[i-1].row - path[i-2].row)) {
-          straight = false; corners++;
-        }
-      }
-      let shapeStr = '';
-      if (straight) {
-        const isH = dr0 === 0;
-        const isV = dc0 === 0;
-        if (isH || isV) shapeStr = 'Straight 2.0×!';
-        else shapeStr = 'Diagonal 1.5×';
-      } else if (corners <= 1) {
-        shapeStr = '1 corner (1.0×)';
-      } else {
-        const mult = Math.max(0.7, 1.0 - corners * 0.1).toFixed(1);
-        shapeStr = corners + ' corners (' + mult + '×)';
-      }
-      ctx.fillStyle = straight ? '#80d080' : '#888';
+    // Second line: score breakdown (Word Hunt) or hint text
+    const sp = state.input.scorePreview;
+    if (state.gameMode === 'wordhunt' && sp && state.input.hasPath) {
+      // Draw score formula: base × lenMult × shapeMult × comboMult = total
       ctx.font = '11px "Courier New", monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText(shapeStr, 20, barY + 42);
+      ctx.textBaseline = 'middle';
+      let fx = 20;
+      const fy = barY + 41;
+
+      // base points
+      ctx.fillStyle = '#a09080';
+      ctx.fillText(sp.basePts + 'pts', fx, fy);
+      fx += ctx.measureText(sp.basePts + 'pts').width + 4;
+
+      // length multiplier
+      if (sp.lenMult > 1.0) {
+        ctx.fillStyle = '#555';
+        ctx.fillText('×', fx, fy); fx += 12;
+        ctx.fillStyle = '#80b0e0';
+        ctx.fillText(sp.lenMult.toFixed(1) + ' (' + typed.length + 'L)', fx, fy);
+        fx += ctx.measureText(sp.lenMult.toFixed(1) + ' (' + typed.length + 'L)').width + 4;
+      }
+
+      // shape multiplier
+      if (sp.shapeMult !== 1.0) {
+        ctx.fillStyle = '#555';
+        ctx.fillText('×', fx, fy); fx += 12;
+        const shapeColor = sp.shapeMult >= 2.0 ? '#60e060'
+          : sp.shapeMult >= 1.5 ? '#90d060'
+          : sp.shapeMult < 1.0  ? '#e08040' : '#a09080';
+        ctx.fillStyle = shapeColor;
+        ctx.fillText(sp.shapeMult.toFixed(1) + ' ' + sp.shapeLabel, fx, fy);
+        fx += ctx.measureText(sp.shapeMult.toFixed(1) + ' ' + sp.shapeLabel).width + 4;
+      }
+
+      // combo multiplier
+      if (sp.comboMult > 1.0) {
+        ctx.fillStyle = '#555';
+        ctx.fillText('×', fx, fy); fx += 12;
+        ctx.fillStyle = '#f0d070';
+        ctx.fillText(sp.comboMult.toFixed(1) + ' combo', fx, fy);
+        fx += ctx.measureText(sp.comboMult.toFixed(1) + ' combo').width + 4;
+      }
+
+      // total
+      ctx.fillStyle = '#555';
+      ctx.fillText('=', fx, fy); fx += 16;
+      ctx.fillStyle = valid ? '#ffd700' : '#888';
+      ctx.font = 'bold 11px "Courier New", monospace';
+      ctx.fillText('~' + sp.total + ' pts', fx, fy);
     } else {
-      // Hint text
-      const modeHint = state.gameMode === 'wordhunt'
-        ? 'Type a word, press Enter to cast. Arrow keys to scroll. Press ? for help.'
-        : 'Type a word, press Enter to cast. Arrow keys to scroll. Press ? for help.';
       ctx.fillStyle = '#555';
       ctx.font = '11px "Courier New", monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(modeHint, 20, barY + 42);
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Type a word · Enter to submit · Arrow keys to scroll · ? for help', 20, barY + 41);
     }
+  }
+
+  /**
+   * Draw a floating word history panel in the lower-left of the board area.
+   * Shows the last 8 submitted words with score breakdowns.
+   */
+  function drawWordHistory(ctx, state) {
+    const hunt = state.hunt;
+    if (!hunt || !hunt.wordsThisRound || hunt.wordsThisRound.length === 0) return;
+
+    const history = hunt.wordsThisRound;
+    const maxShow = Math.min(8, history.length);
+    const lineH   = 15;
+    const padX    = 8;
+    const padY    = 6;
+    const panelW  = 210;
+    const panelH  = maxShow * lineH + padY * 2 + 16; // +16 for header
+    const vp      = state.viewport;
+    const boardBottom = vp.offsetY + vp.rows * vp.tileSize;
+    const panelX  = vp.offsetX + 2;
+    const panelY  = boardBottom - panelH - 4;
+
+    // Background
+    ctx.fillStyle = 'rgba(10, 8, 6, 0.88)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = '#2a2420';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+    // Header
+    ctx.font = '10px "Courier New", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#5a4a30';
+    ctx.fillText('WORDS PLAYED', panelX + padX, panelY + padY);
+
+    const listY = panelY + padY + 14;
+
+    for (let i = 0; i < maxShow; i++) {
+      const entry  = history[history.length - maxShow + i];
+      const isLast = i === maxShow - 1;
+      const ey     = listY + i * lineH;
+
+      // Word
+      ctx.fillStyle = isLast ? '#f0d070' : '#8a7a60';
+      ctx.font = (isLast ? 'bold ' : '') + '12px "Courier New", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(entry.word, panelX + padX, ey);
+
+      // Score
+      ctx.fillStyle = isLast ? '#c8a050' : '#5a4a30';
+      ctx.font = '11px "Courier New", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('+' + entry.score, panelX + panelW - padX - 60, ey);
+
+      // Multiplier hint (shape)
+      if (entry.shapeMult != null && entry.shapeMult !== 1.0) {
+        const smColor = entry.shapeMult >= 2.0 ? '#60b060'
+          : entry.shapeMult >= 1.5 ? '#80a050'
+          : '#884820';
+        ctx.fillStyle = smColor;
+        ctx.fillText('×' + entry.shapeMult.toFixed(1), panelX + panelW - padX, ey);
+      } else if (entry.shapeMult === 1.0) {
+        ctx.fillStyle = '#3a3028';
+        ctx.fillText('×1.0', panelX + panelW - padX, ey);
+      }
+    }
+
+    ctx.textBaseline = 'middle';
   }
 
   function drawTitleScreen(ctx, state) {

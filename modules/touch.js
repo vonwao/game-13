@@ -331,12 +331,26 @@
     ctx.fillText(
       isEmpty ? '(tap tiles to spell)' : word.split('').join(' - '),
       W / 2,
-      barY + 16
+      barY + 14
     );
     if (!isEmpty) {
-      ctx.font = '11px "Courier New", monospace';
-      ctx.fillStyle = isValid ? '#60c060' : '#c04040';
-      ctx.fillText(isValid ? '✓ valid' : '✗ invalid', W / 2, barY + 30);
+      // Score preview or validity
+      var sp = state.input.scorePreview;
+      if (sp && state.input.hasPath) {
+        var breakdown = sp.basePts + 'pts';
+        if (sp.lenMult > 1.0) breakdown += ' ×' + sp.lenMult.toFixed(1);
+        if (sp.shapeMult !== 1.0) breakdown += ' ×' + sp.shapeMult.toFixed(1) + ' ' + sp.shapeLabel;
+        if (sp.comboMult > 1.0) breakdown += ' ×' + sp.comboMult.toFixed(1) + ' combo';
+        breakdown += ' = ~' + sp.total + ' pts';
+        ctx.font = '10px "Courier New", monospace';
+        ctx.fillStyle = isValid ? '#ffd700' : '#888';
+        ctx.fillText(breakdown, W / 2, barY + 28);
+      } else {
+        ctx.font = '11px "Courier New", monospace';
+        var tooShort = state.gameMode === 'wordhunt' && word.length < 4;
+        ctx.fillStyle = isValid ? '#60c060' : (tooShort ? '#c08040' : '#c04040');
+        ctx.fillText(isValid ? '✓ valid' : (tooShort ? 'need 4+ letters' : '✗ invalid'), W / 2, barY + 28);
+      }
     }
 
     // Buttons
