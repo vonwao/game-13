@@ -4188,11 +4188,12 @@ canvas {
     _state.input.typed   = word;
     _state.input.path    = path.slice();
 
-    // Dictionary + path validation
-    if (word.length > 0 && window.LD && window.LD.Dict) {
-      _state.input.valid   = LD.Dict.isValid(word);
+    // Dictionary + path validation (Word Hunt requires min 4 letters)
+    var minLen = (_state.gameMode === 'wordhunt') ? 4 : 2;
+    if (word.length >= minLen && window.LD && window.LD.Dict) {
+      _state.input.valid = LD.Dict.isValid(word);
     } else {
-      _state.input.valid   = false;
+      _state.input.valid = false;
     }
     _state.input.hasPath = path.length > 0;
   }
@@ -4584,8 +4585,9 @@ canvas {
       return;
     }
 
-    // 1. Dictionary validity check
-    _state.input.valid = dictIsValid(typed);
+    // 1. Dictionary validity check (Word Hunt requires min 4 letters)
+    const minLen = _state.gameMode === 'wordhunt' ? 4 : 2;
+    _state.input.valid = typed.length >= minLen && dictIsValid(typed);
 
     // 2. Path search (always, so live highlighting stays current)
     const path = window.LD.Pathfinder
@@ -4738,8 +4740,8 @@ canvas {
       if (shape.isHorizontal || shape.isVertical) return 2.0;
       return 1.5; // diagonal straight
     }
-    if (shape.corners <= 1) return 1.0;
-    return Math.max(0.7, 1.0 - shape.corners * 0.1);
+    // 0.2x penalty per direction change, min 0.4x — discourages zigzag paths
+    return Math.max(0.4, 1.0 - shape.corners * 0.2);
   }
 
   // ---------------------------------------------------------------------------

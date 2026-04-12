@@ -121,11 +121,12 @@
     _state.input.typed   = word;
     _state.input.path    = path.slice();
 
-    // Dictionary + path validation
-    if (word.length > 0 && window.LD && window.LD.Dict) {
-      _state.input.valid   = LD.Dict.isValid(word);
+    // Dictionary + path validation (Word Hunt requires min 4 letters)
+    var minLen = (_state.gameMode === 'wordhunt') ? 4 : 2;
+    if (word.length >= minLen && window.LD && window.LD.Dict) {
+      _state.input.valid = LD.Dict.isValid(word);
     } else {
-      _state.input.valid   = false;
+      _state.input.valid = false;
     }
     _state.input.hasPath = path.length > 0;
   }

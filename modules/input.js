@@ -74,8 +74,9 @@
       return;
     }
 
-    // 1. Dictionary validity check
-    _state.input.valid = dictIsValid(typed);
+    // 1. Dictionary validity check (Word Hunt requires min 4 letters)
+    const minLen = _state.gameMode === 'wordhunt' ? 4 : 2;
+    _state.input.valid = typed.length >= minLen && dictIsValid(typed);
 
     // 2. Path search (always, so live highlighting stays current)
     const path = window.LD.Pathfinder
@@ -228,8 +229,8 @@
       if (shape.isHorizontal || shape.isVertical) return 2.0;
       return 1.5; // diagonal straight
     }
-    if (shape.corners <= 1) return 1.0;
-    return Math.max(0.7, 1.0 - shape.corners * 0.1);
+    // 0.2x penalty per direction change, min 0.4x — discourages zigzag paths
+    return Math.max(0.4, 1.0 - shape.corners * 0.2);
   }
 
   // ---------------------------------------------------------------------------
