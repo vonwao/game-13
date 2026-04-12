@@ -828,25 +828,10 @@ canvas {
     for (var i = 0; i < plantedWords.length; i++) {
       var pw = plantedWords[i];
       if (pw.found) continue;
-      if (pw.word.toUpperCase() !== upperWord) continue;
-
-      // Check if path positions match planted path
-      var plantedKeys = {};
-      for (var pi = 0; pi < pw.path.length; pi++) {
-        plantedKeys[pw.path[pi].col + ',' + pw.path[pi].row] = true;
-      }
-      var submitKeys = {};
-      for (var si = 0; si < path.length; si++) {
-        submitKeys[path[si].col + ',' + path[si].row] = true;
-      }
-
-      // Check forward match: every planted tile is in submitted path
-      var allMatch = true;
-      var pKeys = Object.keys(plantedKeys);
-      for (var k = 0; k < pKeys.length; k++) {
-        if (!submitKeys[pKeys[k]]) { allMatch = false; break; }
-      }
-      if (allMatch) return pw;
+      // Match by word name only — any valid path for the word counts as discovery.
+      // (The pathfinder may choose a different path than the planted one when
+      //  the word appears multiple times on the board.)
+      if (pw.word.toUpperCase() === upperWord) return pw;
     }
     return null;
   }
@@ -2830,6 +2815,14 @@ canvas {
       ctx.strokeRect(x + pad, y + pad, inner, inner);
     }
 
+    // Planted tile indicator — tiny gold corner dot (before discovery)
+    if (tile.planted && !tile.found && ts >= 16) {
+      ctx.fillStyle = '#6a5020';
+      ctx.beginPath();
+      ctx.arc(x + ts - 4, y + 4, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // Word color stripe(s) at the bottom of each used tile
     const wc = tile.wordColors;
     if (wc && wc.length > 0 && !isFoundPlanted) {
@@ -3346,24 +3339,30 @@ canvas {
   }
 
   /**
-   * Draw a floating word history panel in the lower-left of the board area.
-   * Shows the last 8 submitted words with score breakdowns.
+   * Draw word history panel in the right column, below the challenges sidebar.
+   * Challenges sidebar ends around y=330; minimap starts around y=536.
    */
   function drawWordHistory(ctx, state) {
     const hunt = state.hunt;
     if (!hunt || !hunt.wordsThisRound || hunt.wordsThisRound.length === 0) return;
 
-    const history = hunt.wordsThisRound;
-    const maxShow = Math.min(8, history.length);
-    const lineH   = 15;
-    const padX    = 8;
-    const padY    = 6;
-    const panelW  = 210;
-    const panelH  = maxShow * lineH + padY * 2 + 16; // +16 for header
-    const vp      = state.viewport;
-    const boardBottom = vp.offsetY + vp.rows * vp.tileSize;
-    const panelX  = vp.offsetX + 2;
-    const panelY  = boardBottom - panelH - 4;
+    const history  = hunt.wordsThisRound;
+    const maxShow  = Math.min(10, history.length);
+    const lineH    = 18;
+    const padX     = 8;
+    const padY     = 6;
+    const panelW   = 160;
+    const panelH   = maxShow * lineH + padY * 2 + 20; // +20 for header
+
+    // Right column: same x as challenge sidebar
+    const panelX   = canvas.width - panelW - 4;
+    // Below challenges sidebar (which has 10 rows × 22px + 28 header + 12 = 260px from y=66)
+    const challengesBottom = 66 + 28 + 10 * 22 + 12 + 6; // ≈ 334
+    const panelY   = challengesBottom;
+
+    // Don't draw if it would overflow into minimap area
+    const mmTop = canvas.height - 120 - 60 - 8; // minimap top with margin
+    if (panelY + panelH > mmTop) return;
 
     // Background
     ctx.fillStyle = 'rgba(10, 8, 6, 0.88)';
@@ -3373,42 +3372,35 @@ canvas {
     ctx.strokeRect(panelX, panelY, panelW, panelH);
 
     // Header
-    ctx.font = '10px "Courier New", monospace';
+    ctx.font = 'bold 10px "Courier New", monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#5a4a30';
-    ctx.fillText('WORDS PLAYED', panelX + padX, panelY + padY);
+    ctx.fillText('WORDS PLAYED  ' + history.length, panelX + padX, panelY + padY);
 
-    const listY = panelY + padY + 14;
+    const listTop = panelY + padY + 18;
 
     for (let i = 0; i < maxShow; i++) {
       const entry  = history[history.length - maxShow + i];
       const isLast = i === maxShow - 1;
-      const ey     = listY + i * lineH;
+      const ey     = listTop + i * lineH;
 
       // Word
-      ctx.fillStyle = isLast ? '#f0d070' : '#8a7a60';
-      ctx.font = (isLast ? 'bold ' : '') + '12px "Courier New", monospace';
+      ctx.fillStyle = isLast ? '#f0d070' : '#7a6a50';
+      ctx.font = (isLast ? 'bold ' : '') + '11px "Courier New", monospace';
       ctx.textAlign = 'left';
       ctx.fillText(entry.word, panelX + padX, ey);
 
-      // Score
-      ctx.fillStyle = isLast ? '#c8a050' : '#5a4a30';
-      ctx.font = '11px "Courier New", monospace';
+      // Score + shape mult
+      ctx.font = '10px "Courier New", monospace';
       ctx.textAlign = 'right';
-      ctx.fillText('+' + entry.score, panelX + panelW - padX - 60, ey);
-
-      // Multiplier hint (shape)
-      if (entry.shapeMult != null && entry.shapeMult !== 1.0) {
-        const smColor = entry.shapeMult >= 2.0 ? '#60b060'
-          : entry.shapeMult >= 1.5 ? '#80a050'
-          : '#884820';
-        ctx.fillStyle = smColor;
-        ctx.fillText('×' + entry.shapeMult.toFixed(1), panelX + panelW - padX, ey);
-      } else if (entry.shapeMult === 1.0) {
-        ctx.fillStyle = '#3a3028';
-        ctx.fillText('×1.0', panelX + panelW - padX, ey);
-      }
+      const smColor = entry.shapeMult >= 2.0 ? '#60b060'
+        : entry.shapeMult >= 1.5 ? '#80a050'
+        : entry.shapeMult < 1.0  ? '#884820' : '#5a4a30';
+      ctx.fillStyle = isLast ? '#c8a050' : '#5a4a30';
+      ctx.fillText('+' + entry.score, panelX + panelW - padX - 28, ey);
+      ctx.fillStyle = smColor;
+      ctx.fillText('×' + (entry.shapeMult || 1).toFixed(1), panelX + panelW - padX, ey);
     }
 
     ctx.textBaseline = 'middle';
@@ -5569,9 +5561,11 @@ canvas {
       STATE.hunt.challenges = LD.Challenges.generate(STATE.hunt.round);
     }
 
-    // Center viewport on the board
-    STATE.viewport.col = Math.max(0, Math.floor((STATE.board.width  - STATE.viewport.cols) / 2));
-    STATE.viewport.row = Math.max(0, Math.floor((STATE.board.height - STATE.viewport.rows) / 2));
+    // Show the full board — let resize() compute tile size to fit
+    STATE.viewport.cols = STATE.board.width;
+    STATE.viewport.rows = STATE.board.height;
+    STATE.viewport.col  = 0;
+    STATE.viewport.row  = 0;
 
     // Re-run renderer resize to pick up new board dims
     if (LD.Renderer) LD.Renderer.init(canvas, STATE);

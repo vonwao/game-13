@@ -632,25 +632,10 @@
     for (var i = 0; i < plantedWords.length; i++) {
       var pw = plantedWords[i];
       if (pw.found) continue;
-      if (pw.word.toUpperCase() !== upperWord) continue;
-
-      // Check if path positions match planted path
-      var plantedKeys = {};
-      for (var pi = 0; pi < pw.path.length; pi++) {
-        plantedKeys[pw.path[pi].col + ',' + pw.path[pi].row] = true;
-      }
-      var submitKeys = {};
-      for (var si = 0; si < path.length; si++) {
-        submitKeys[path[si].col + ',' + path[si].row] = true;
-      }
-
-      // Check forward match: every planted tile is in submitted path
-      var allMatch = true;
-      var pKeys = Object.keys(plantedKeys);
-      for (var k = 0; k < pKeys.length; k++) {
-        if (!submitKeys[pKeys[k]]) { allMatch = false; break; }
-      }
-      if (allMatch) return pw;
+      // Match by word name only — any valid path for the word counts as discovery.
+      // (The pathfinder may choose a different path than the planted one when
+      //  the word appears multiple times on the board.)
+      if (pw.word.toUpperCase() === upperWord) return pw;
     }
     return null;
   }

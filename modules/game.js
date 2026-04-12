@@ -143,9 +143,11 @@
       STATE.hunt.challenges = LD.Challenges.generate(STATE.hunt.round);
     }
 
-    // Center viewport on the board
-    STATE.viewport.col = Math.max(0, Math.floor((STATE.board.width  - STATE.viewport.cols) / 2));
-    STATE.viewport.row = Math.max(0, Math.floor((STATE.board.height - STATE.viewport.rows) / 2));
+    // Show the full board — let resize() compute tile size to fit
+    STATE.viewport.cols = STATE.board.width;
+    STATE.viewport.rows = STATE.board.height;
+    STATE.viewport.col  = 0;
+    STATE.viewport.row  = 0;
 
     // Re-run renderer resize to pick up new board dims
     if (LD.Renderer) LD.Renderer.init(canvas, STATE);
