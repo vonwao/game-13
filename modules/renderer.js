@@ -52,25 +52,32 @@
     canvas = cvs;
     const vp = state.viewport;
     const isWordHunt = state.gameMode === 'wordhunt';
+    const compact = isCompactLayout();
 
     if (isWordHunt) {
-      const hudH = 56;
-      const inputH = 50;
-      const sideW = 236;
-      const availW = canvas.width - 18 - sideW;
-      const availH = canvas.height - hudH - inputH - 12;
+      const hudH = compact ? 68 : 56;
+      const inputH = compact ? 78 : 50;
+      const sideW = compact ? 0 : 236;
+      const outerPadX = compact ? 12 : 18;
+      const outerPadY = compact ? 8 : 12;
+      const availW = canvas.width - outerPadX - sideW;
+      const availH = canvas.height - hudH - inputH - outerPadY;
       const fullCols = Math.max(1, state.board.width || vp.cols || 1);
       const fullRows = Math.max(1, state.board.height || vp.rows || 1);
       const fitTile = Math.floor(Math.min(availW / fullCols, availH / fullRows));
-      const minReadable = state.settings && state.settings.boardSize === 'large' ? 16 : 18;
-      const showWholeBoard = fitTile >= minReadable || (state.settings && state.settings.boardSize !== 'large');
+      const minReadable = compact
+        ? (state.settings && state.settings.boardSize === 'large' ? 14 : (state.settings && state.settings.boardSize === 'medium' ? 16 : 17))
+        : (state.settings && state.settings.boardSize === 'large' ? 16 : 18);
+      const showWholeBoard = compact
+        ? fitTile >= minReadable
+        : (fitTile >= minReadable || (state.settings && state.settings.boardSize !== 'large'));
 
       if (showWholeBoard) {
         vp.cols = fullCols;
         vp.rows = fullRows;
         vp.col = 0;
         vp.row = 0;
-        vp.tileSize = Math.max(14, fitTile);
+        vp.tileSize = Math.max(compact ? minReadable : 14, fitTile);
       } else {
         vp.tileSize = minReadable;
         vp.cols = Math.max(1, Math.min(fullCols, Math.floor(availW / vp.tileSize)));
@@ -81,7 +88,7 @@
 
       const boardW = vp.cols * vp.tileSize;
       const boardH = vp.rows * vp.tileSize;
-      vp.offsetX = 10 + Math.max(0, Math.floor((availW - boardW) / 2));
+      vp.offsetX = Math.floor(outerPadX / 2) + Math.max(0, Math.floor((availW - boardW) / 2));
       vp.offsetY = hudH + Math.max(2, Math.floor((availH - boardH) / 2));
     } else {
       const hudH = 60;
@@ -102,8 +109,13 @@
   }
 
   function shouldShowMinimap(state) {
+    if (isCompactLayout()) return false;
     if (state.gameMode !== 'wordhunt') return true;
     return state.viewport.cols < state.board.width || state.viewport.rows < state.board.height;
+  }
+
+  function isCompactLayout() {
+    return !!canvas && (canvas.width < 900 || canvas.height > canvas.width);
   }
 
   function getGameplayAdapter(state) {
@@ -666,7 +678,8 @@
 
   function drawHUDWordHunt(ctx, state) {
     const w = canvas.width;
-    const h = 55;
+    const compact = isCompactLayout();
+    const h = compact ? 68 : 55;
     const hunt = state.hunt || {};
     const foundCount = (hunt.plantedWords || []).filter(function (p) { return p.found; }).length;
     const totalHidden = (hunt.plantedWords || []).length;
@@ -681,6 +694,52 @@
 
     ctx.fillStyle = COLORS.hud;
     ctx.textBaseline = 'middle';
+
+    if (compact) {
+      ctx.font = 'bold 14px "Courier New", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('WORD HUNT', 10, 15);
+      ctx.font = '10px "Courier New", monospace';
+      ctx.fillStyle = '#8a7a60';
+      ctx.fillText('Round ' + (hunt.round || 1) + '/' + (hunt.maxRounds || 3), 10, 31);
+
+      ctx.fillStyle = COLORS.hud;
+      ctx.font = '11px "Courier New", monospace';
+      ctx.fillText('Score: ' + (state.score || 0).toLocaleString(), 10, 49);
+      ctx.fillText('Words: ' + (state.wordsSpelled || 0), 170, 49);
+
+      ctx.textAlign = 'right';
+      ctx.fillText('Hidden: ' + foundCount + '/' + totalHidden, w - 10, 15);
+      ctx.fillText('Clues: ' + (hunt.cluesRemaining || 0), w - 10, 31);
+
+      const endCondCompact = (state.settings && state.settings.endCondition) || 'challenges';
+      if (endCondCompact === 'challenges') {
+        ctx.fillText('Obj: ' + objectiveDone + '/' + objectiveTotal, w - 10, 49);
+      } else if (endCondCompact === 'timed') {
+        const secsCompact = Math.max(0, Math.ceil(hunt.timeRemaining || 0));
+        const mmCompact = Math.floor(secsCompact / 60);
+        const ssCompact = String(secsCompact % 60).padStart(2, '0');
+        ctx.fillStyle = secsCompact < 30 ? '#ff6040' : COLORS.hud;
+        ctx.fillText(mmCompact + ':' + ssCompact, w - 10, 49);
+      } else if (endCondCompact === 'turns') {
+        ctx.fillText('Turns: ' + (hunt.turnsRemaining || 0), w - 10, 49);
+      }
+
+      if (hunt.combo > 1) {
+        ctx.font = 'bold 11px "Courier New", monospace';
+        ctx.fillStyle = '#f0d070';
+        ctx.textAlign = 'center';
+        ctx.fillText('× ' + hunt.combo + ' COMBO', w / 2, 15);
+      }
+
+      if (state.debug && state.debug.enabled) {
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 10px "Courier New", monospace';
+        ctx.fillStyle = '#ff8080';
+        ctx.fillText('DEBUG', w / 2, 31);
+      }
+      return;
+    }
 
     // Title + round
     ctx.font = 'bold 16px "Courier New", monospace';
@@ -1089,6 +1148,7 @@
    * Shared measurements for the Word Hunt right column.
    */
   function getWordHuntSidebarMetrics(state) {
+    if (isCompactLayout()) return null;
     const objectiveCount = (state.hunt && state.hunt.challenges) ? state.hunt.challenges.length : 0;
     const sideW = 220;
     const sideX = canvas.width - sideW - 8;
@@ -1114,6 +1174,7 @@
     const total = (hunt.plantedWords || []).length;
     const recent = (hunt.discoveredWords || []).slice(-4).reverse();
     const m = getWordHuntSidebarMetrics(state);
+    if (!m) return;
     const panelX = m.x;
     const panelY = m.discoveryY;
     const panelW = m.w;
@@ -1160,6 +1221,7 @@
     const padX = 8;
     const padY = 6;
     const m = getWordHuntSidebarMetrics(state);
+    if (!m) return;
     const panelX = m.x;
     const panelY = m.discoveryY + 114;
     const panelW = m.w;

@@ -107,9 +107,25 @@
     if (gc < 0 || gc >= _state.board.width)  return null;
     if (gr < 0 || gr >= _state.board.height) return null;
     // Must be within the game area (below HUD, above action bar)
-    var actionBarY = _canvas.height - 70;
+    var actionBarY = _canvas.height - getActionBarHeight();
     if (y < vp.offsetY || y > actionBarY) return null;
     return { col: gc, row: gr };
+  }
+
+  function isCompactLayout() {
+    return !!_canvas && (_canvas.width < 900 || _canvas.height > _canvas.width);
+  }
+
+  function getActionBarHeight() {
+    return isCompactLayout() ? 78 : 70;
+  }
+
+  function getCompactShapeLabel(label) {
+    if (!label) return '';
+    if (label === 'horizontal') return 'H';
+    if (label === 'vertical') return 'V';
+    if (label === 'diagonal') return 'diag';
+    return label.replace(' corners', 'C').replace(' corner', 'C').replace(' turns', 'T').replace(' turn', 'T');
   }
 
   function isAdjacent(a, b) {
@@ -679,9 +695,19 @@
   function renderActionBar(ctx, state) {
     _buttons = [];
 
+    var compact = isCompactLayout();
     var W = _canvas.width;
-    var barH = 70;
+    var barH = getActionBarHeight();
     var barY = _canvas.height - barH;
+    var boardNeedsPan = compact && (
+      state.viewport.cols < state.board.width ||
+      state.viewport.rows < state.board.height
+    );
+
+    if (compact && _scrollMode) {
+      _scrollMode = false;
+      resetScrollTracking();
+    }
 
     // Background
     ctx.fillStyle = '#12100d';
@@ -697,13 +723,16 @@
     var word     = state.input.typed || '';
     var isValid  = state.input.valid && state.input.hasPath;
     var isEmpty  = word.length === 0;
+    var wordDisplay = isEmpty
+      ? (compact ? '(drag tiles to spell)' : '(tap/click tiles to spell)')
+      : (compact ? word : word.split('').join(' - '));
 
-    ctx.font = '20px "Courier New", monospace';
+    ctx.font = (compact ? '18px' : '20px') + ' "Courier New", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = isValid ? '#80e080' : (isEmpty ? '#4a3a20' : '#d4c4a0');
     ctx.fillText(
-      isEmpty ? '(tap/click tiles to spell)' : word.split('').join(' - '),
+      wordDisplay,
       W / 2,
       barY + 14
     );
@@ -712,12 +741,12 @@
       if (sp && state.input.hasPath) {
         var breakdown = sp.basePts + 'pts';
         if (sp.lenMult > 1.0) breakdown += ' ×' + sp.lenMult.toFixed(1);
-        if (sp.shapeMult !== 1.0) breakdown += ' ×' + sp.shapeMult.toFixed(1) + ' ' + sp.shapeLabel;
+        if (sp.shapeMult !== 1.0) breakdown += ' ×' + sp.shapeMult.toFixed(1) + ' ' + (compact ? getCompactShapeLabel(sp.shapeLabel) : sp.shapeLabel);
         if (sp.comboMult > 1.0) breakdown += ' ×' + sp.comboMult.toFixed(1) + ' combo';
-        if (sp.crystalMult > 1.0) breakdown += ' ×2 crystal';
-        if (sp.emberBonus > 0) breakdown += ' +' + sp.emberBonus + ' ember';
+        if (sp.crystalMult > 1.0) breakdown += compact ? ' ×2 cry' : ' ×2 crystal';
+        if (sp.emberBonus > 0) breakdown += compact ? ' +' + sp.emberBonus + ' emb' : ' +' + sp.emberBonus + ' ember';
         breakdown += ' = ~' + sp.total + ' pts';
-        ctx.font = '10px "Courier New", monospace';
+        ctx.font = (compact ? '9px' : '10px') + ' "Courier New", monospace';
         ctx.fillStyle = isValid ? '#ffd700' : '#888';
         ctx.fillText(breakdown, W / 2, barY + 28);
       } else {
@@ -726,14 +755,21 @@
         ctx.fillStyle = isValid ? '#60c060' : (tooShort ? '#c08040' : '#c04040');
         ctx.fillText(isValid ? '✓ valid' : (tooShort ? 'need 4+ letters' : '✗ invalid'), W / 2, barY + 28);
       }
+    } else if (boardNeedsPan) {
+      ctx.font = '10px "Courier New", monospace';
+      ctx.fillStyle = '#8a7a60';
+      ctx.fillText('Two-finger pan on oversized boards', W / 2, barY + 28);
     }
 
     // Buttons
     var isWordHunt = state.gameMode === 'wordhunt';
-    var btnCount = isWordHunt ? 5 : 4;
+    var showScrollButton = !compact;
+    var btnCount = isWordHunt
+      ? (showScrollButton ? 5 : 4)
+      : (showScrollButton ? 4 : 3);
     var btnW = Math.min(122, Math.floor((W - 40) / btnCount));
     var btnH = 36;
-    var btnY = barY + 30;
+    var btnY = barY + (compact ? 38 : 30);
     var totalBtns = btnW * btnCount + (btnCount - 1) * 10;
     var btnStartX = Math.floor((W - totalBtns) / 2);
     var gap = 10;
@@ -752,12 +788,14 @@
       });
     }
 
-    btnDefs.push({
-      label: _scrollMode ? '↕ Scroll ON' : '↕ Scroll',
-      action: toggleScrollMode,
-      enabled: true,
-      active: _scrollMode,
-    });
+    if (showScrollButton) {
+      btnDefs.push({
+        label: _scrollMode ? '↕ Scroll ON' : '↕ Scroll',
+        action: toggleScrollMode,
+        enabled: true,
+        active: _scrollMode,
+      });
+    }
 
     for (var i = 0; i < btnDefs.length; i++) {
       var def = btnDefs[i];

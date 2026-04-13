@@ -100,21 +100,17 @@
   }
 
   function resizeCanvas() {
-    const baseW = 1280;
-    const baseH = 720;
-    const aspect = baseW / baseH;
+    const isMobileLike = window.innerWidth < 900 || window.innerHeight > window.innerWidth;
+    let displayW = window.innerWidth;
+    let displayH = window.innerHeight;
 
-    let displayW = Math.min(window.innerWidth, baseW);
-    let displayH = Math.min(window.innerHeight, baseH);
-
-    if (displayW / displayH > aspect) {
-      displayW = Math.floor(displayH * aspect);
-    } else {
-      displayH = Math.floor(displayW / aspect);
+    if (!isMobileLike) {
+      displayW = Math.min(displayW, 1280);
+      displayH = Math.min(displayH, 720);
     }
 
-    canvas.width = baseW;
-    canvas.height = baseH;
+    canvas.width = Math.max(1, Math.floor(displayW));
+    canvas.height = Math.max(1, Math.floor(displayH));
     canvas.style.width = displayW + 'px';
     canvas.style.height = displayH + 'px';
 

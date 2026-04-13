@@ -198,6 +198,8 @@
     if (objectives.length === 0) return;
 
     var canvasW = ctx.canvas ? ctx.canvas.width  : 1280;
+    var canvasH = ctx.canvas ? ctx.canvas.height : 720;
+    if (canvasW < 900 || canvasH > canvasW) return;
     var sideW = 220;
     var sideX = canvasW - sideW - 8;
     var sideY = 60;
