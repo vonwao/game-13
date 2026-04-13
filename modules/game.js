@@ -73,6 +73,7 @@
       selectedTiles: [],
       lastTap: null,
     },
+    inputAdapter: null,
     showHelp: false,
     helpTab: 'basics',
     debug: {
@@ -233,6 +234,27 @@
     }
   }
 
+  function getGameplayAdapter() {
+    if (window.LD && window.LD.PointerInput) return window.LD.PointerInput;
+    if (window.LD && window.LD.Touch) return window.LD.Touch;
+    return null;
+  }
+
+  function initGameplayAdapter() {
+    const adapter = getGameplayAdapter();
+    STATE.inputAdapter = adapter;
+
+    // Legacy compatibility flag: keep it in sync with "some gameplay adapter exists",
+    // but do not use it to decide whether to initialize or render input.
+    STATE.touch.enabled = !!adapter;
+
+    if (adapter && adapter.init) {
+      adapter.init(canvas, STATE);
+    }
+
+    return adapter;
+  }
+
   // ── Phase transition key handling (captures before input.js) ───────────────
 
   window.addEventListener('keydown', function(e) {
@@ -289,7 +311,10 @@
 
     // Update systems
     if (LD.Particles) LD.Particles.update(dt);
-    if (LD.Touch && STATE.touch.enabled) LD.Touch.update(STATE);
+    const gameplayAdapter = STATE.inputAdapter || getGameplayAdapter();
+    if (gameplayAdapter && gameplayAdapter.update) {
+      gameplayAdapter.update(STATE);
+    }
 
     // Word Hunt timed mode countdown
     if (STATE.phase === 'playing' && STATE.gameMode === 'wordhunt' &&
@@ -328,19 +353,14 @@
   function boot() {
     initCanvas();
 
-    // Detect touch
-    STATE.touch.enabled = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-
     // Initialize Settings module (before Input so settings screen can respond to clicks)
     if (LD.Settings) LD.Settings.init(canvas, STATE);
 
     // Initialize input system
     if (LD.Input) LD.Input.init(STATE);
 
-    // Initialize touch support if detected
-    if (STATE.touch.enabled && LD.Touch) {
-      LD.Touch.init(canvas, STATE);
-    }
+    // Initialize the gameplay adapter unconditionally so desktop pointer play can work.
+    initGameplayAdapter();
 
     // Start in settings phase
     STATE.phase = 'settings';

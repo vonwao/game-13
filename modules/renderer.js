@@ -106,6 +106,13 @@
     return state.viewport.cols < state.board.width || state.viewport.rows < state.board.height;
   }
 
+  function getGameplayAdapter(state) {
+    if (state && state.inputAdapter) return state.inputAdapter;
+    if (window.LD && window.LD.PointerInput) return window.LD.PointerInput;
+    if (window.LD && window.LD.Touch) return window.LD.Touch;
+    return null;
+  }
+
   function setViewportTarget(col, row) {
     targetScrollX = col;
     targetScrollY = row;
@@ -173,9 +180,10 @@
     if (shouldShowMinimap(state)) drawMinimap(ctx, state);
     drawHUD(ctx, state);
 
-    // Input bar: touch action bar on touch devices, keyboard bar otherwise
-    if (state.touch && state.touch.enabled && window.LD && window.LD.Touch) {
-      LD.Touch.renderActionBar(ctx, state);
+    // Input bar: gameplay adapter action bar when available, keyboard bar otherwise
+    const gameplayAdapter = getGameplayAdapter(state);
+    if (gameplayAdapter && gameplayAdapter.renderActionBar) {
+      gameplayAdapter.renderActionBar(ctx, state);
     } else {
       drawInputBar(ctx, state);
     }
@@ -944,7 +952,7 @@
       ctx.font = '11px "Courier New", monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Type a word · Enter submit · C clue · ` debug · ? help', 20, barY + 41);
+      ctx.fillText('Type, click, or drag tiles · Enter submit · C clue · ` debug · ? help', 20, barY + 41);
     }
   }
 
@@ -1392,6 +1400,8 @@
       ctx.fillStyle = COLORS.hud;
       [
         'A-Z: type a word',
+        'Mouse / touch: click or drag tiles',
+        'Bottom bar: clear, undo, submit, clue',
         'Enter: submit',
         'Backspace / Escape: edit or clear',
         'Arrow keys: scroll the board',
