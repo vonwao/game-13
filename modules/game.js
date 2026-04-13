@@ -100,13 +100,23 @@
   }
 
   function resizeCanvas() {
-    const dpr = 1; // keep logical pixels simple
-    const w = Math.min(window.innerWidth, 1280);
-    const h = Math.min(window.innerHeight, 720);
-    canvas.width = 1280;
-    canvas.height = 720;
-    canvas.style.width = Math.min(window.innerWidth, 1280) + 'px';
-    canvas.style.height = Math.min(window.innerHeight, 720) + 'px';
+    const baseW = 1280;
+    const baseH = 720;
+    const aspect = baseW / baseH;
+
+    let displayW = Math.min(window.innerWidth, baseW);
+    let displayH = Math.min(window.innerHeight, baseH);
+
+    if (displayW / displayH > aspect) {
+      displayW = Math.floor(displayH * aspect);
+    } else {
+      displayH = Math.floor(displayW / aspect);
+    }
+
+    canvas.width = baseW;
+    canvas.height = baseH;
+    canvas.style.width = displayW + 'px';
+    canvas.style.height = displayH + 'px';
 
     if (LD.Renderer) {
       LD.Renderer.init(canvas, STATE);
