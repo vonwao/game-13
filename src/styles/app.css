@@ -159,6 +159,45 @@ button {
   gap: var(--space-2);
 }
 
+.panel-copy {
+  color: var(--text-soft);
+  line-height: 1.5;
+  font-size: 0.93rem;
+}
+
+.segmented-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.segmented-toggle__btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 0.6rem 0.9rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-soft);
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease,
+    transform 120ms ease;
+}
+
+.segmented-toggle__btn:hover,
+.segmented-toggle__btn:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(216, 177, 93, 0.4);
+  outline: none;
+}
+
+.segmented-toggle__btn--active {
+  border-color: rgba(216, 177, 93, 0.55);
+  background: rgba(216, 177, 93, 0.16);
+  color: var(--text);
+}
+
 .shell-button {
   appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.12);

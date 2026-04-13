@@ -2,6 +2,8 @@ import { useSyncExternalStore } from 'react';
 import {
   advanceRound,
   getShellState,
+  returnToSettings,
+  setGameMode,
   setSettings,
   setUIState,
   startGame,
@@ -16,8 +18,10 @@ export default function useGameShellState() {
     actions: {
       setUIState,
       setSettings,
+      setGameMode,
       startGame,
       advanceRound,
+      returnToSettings,
     },
   };
 }

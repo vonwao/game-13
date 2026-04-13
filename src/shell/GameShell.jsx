@@ -43,6 +43,13 @@ function LiveRunPanel({ state, actions }) {
         >
           Restart Run
         </button>
+        <button
+          type="button"
+          className="shell-button"
+          onClick={actions.returnToSettings}
+        >
+          Back To Setup
+        </button>
         {state.huntSummary.advanceAvailable ? (
           <button
             type="button"

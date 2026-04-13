@@ -167,3 +167,27 @@ export function advanceRound() {
     },
   });
 }
+
+export function setGameMode(mode) {
+  const game = getGameApi();
+  if (game && typeof game.setGameMode === 'function') {
+    game.setGameMode(mode);
+    return;
+  }
+
+  patchLocalShellState({
+    gameMode: mode,
+  });
+}
+
+export function returnToSettings() {
+  const game = getGameApi();
+  if (game && typeof game.returnToSettings === 'function') {
+    game.returnToSettings();
+    return;
+  }
+
+  patchLocalShellState({
+    phase: 'settings',
+  });
+}

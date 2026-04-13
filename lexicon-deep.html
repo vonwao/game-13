@@ -7003,6 +7003,10 @@ canvas {
   let loopStarted = false;
   let booted = false;
 
+  function isShellMode() {
+    return !!window.__LD_SHELL_MODE__;
+  }
+
   // ── Init ───────────────────────────────────────────────────────────────────
 
   function initCanvas(explicitCanvas) {
@@ -7153,6 +7157,17 @@ canvas {
     STATE.hunt = STATE.hunt || {};
     STATE.hunt.round = (STATE.hunt.round || 1) + 1;
     setupRound(false);
+    notifyShellState(true);
+  }
+
+  function setGameMode(mode) {
+    if (mode !== 'wordhunt' && mode !== 'siege') return;
+    STATE.gameMode = mode;
+    notifyShellState(true);
+  }
+
+  function returnToSettings() {
+    STATE.phase = 'settings';
     notifyShellState(true);
   }
 
@@ -7313,6 +7328,8 @@ canvas {
   window.LD.Game = {
     startGame: startGame,
     advanceRound: advanceRound,
+    setGameMode: setGameMode,
+    returnToSettings: returnToSettings,
     getShellState: getShellState,
     subscribeShell: subscribeShell,
     setUIState: setUIState,
@@ -7355,6 +7372,10 @@ canvas {
     // Init audio on first interaction
     initAudio();
 
+    if (isShellMode() && (STATE.phase === 'title' || STATE.phase === 'settings')) {
+      return;
+    }
+
     if (STATE.phase === 'title' && e.key === 'Enter') {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -7391,7 +7412,7 @@ canvas {
   // Also init audio on click (for mobile/browser policy)
   window.addEventListener('click', function() {
     initAudio();
-    if (STATE.phase === 'title') {
+    if (!isShellMode() && STATE.phase === 'title') {
       STATE.phase = 'settings';
       notifyShellState(true);
     }
@@ -7464,7 +7485,7 @@ canvas {
     booted = true;
 
     // Initialize Settings module (before Input so settings screen can respond to clicks)
-    if (LD.Settings) LD.Settings.init(canvas, STATE);
+    if (LD.Settings && !isShellMode()) LD.Settings.init(canvas, STATE);
 
     // Initialize input system
     if (LD.Input) LD.Input.init(STATE);
