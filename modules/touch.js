@@ -174,8 +174,8 @@
     _state.input.typed = word;
     _state.input.path = path.slice();
 
-    if (window.LD && window.LD.Input && window.LD.Input._refreshInputState) {
-      window.LD.Input._refreshInputState();
+    if (window.LD && window.LD.Input && window.LD.Input.refreshCurrentWord) {
+      window.LD.Input.refreshCurrentWord();
     } else {
       _state.input.valid = false;
       _state.input.hasPath = path.length > 0;
@@ -252,22 +252,22 @@
   function legacySubmitWord() {
     if (!_state || _state.phase !== 'playing') return;
     if (_state.input.valid && _state.input.hasPath) {
-      if (window.LD && window.LD.Input && window.LD.Input._submitWord) {
-        window.LD.Input._submitWord();
+      if (window.LD && window.LD.Input && window.LD.Input.submitCurrentWord) {
+        window.LD.Input.submitCurrentWord();
       }
       ensureTouchState();
       _state.touch.selectedTiles = [];
       _lastTapTime = 0;
       _lastTapCol = -1;
       _lastTapRow = -1;
-    } else if (window.LD && window.LD.Input && window.LD.Input._rejectWord) {
-      window.LD.Input._rejectWord();
+    } else if (window.LD && window.LD.Input && window.LD.Input.rejectCurrentWord) {
+      window.LD.Input.rejectCurrentWord();
     }
   }
 
   function legacyUseClue() {
-    if (window.LD && window.LD.Input && window.LD.Input._useClue) {
-      window.LD.Input._useClue();
+    if (window.LD && window.LD.Input && window.LD.Input.useClue) {
+      window.LD.Input.useClue();
     }
   }
 
@@ -328,8 +328,8 @@
       if (isCurrentWordValid()) {
         return callAction('submitCurrentWord');
       }
-      if (window.LD && window.LD.Input && window.LD.Input._rejectWord) {
-        return window.LD.Input._rejectWord();
+      if (window.LD && window.LD.Input && window.LD.Input.rejectCurrentWord) {
+        return window.LD.Input.rejectCurrentWord();
       }
       return;
     }
