@@ -20,10 +20,12 @@ canvas {
 </head>
 <body>
 <canvas id="game"></canvas>
+<!-- GENERATED FILE - DO NOT EDIT -->
+<!-- Source of truth: modules/*.js + assemble.sh -->
 HTMLHEAD
 
 # Append each module as a script block
-for mod in dictionary common_words constants board pathfinder challenges particles audio renderer settings touch input game; do
+for mod in dictionary common_words constants board pathfinder challenges particles audio renderer settings touch input actions game; do
   echo "<script>" >> "$OUT"
   cat "modules/${mod}.js" >> "$OUT"
   echo "" >> "$OUT"

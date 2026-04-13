@@ -61,6 +61,12 @@
     _state.input.scorePreview = null;
   }
 
+  function setCurrentWordPath(word, path) {
+    _state.input.typed = word || '';
+    _state.input.path = Array.isArray(path) ? path.slice() : [];
+    refreshInputState();
+  }
+
   function getPathOrientationLabel(path, reversed) {
     if (!path || path.length < 2) return 'single';
     const dc = path[1].col - path[0].col;
@@ -721,22 +727,26 @@
     switch (key) {
       case 'ArrowUp':
         e.preventDefault();
-        scrollViewport(0, -1);
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(0, -1);
+        else scrollViewport(0, -1);
         safeCall(window.LD?.Audio?.play, 'scroll');
         return;
       case 'ArrowDown':
         e.preventDefault();
-        scrollViewport(0,  1);
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(0, 1);
+        else scrollViewport(0, 1);
         safeCall(window.LD?.Audio?.play, 'scroll');
         return;
       case 'ArrowLeft':
         e.preventDefault();
-        scrollViewport(-1, 0);
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(-1, 0);
+        else scrollViewport(-1, 0);
         safeCall(window.LD?.Audio?.play, 'scroll');
         return;
       case 'ArrowRight':
         e.preventDefault();
-        scrollViewport( 1, 0);
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(1, 0);
+        else scrollViewport(1, 0);
         safeCall(window.LD?.Audio?.play, 'scroll');
         return;
     }
@@ -804,32 +814,33 @@
     // ── C — spend a clue in Word Hunt ──────────────────────────────────────
     if ((key === 'c' || key === 'C') && _state.gameMode === 'wordhunt') {
       e.preventDefault();
-      useClue();
+      if (window.LD.Actions) window.LD.Actions.useClue();
+      else useClue();
       return;
     }
 
     // ── Escape — clear input ──────────────────────────────────────────────────
     if (key === 'Escape') {
       e.preventDefault();
-      clearInput();
+      if (window.LD.Actions) window.LD.Actions.clearCurrentWord();
+      else clearInput();
       return;
     }
 
     // ── Backspace ─────────────────────────────────────────────────────────────
     if (key === 'Backspace') {
       e.preventDefault();
-      backspaceLetter();
+      if (window.LD.Actions) window.LD.Actions.backspaceLetter();
+      else backspaceLetter();
       return;
     }
 
     // ── Enter — submit ────────────────────────────────────────────────────────
     if (key === 'Enter') {
       e.preventDefault();
-      if (_state.input.valid && _state.input.hasPath) {
-        submitWord();
-      } else {
-        rejectWord();
-      }
+      if (window.LD.Actions) window.LD.Actions.submitCurrentWord();
+      else if (_state.input.valid && _state.input.hasPath) submitWord();
+      else rejectWord();
       return;
     }
 
@@ -837,7 +848,8 @@
     // key.length === 1 catches printable single characters
     if (key.length === 1 && /^[A-Za-z]$/.test(key)) {
       e.preventDefault();
-      appendLetter(key);
+      if (window.LD.Actions) window.LD.Actions.appendLetter(key);
+      else appendLetter(key);
     }
   }
 
@@ -885,7 +897,16 @@
   window.LD.Input = {
     init,
     update,
-    // Exposed for touch module to trigger submission directly
+    appendLetter,
+    backspaceLetter,
+    clearCurrentWord: clearInput,
+    setCurrentWordPath,
+    refreshCurrentWord: refreshInputState,
+    scrollBoard: scrollViewport,
+    submitCurrentWord: submitWord,
+    rejectCurrentWord: rejectWord,
+    useClue,
+    // Compatibility exports during migration
     _submitWord: submitWord,
     _rejectWord: rejectWord,
     _useClue: useClue,

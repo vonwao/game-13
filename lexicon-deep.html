@@ -16,6 +16,8 @@ canvas {
 </head>
 <body>
 <canvas id="game"></canvas>
+<!-- GENERATED FILE - DO NOT EDIT -->
+<!-- Source of truth: modules/*.js + assemble.sh -->
 <script>
 (function() {
   'use strict';
@@ -2666,6 +2668,13 @@ canvas {
     return state.viewport.cols < state.board.width || state.viewport.rows < state.board.height;
   }
 
+  function getGameplayAdapter(state) {
+    if (state && state.inputAdapter) return state.inputAdapter;
+    if (window.LD && window.LD.PointerInput) return window.LD.PointerInput;
+    if (window.LD && window.LD.Touch) return window.LD.Touch;
+    return null;
+  }
+
   function setViewportTarget(col, row) {
     targetScrollX = col;
     targetScrollY = row;
@@ -2733,9 +2742,10 @@ canvas {
     if (shouldShowMinimap(state)) drawMinimap(ctx, state);
     drawHUD(ctx, state);
 
-    // Input bar: touch action bar on touch devices, keyboard bar otherwise
-    if (state.touch && state.touch.enabled && window.LD && window.LD.Touch) {
-      LD.Touch.renderActionBar(ctx, state);
+    // Input bar: gameplay adapter action bar when available, keyboard bar otherwise
+    const gameplayAdapter = getGameplayAdapter(state);
+    if (gameplayAdapter && gameplayAdapter.renderActionBar) {
+      gameplayAdapter.renderActionBar(ctx, state);
     } else {
       drawInputBar(ctx, state);
     }
@@ -3504,7 +3514,7 @@ canvas {
       ctx.font = '11px "Courier New", monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Type a word · Enter submit · C clue · ` debug · ? help', 20, barY + 41);
+      ctx.fillText('Type, click, or drag tiles · Enter submit · C clue · ` debug · ? help', 20, barY + 41);
     }
   }
 
@@ -3952,6 +3962,8 @@ canvas {
       ctx.fillStyle = COLORS.hud;
       [
         'A-Z: type a word',
+        'Mouse / touch: click or drag tiles',
+        'Bottom bar: clear, undo, submit, clue',
         'Enter: submit',
         'Backspace / Escape: edit or clear',
         'Arrow keys: scroll the board',
@@ -5132,6 +5144,12 @@ canvas {
     _state.input.scorePreview = null;
   }
 
+  function setCurrentWordPath(word, path) {
+    _state.input.typed = word || '';
+    _state.input.path = Array.isArray(path) ? path.slice() : [];
+    refreshInputState();
+  }
+
   function getPathOrientationLabel(path, reversed) {
     if (!path || path.length < 2) return 'single';
     const dc = path[1].col - path[0].col;
@@ -5792,22 +5810,26 @@ canvas {
     switch (key) {
       case 'ArrowUp':
         e.preventDefault();
-        scrollViewport(0, -1);
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(0, -1);
+        else scrollViewport(0, -1);
         safeCall(window.LD?.Audio?.play, 'scroll');
         return;
       case 'ArrowDown':
         e.preventDefault();
-        scrollViewport(0,  1);
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(0, 1);
+        else scrollViewport(0, 1);
         safeCall(window.LD?.Audio?.play, 'scroll');
         return;
       case 'ArrowLeft':
         e.preventDefault();
-        scrollViewport(-1, 0);
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(-1, 0);
+        else scrollViewport(-1, 0);
         safeCall(window.LD?.Audio?.play, 'scroll');
         return;
       case 'ArrowRight':
         e.preventDefault();
-        scrollViewport( 1, 0);
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(1, 0);
+        else scrollViewport(1, 0);
         safeCall(window.LD?.Audio?.play, 'scroll');
         return;
     }
@@ -5875,32 +5897,33 @@ canvas {
     // ── C — spend a clue in Word Hunt ──────────────────────────────────────
     if ((key === 'c' || key === 'C') && _state.gameMode === 'wordhunt') {
       e.preventDefault();
-      useClue();
+      if (window.LD.Actions) window.LD.Actions.useClue();
+      else useClue();
       return;
     }
 
     // ── Escape — clear input ──────────────────────────────────────────────────
     if (key === 'Escape') {
       e.preventDefault();
-      clearInput();
+      if (window.LD.Actions) window.LD.Actions.clearCurrentWord();
+      else clearInput();
       return;
     }
 
     // ── Backspace ─────────────────────────────────────────────────────────────
     if (key === 'Backspace') {
       e.preventDefault();
-      backspaceLetter();
+      if (window.LD.Actions) window.LD.Actions.backspaceLetter();
+      else backspaceLetter();
       return;
     }
 
     // ── Enter — submit ────────────────────────────────────────────────────────
     if (key === 'Enter') {
       e.preventDefault();
-      if (_state.input.valid && _state.input.hasPath) {
-        submitWord();
-      } else {
-        rejectWord();
-      }
+      if (window.LD.Actions) window.LD.Actions.submitCurrentWord();
+      else if (_state.input.valid && _state.input.hasPath) submitWord();
+      else rejectWord();
       return;
     }
 
@@ -5908,7 +5931,8 @@ canvas {
     // key.length === 1 catches printable single characters
     if (key.length === 1 && /^[A-Za-z]$/.test(key)) {
       e.preventDefault();
-      appendLetter(key);
+      if (window.LD.Actions) window.LD.Actions.appendLetter(key);
+      else appendLetter(key);
     }
   }
 
@@ -5956,11 +5980,245 @@ canvas {
   window.LD.Input = {
     init,
     update,
-    // Exposed for touch module to trigger submission directly
+    appendLetter,
+    backspaceLetter,
+    clearCurrentWord: clearInput,
+    setCurrentWordPath,
+    refreshCurrentWord: refreshInputState,
+    scrollBoard: scrollViewport,
+    submitCurrentWord: submitWord,
+    rejectCurrentWord: rejectWord,
+    useClue,
+    // Compatibility exports during migration
     _submitWord: submitWord,
     _rejectWord: rejectWord,
     _useClue: useClue,
     _refreshInputState: refreshInputState,
+  };
+})();
+
+</script>
+<script>
+(function () {
+  'use strict';
+
+  window.LD = window.LD || {};
+
+  var _state = null;
+
+  function safeCall(fn) {
+    if (typeof fn === 'function') {
+      var args = Array.prototype.slice.call(arguments, 1);
+      return fn.apply(null, args);
+    }
+    return undefined;
+  }
+
+  function ensureSelectionState() {
+    if (!_state) return;
+    _state.touch = _state.touch || {};
+    _state.touch.selectedTiles = _state.touch.selectedTiles || [];
+    _state.touch._scrollBufX = _state.touch._scrollBufX || 0;
+    _state.touch._scrollBufY = _state.touch._scrollBufY || 0;
+  }
+
+  function getBoardTile(col, row) {
+    if (!_state || !_state.board) return null;
+    if (col < 0 || row < 0 || col >= _state.board.width || row >= _state.board.height) return null;
+    return _state.board.tiles[row * _state.board.width + col] || null;
+  }
+
+  function buildWordFromTiles(path) {
+    var word = '';
+    for (var i = 0; i < path.length; i++) {
+      var tile = getBoardTile(path[i].col, path[i].row);
+      word += (tile && tile.letter) ? tile.letter : '?';
+    }
+    return word;
+  }
+
+  function isAdjacent(a, b) {
+    return Math.abs(a.col - b.col) <= 1 && Math.abs(a.row - b.row) <= 1;
+  }
+
+  function syncSelectionToInput() {
+    ensureSelectionState();
+    var path = _state.touch.selectedTiles;
+    if (!path || path.length === 0) {
+      safeCall(window.LD?.Input?.clearCurrentWord);
+      return;
+    }
+    safeCall(
+      window.LD?.Input?.setCurrentWordPath,
+      buildWordFromTiles(path),
+      path.slice()
+    );
+  }
+
+  function clearTileSelection() {
+    ensureSelectionState();
+    _state.touch.selectedTiles = [];
+  }
+
+  function startPath(tile) {
+    ensureSelectionState();
+    _state.touch.selectedTiles = [{ col: tile.col, row: tile.row }];
+    syncSelectionToInput();
+  }
+
+  function extendPath(tile) {
+    ensureSelectionState();
+    _state.touch.selectedTiles.push({ col: tile.col, row: tile.row });
+    syncSelectionToInput();
+  }
+
+  function trimPathTo(tile) {
+    ensureSelectionState();
+    var path = _state.touch.selectedTiles;
+    for (var i = 0; i < path.length; i++) {
+      if (path[i].col === tile.col && path[i].row === tile.row) {
+        _state.touch.selectedTiles = path.slice(0, i + 1);
+        syncSelectionToInput();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function restartPath(tile) {
+    startPath(tile);
+  }
+
+  function tapTile(col, row) {
+    if (!_state || _state.phase !== 'playing') return false;
+
+    var tile = getBoardTile(col, row);
+    if (!tile || tile.corrupted || tile.isSeal) return false;
+
+    safeCall(window.LD?.Audio?.play, 'tap');
+    ensureSelectionState();
+
+    var path = _state.touch.selectedTiles;
+    if (path.length === 0) {
+      startPath({ col: col, row: row });
+      return true;
+    }
+
+    var last = path[path.length - 1];
+    if (last.col === col && last.row === row) {
+      undoTileSelection();
+      return true;
+    }
+
+    if (trimPathTo({ col: col, row: row })) {
+      return true;
+    }
+
+    if (isAdjacent(last, { col: col, row: row })) {
+      extendPath({ col: col, row: row });
+      return true;
+    }
+
+    restartPath({ col: col, row: row });
+    return true;
+  }
+
+  function undoTileSelection() {
+    ensureSelectionState();
+    if (_state.touch.selectedTiles.length > 0) {
+      _state.touch.selectedTiles.pop();
+      syncSelectionToInput();
+      return true;
+    }
+    return false;
+  }
+
+  function getSelectedTiles() {
+    ensureSelectionState();
+    return _state.touch.selectedTiles.slice();
+  }
+
+  function clearCurrentWord() {
+    clearTileSelection();
+    safeCall(window.LD?.Input?.clearCurrentWord);
+  }
+
+  function submitCurrentWord() {
+    if (!_state || _state.phase !== 'playing') return false;
+    if (_state.input && _state.input.valid && _state.input.hasPath) {
+      safeCall(window.LD?.Input?.submitCurrentWord);
+      clearTileSelection();
+      return true;
+    }
+    safeCall(window.LD?.Input?.rejectCurrentWord);
+    return false;
+  }
+
+  function rejectCurrentWord() {
+    safeCall(window.LD?.Input?.rejectCurrentWord);
+  }
+
+  function useClue() {
+    return !!safeCall(window.LD?.Input?.useClue);
+  }
+
+  function appendLetter(letter) {
+    clearTileSelection();
+    safeCall(window.LD?.Input?.appendLetter, letter);
+  }
+
+  function backspaceLetter() {
+    ensureSelectionState();
+    if (_state.touch.selectedTiles.length > 0) {
+      undoTileSelection();
+      return;
+    }
+    safeCall(window.LD?.Input?.backspaceLetter);
+  }
+
+  function scrollBoard(dx, dy) {
+    ensureSelectionState();
+    clearTileSelection();
+
+    if (
+      Number.isInteger(dx) &&
+      Number.isInteger(dy) &&
+      Math.abs(dx) <= 2 &&
+      Math.abs(dy) <= 2
+    ) {
+      safeCall(window.LD?.Input?.scrollBoard, dx, dy);
+      return;
+    }
+
+    var ts = (_state && _state.viewport && _state.viewport.tileSize) || 32;
+    var colDelta = Math.round((dx || 0) / ts);
+    var rowDelta = Math.round((dy || 0) / ts);
+    if (colDelta !== 0 || rowDelta !== 0) {
+      safeCall(window.LD?.Input?.scrollBoard, colDelta, rowDelta);
+    }
+  }
+
+  function init(state) {
+    _state = state;
+    ensureSelectionState();
+  }
+
+  window.LD.Actions = {
+    init: init,
+    startPath: startPath,
+    extendPath: extendPath,
+    trimPathTo: trimPathTo,
+    restartPath: restartPath,
+    tapTile: tapTile,
+    undoTileSelection: undoTileSelection,
+    getSelectedTiles: getSelectedTiles,
+    clearCurrentWord: clearCurrentWord,
+    submitCurrentWord: submitCurrentWord,
+    rejectCurrentWord: rejectCurrentWord,
+    useClue: useClue,
+    appendLetter: appendLetter,
+    backspaceLetter: backspaceLetter,
+    scrollBoard: scrollBoard,
   };
 })();
 
@@ -6041,6 +6299,7 @@ canvas {
       selectedTiles: [],
       lastTap: null,
     },
+    inputAdapter: null,
     showHelp: false,
     helpTab: 'basics',
     debug: {
@@ -6201,6 +6460,27 @@ canvas {
     }
   }
 
+  function getGameplayAdapter() {
+    if (window.LD && window.LD.PointerInput) return window.LD.PointerInput;
+    if (window.LD && window.LD.Touch) return window.LD.Touch;
+    return null;
+  }
+
+  function initGameplayAdapter() {
+    const adapter = getGameplayAdapter();
+    STATE.inputAdapter = adapter;
+
+    // Legacy compatibility flag: keep it in sync with "some gameplay adapter exists",
+    // but do not use it to decide whether to initialize or render input.
+    STATE.touch.enabled = !!adapter;
+
+    if (adapter && adapter.init) {
+      adapter.init(canvas, STATE);
+    }
+
+    return adapter;
+  }
+
   // ── Phase transition key handling (captures before input.js) ───────────────
 
   window.addEventListener('keydown', function(e) {
@@ -6257,7 +6537,10 @@ canvas {
 
     // Update systems
     if (LD.Particles) LD.Particles.update(dt);
-    if (LD.Touch && STATE.touch.enabled) LD.Touch.update(STATE);
+    const gameplayAdapter = STATE.inputAdapter || getGameplayAdapter();
+    if (gameplayAdapter && gameplayAdapter.update) {
+      gameplayAdapter.update(STATE);
+    }
 
     // Word Hunt timed mode countdown
     if (STATE.phase === 'playing' && STATE.gameMode === 'wordhunt' &&
@@ -6296,19 +6579,14 @@ canvas {
   function boot() {
     initCanvas();
 
-    // Detect touch
-    STATE.touch.enabled = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-
     // Initialize Settings module (before Input so settings screen can respond to clicks)
     if (LD.Settings) LD.Settings.init(canvas, STATE);
 
     // Initialize input system
     if (LD.Input) LD.Input.init(STATE);
 
-    // Initialize touch support if detected
-    if (STATE.touch.enabled && LD.Touch) {
-      LD.Touch.init(canvas, STATE);
-    }
+    // Initialize the gameplay adapter unconditionally so desktop pointer play can work.
+    initGameplayAdapter();
 
     // Start in settings phase
     STATE.phase = 'settings';
