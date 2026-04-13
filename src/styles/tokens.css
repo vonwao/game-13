@@ -1,0 +1,33 @@
+:root {
+  color-scheme: dark;
+  --font-ui: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+  --font-display: "Georgia", "Times New Roman", serif;
+  --font-mono: "SFMono-Regular", "Menlo", "Consolas", monospace;
+
+  --bg: #0c0f14;
+  --bg-elevated: #121722;
+  --bg-soft: #171d2b;
+  --panel: rgba(21, 26, 38, 0.92);
+  --panel-strong: rgba(28, 34, 48, 0.96);
+  --panel-line: rgba(255, 255, 255, 0.08);
+  --text: #f2eadb;
+  --text-soft: #aab4c4;
+  --text-dim: #768092;
+  --accent: #d8b15d;
+  --accent-soft: #f2d28f;
+  --accent-2: #7cc4ff;
+  --danger: #ff8a78;
+  --success: #87d67b;
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.35);
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --shell-max-width: 1440px;
+}
