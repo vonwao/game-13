@@ -91,14 +91,23 @@
   let lastTime = 0;
   const shellListeners = new Set();
   let lastShellSignature = '';
+  let resizeBound = false;
+  let loopStarted = false;
+  let booted = false;
 
   // ── Init ───────────────────────────────────────────────────────────────────
 
-  function initCanvas() {
-    canvas = document.getElementById('game');
+  function initCanvas(explicitCanvas) {
+    canvas = explicitCanvas || document.getElementById('game');
+    if (!canvas) {
+      throw new Error('Lexicon Deep requires a canvas element to mount.');
+    }
     ctx = canvas.getContext('2d');
     resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    if (!resizeBound) {
+      window.addEventListener('resize', resizeCanvas);
+      resizeBound = true;
+    }
   }
 
   function resizeCanvas() {
@@ -217,6 +226,10 @@
   }
 
   function startGame() {
+    if (!booted) {
+      var prestartCanvas = document.getElementById('game');
+      if (prestartCanvas) boot(prestartCanvas);
+    }
     STATE.hunt = STATE.hunt || {};
     STATE.hunt.round = 1;
     setupRound(true);
@@ -224,6 +237,10 @@
   }
 
   function advanceRound() {
+    if (!booted) {
+      var preroundCanvas = document.getElementById('game');
+      if (preroundCanvas) boot(preroundCanvas);
+    }
     if (STATE.gameMode !== 'wordhunt') return;
     STATE.hunt = STATE.hunt || {};
     STATE.hunt.round = (STATE.hunt.round || 1) + 1;
@@ -392,6 +409,8 @@
     subscribeShell: subscribeShell,
     setUIState: setUIState,
     setSettings: setSettings,
+    mount: boot,
+    isBooted: function() { return booted; },
   };
 
   function initAudio() {
@@ -424,7 +443,7 @@
 
   // ── Phase transition key handling (captures before input.js) ───────────────
 
-    window.addEventListener('keydown', function(e) {
+  window.addEventListener('keydown', function(e) {
     // Init audio on first interaction
     initAudio();
 
@@ -523,7 +542,18 @@
   // ── Boot ───────────────────────────────────────────────────────────────────
 
   function boot() {
-    initCanvas();
+    var explicitCanvas = arguments.length > 0 ? arguments[0] : null;
+
+    if (booted) {
+      if (explicitCanvas && canvas !== explicitCanvas) {
+        initCanvas(explicitCanvas);
+      }
+      notifyShellState(true);
+      return window.LD.Game;
+    }
+
+    initCanvas(explicitCanvas);
+    booted = true;
 
     // Initialize Settings module (before Input so settings screen can respond to clicks)
     if (LD.Settings) LD.Settings.init(canvas, STATE);
@@ -539,12 +569,19 @@
     notifyShellState(true);
 
     // Start render loop
-    requestAnimationFrame(gameLoop);
+    if (!loopStarted) {
+      loopStarted = true;
+      requestAnimationFrame(gameLoop);
+    }
+
+    return window.LD.Game;
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
+  if (!window.__LD_DISABLE_AUTO_BOOT__) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() { boot(); });
+    } else {
+      boot();
+    }
   }
 })();
