@@ -313,7 +313,7 @@
     cursor += 24;
 
     var optX = panelX + pad;
-    drawCheckbox(ctx, optX,       cursor, 'Special tiles (crystal, void, ember)', state.settings.specialTiles, function() { state.settings.specialTiles = !state.settings.specialTiles; });
+    drawCheckbox(ctx, optX,       cursor, 'Special tiles (x2 crystal, ? void, +20 ember)', state.settings.specialTiles, function() { state.settings.specialTiles = !state.settings.specialTiles; });
     cursor += 24;
     drawCheckbox(ctx, optX,       cursor, 'Sound effects',   state.settings.soundEnabled,     function() { state.settings.soundEnabled = !state.settings.soundEnabled; });
     cursor += 24;

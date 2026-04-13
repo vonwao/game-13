@@ -346,6 +346,8 @@
         if (sp.lenMult > 1.0) breakdown += ' ×' + sp.lenMult.toFixed(1);
         if (sp.shapeMult !== 1.0) breakdown += ' ×' + sp.shapeMult.toFixed(1) + ' ' + sp.shapeLabel;
         if (sp.comboMult > 1.0) breakdown += ' ×' + sp.comboMult.toFixed(1) + ' combo';
+        if (sp.crystalMult > 1.0) breakdown += ' ×2 crystal';
+        if (sp.emberBonus > 0) breakdown += ' +' + sp.emberBonus + ' ember';
         breakdown += ' = ~' + sp.total + ' pts';
         ctx.font = '10px "Courier New", monospace';
         ctx.fillStyle = isValid ? '#ffd700' : '#888';

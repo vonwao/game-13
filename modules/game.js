@@ -31,6 +31,7 @@
     },
     score: 0,
     wordsSpelled: 0,
+    wordHistory: [],
     turns: 0,
     longestWord: '',
     seedsDestroyed: 0,
@@ -39,11 +40,11 @@
     floatingTexts: [],
     animations: [],
     settings: {
-      difficulty:       'medium',
-      boardSize:        'medium',
+      difficulty:       'easy',
+      boardSize:        'small',
       soundEnabled:     true,
       particlesEnabled: true,
-      specialTiles:     true,
+      specialTiles:     false,
       endCondition:     'challenges',
     },
     config: {},
@@ -71,6 +72,12 @@
       enabled: false,
       selectedTiles: [],
       lastTap: null,
+    },
+    showHelp: false,
+    helpTab: 'basics',
+    debug: {
+      enabled: false,
+      tab: 'planted',
     },
     time: 0,
     dt: 0,
@@ -141,6 +148,7 @@
     if (resetRunStats) {
       STATE.score = 0;
       STATE.wordsSpelled = 0;
+      STATE.wordHistory = [];
       STATE.turns = 0;
       STATE.longestWord = '';
       STATE.seedsDestroyed = 0;

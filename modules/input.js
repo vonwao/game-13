@@ -61,6 +61,16 @@
     _state.input.scorePreview = null;
   }
 
+  function getPathOrientationLabel(path, reversed) {
+    if (!path || path.length < 2) return 'single';
+    const dc = path[1].col - path[0].col;
+    const dr = path[1].row - path[0].row;
+    const axis = dr === 0 ? 'horizontal'
+      : dc === 0 ? 'vertical'
+      : 'diagonal';
+    return axis + (reversed ? ' backward' : ' forward');
+  }
+
   /**
    * After every keystroke, re-run validation and path search, then update
    * highlighting data for the renderer.
@@ -214,16 +224,20 @@
    * Compute an estimated score breakdown for the current path + word.
    * Used by the renderer to show math as the player types.
    */
-  function computeScorePreview(path, word) {
+  function computeWordHuntBreakdown(path, word, comboCount) {
     const board  = _state.board;
     const config = _state.config || {};
-    const hunt   = _state.hunt   || {};
+    const shape = computePathShape(path);
 
     // Base: sum of tile letter points
     let basePts = 0;
+    let emberCount = 0;
+    let hasCrystal = false;
     for (let i = 0; i < path.length; i++) {
       const t = board.tiles[path[i].row * board.width + path[i].col];
       basePts += t ? (t.points || 1) : 1;
+      if (t && t.icon === 'ember') emberCount++;
+      if (t && t.icon === 'crystal') hasCrystal = true;
     }
 
     const lenMult = lengthMultiplier(word.length);
@@ -232,26 +246,47 @@
     let shapeMult  = 1.0;
     let shapeLabel = '';
     if (config.pathBonuses) {
-      const shape = computePathShape(path);
       shapeMult = getPathShapeMultiplier(path);
       if (shape.isStraight) {
         if (shape.isHorizontal) shapeLabel = 'horizontal';
         else if (shape.isVertical) shapeLabel = 'vertical';
         else shapeLabel = 'diagonal';
       } else {
-        shapeLabel = shape.corners + (shape.corners === 1 ? ' turn' : ' turns');
+        shapeLabel = shape.corners + (shape.corners === 1 ? ' corner' : ' corners');
       }
     }
 
-    // Combo: preview next combo value (after this word would be submitted)
     let comboMult = 1.0;
-    if (config.comboBonuses) {
-      const nextCombo = (hunt.combo || 0) + 1;
-      comboMult = 1.0 + (nextCombo - 1) * 0.1;
+    if (config.comboBonuses && comboCount > 1) {
+      comboMult = 1.0 + (comboCount - 1) * 0.1;
     }
 
-    const total = Math.round(basePts * lenMult * shapeMult * comboMult);
-    return { basePts, lenMult, shapeMult, shapeLabel, comboMult, total };
+    const crystalMult = hasCrystal ? 2.0 : 1.0;
+    const emberBonus = emberCount * 20;
+    const multiplied = Math.round(basePts * lenMult * shapeMult * comboMult * crystalMult);
+    const total = multiplied + emberBonus;
+
+    return {
+      basePts,
+      lenMult,
+      shapeMult,
+      shapeLabel,
+      corners: shape.corners,
+      comboCount,
+      comboMult,
+      crystalMult,
+      hasCrystal,
+      emberCount,
+      emberBonus,
+      multiplied,
+      total
+    };
+  }
+
+  function computeScorePreview(path, word) {
+    const hunt = _state.hunt || {};
+    const nextCombo = ((_state.config || {}).comboBonuses) ? ((hunt.combo || 0) + 1) : 1;
+    return computeWordHuntBreakdown(path, word, nextCombo);
   }
 
   // ---------------------------------------------------------------------------
@@ -311,44 +346,21 @@
     const config = _state.config || {};
     const hunt  = _state.hunt;
 
-    const pathTiles = path.map(({ col, row }) => board.tiles[row * board.width + col]);
-
-    // 1. Base score (letter points × length multiplier)
-    let earned = 0;
-    for (let i = 0; i < pathTiles.length; i++) {
-      earned += pathTiles[i].points || 1;
-    }
-    earned = Math.round(earned * lengthMultiplier(typed.length));
-
-    // 2. Path shape multiplier
-    let shapeMult = 1.0;
+    const nextCombo = (config.comboBonuses && hunt) ? ((hunt.combo || 0) + 1) : 1;
+    const breakdown = computeWordHuntBreakdown(path, typed, nextCombo);
     const shape = computePathShape(path);
-    if (config.pathBonuses) {
-      shapeMult = getPathShapeMultiplier(path);
-      earned = Math.round(earned * shapeMult);
-    }
+    const shapeMult = breakdown.shapeMult;
 
-    // 3. Combo
-    let comboMult = 1.0;
     if (config.comboBonuses && hunt) {
-      hunt.combo++;
+      hunt.combo = nextCombo;
       if (hunt.combo > hunt.bestCombo) hunt.bestCombo = hunt.combo;
-      comboMult = 1.0 + (hunt.combo - 1) * 0.1;
-      earned = Math.round(earned * comboMult);
     }
 
-    // 4. Crystal / Ember
-    let crystalBonus = false;
-    let emberBonus = 0;
-    for (let i = 0; i < pathTiles.length; i++) {
-      if (pathTiles[i].icon === 'crystal') { crystalBonus = true; }
-      if (pathTiles[i].icon === 'ember')   { emberBonus += 20; }
-    }
-    if (crystalBonus) earned *= 2;
-    earned += emberBonus;
-    earned = Math.round(earned);
+    let earned = breakdown.total;
+    let discoveryBonus = 0;
+    let objectiveBonus = 0;
 
-    // 5. Check planted words
+    // 1. Check planted words
     const planted = safeCall(window.LD?.Board?.checkPlantedWord, board, typed, path);
     if (planted) {
       planted.found = true;
@@ -364,7 +376,8 @@
           // useCount already incremented below in step 8 — don't double-count
         }
       }
-      earned += 100;
+      discoveryBonus = 100;
+      earned += discoveryBonus;
       // Discovery visual
       const vp = _state.viewport;
       const ts = vp.tileSize || 32;
@@ -381,7 +394,7 @@
       hunt.roundScore = (hunt.roundScore || 0) + earned;
     }
 
-    // 6. Check round objectives
+    // 2. Check round objectives
     const wordData = {
       word:         typed,
       path:         path,
@@ -403,33 +416,52 @@
         ? hunt.challenges.find(c => c.id === newlyCompleted[i])
         : null;
       const reward = challenge ? (challenge.reward || 100) : 100;
+      objectiveBonus += reward;
       earned += reward;
       if (hunt) hunt.completedCount = (hunt.completedCount || 0) + 1;
     }
 
-    // 7. Update stats
+    if (hunt) {
+      hunt.roundScore = (hunt.roundScore || 0) + objectiveBonus;
+    }
+
+    // 3. Update stats
     _state.score        = (_state.score || 0) + earned;
     _state.wordsSpelled = (_state.wordsSpelled || 0) + 1;
     if (typed.length > ((_state.longestWord || '').length)) _state.longestWord = typed;
+    if (!_state.wordHistory) _state.wordHistory = [];
     if (hunt) {
       if (_state.settings.endCondition === 'turns') hunt.turnsRemaining--;
-      let histShapeLabel = '';
-      if (shape.isStraight) {
-        histShapeLabel = (shape.isHorizontal || shape.isVertical) ? 'straight' : 'diagonal';
-      } else {
-        histShapeLabel = shape.corners + 't';
-      }
-      hunt.wordsThisRound.push({
+      var historyEntry = {
         word: typed,
         score: earned,
-        lenMult: lengthMultiplier(typed.length),
-        shapeMult,
-        shapeLabel: histShapeLabel,
-        comboMult,
-      });
+        pathLength: path.length,
+        basePts: breakdown.basePts,
+        lenMult: breakdown.lenMult,
+        shapeMult: breakdown.shapeMult,
+        shapeLabel: breakdown.shapeLabel,
+        corners: breakdown.corners,
+        comboCount: breakdown.comboCount,
+        comboMult: breakdown.comboMult,
+        crystalMult: breakdown.crystalMult,
+        emberBonus: breakdown.emberBonus,
+        discoveryBonus,
+        objectiveBonus,
+        orientation: getPathOrientationLabel(path, false),
+        reasonText:
+          breakdown.basePts + ' base ×' + breakdown.lenMult.toFixed(1) +
+          ' len ×' + breakdown.shapeMult.toFixed(1) + ' shape' +
+          (breakdown.comboMult > 1 ? ' ×' + breakdown.comboMult.toFixed(1) + ' combo' : '') +
+          (breakdown.crystalMult > 1 ? ' ×2 crystal' : '') +
+          (breakdown.emberBonus > 0 ? ' +' + breakdown.emberBonus + ' ember' : '') +
+          (discoveryBonus > 0 ? ' +100 discovery' : '') +
+          (objectiveBonus > 0 ? ' +' + objectiveBonus + ' objective' : '')
+      };
+      hunt.wordsThisRound.push(historyEntry);
+      _state.wordHistory.push(historyEntry);
     }
 
-    // 8. Mark tiles with word color + increment useCount
+    // 4. Mark tiles with word color + increment useCount
     const wordColor = WORD_COLORS[(_state.wordsSpelled - 1) % WORD_COLORS.length];
     path.forEach(p => {
       const t = board.tiles[p.row * board.width + p.col];
@@ -441,7 +473,7 @@
       if (hunt && hunt.usedTileKeys) hunt.usedTileKeys.add(p.col + ',' + p.row);
     });
 
-    // 9. Win/lose check
+    // 5. Win/lose check
     if (_state.settings.endCondition === 'challenges') {
       const total = (hunt && hunt.challenges) ? hunt.challenges.length : 0;
       if (total > 0 && (hunt.completedCount || 0) >= total) {
@@ -455,7 +487,7 @@
     }
     // timed: handled in game loop
 
-    // 10. Particles & Audio
+    // 6. Particles & Audio
     const vp = _state.viewport;
     const ts = vp.tileSize || 32;
     const toPixel2 = (t) => ({ x: vp.offsetX + (t.col - vp.col) * ts + ts/2, y: vp.offsetY + (t.row - vp.row) * ts + ts/2, col: t.col, row: t.row });
@@ -713,12 +745,57 @@
     if (key === '?') {
       e.preventDefault();
       _state.showHelp = !_state.showHelp;
+      if (_state.showHelp) {
+        _state.debug = _state.debug || {};
+        _state.debug.enabled = false;
+      }
+      if (_state.showHelp) _state.helpTab = _state.helpTab || 'basics';
       return;
     }
 
-    // Close help on any other key
+    // ── ` — toggle debug overlay ───────────────────────────────────────────
+    if (key === '`') {
+      e.preventDefault();
+      _state.debug = _state.debug || {};
+      _state.debug.enabled = !_state.debug.enabled;
+      if (_state.debug.enabled) _state.showHelp = false;
+      if (!_state.debug.tab) _state.debug.tab = 'planted';
+      return;
+    }
+
+    // Help overlay: tabbed, do not auto-close on unrelated keys
     if (_state.showHelp) {
-      _state.showHelp = false;
+      if (key === 'Escape') {
+        e.preventDefault();
+        _state.showHelp = false;
+      } else if (key === '1') {
+        e.preventDefault();
+        _state.helpTab = 'basics';
+      } else if (key === '2') {
+        e.preventDefault();
+        _state.helpTab = 'scoring';
+      } else if (key === '3') {
+        e.preventDefault();
+        _state.helpTab = 'tiles';
+      }
+      return;
+    }
+
+    // Debug overlay: tabbed, block normal input while open
+    if (_state.debug && _state.debug.enabled) {
+      if (key === 'Escape') {
+        e.preventDefault();
+        _state.debug.enabled = false;
+      } else if (key === '1') {
+        e.preventDefault();
+        _state.debug.tab = 'planted';
+      } else if (key === '2') {
+        e.preventDefault();
+        _state.debug.tab = 'history';
+      } else if (key === 'Tab') {
+        e.preventDefault();
+        _state.debug.tab = _state.debug.tab === 'history' ? 'planted' : 'history';
+      }
       return;
     }
 

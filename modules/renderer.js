@@ -189,6 +189,10 @@
       drawWordHistory(ctx, state);
     }
 
+    if (state.debug && state.debug.enabled) {
+      drawDebugOverlay(ctx, state);
+    }
+
     // Help overlay
     if (state.showHelp) {
       drawHelpScreen(ctx, state);
@@ -540,6 +544,20 @@
         ctx.lineWidth = 1;
         break;
     }
+    if (!highlighted && ts >= 22) {
+      var label = icon === 'ember' ? '+20'
+        : icon === 'crystal' ? 'x2'
+        : icon === 'void' ? '?'
+        : icon === 'bomb' ? 'BOOM' : '';
+      if (label) {
+        ctx.font = Math.max(8, Math.floor(ts * 0.18)) + 'px "Courier New", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = '#3a2a1a';
+        ctx.fillText(label, cx, y + ts - 3);
+        ctx.textBaseline = 'middle';
+      }
+    }
     ctx.restore();
   }
 
@@ -678,6 +696,13 @@
       ctx.fillStyle = '#f0d070';
       ctx.textAlign = 'center';
       ctx.fillText('× ' + hunt.combo + ' COMBO', w / 2, 28);
+    }
+
+    if (state.debug && state.debug.enabled) {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 10px "Courier New", monospace';
+      ctx.fillStyle = '#ff8080';
+      ctx.fillText('DEBUG', w / 2, 46);
     }
 
     // End condition indicator
@@ -892,6 +917,22 @@
         fx += ctx.measureText(sp.comboMult.toFixed(1) + ' combo').width + 4;
       }
 
+      if (sp.crystalMult > 1.0) {
+        ctx.fillStyle = '#555';
+        ctx.fillText('×', fx, fy); fx += 12;
+        ctx.fillStyle = '#80ffff';
+        ctx.fillText('2.0 crystal', fx, fy);
+        fx += ctx.measureText('2.0 crystal').width + 4;
+      }
+
+      if (sp.emberBonus > 0) {
+        ctx.fillStyle = '#555';
+        ctx.fillText('+', fx, fy); fx += 10;
+        ctx.fillStyle = '#ffb060';
+        ctx.fillText(String(sp.emberBonus) + ' ember', fx, fy);
+        fx += ctx.measureText(String(sp.emberBonus) + ' ember').width + 4;
+      }
+
       // total
       ctx.fillStyle = '#555';
       ctx.fillText('=', fx, fy); fx += 16;
@@ -903,8 +944,137 @@
       ctx.font = '11px "Courier New", monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Type a word · Enter submit · C clue · Arrow keys scroll · ? help', 20, barY + 41);
+      ctx.fillText('Type a word · Enter submit · C clue · ` debug · ? help', 20, barY + 41);
     }
+  }
+
+  function getPathOrientationText(path, reversed) {
+    if (!path || path.length < 2) return 'single';
+    const dc = path[1].col - path[0].col;
+    const dr = path[1].row - path[0].row;
+    const axis = dr === 0 ? 'horizontal'
+      : dc === 0 ? 'vertical'
+      : 'diagonal';
+    return axis + ' · ' + (reversed ? 'backward' : 'forward');
+  }
+
+  function drawDebugTabs(ctx, tabs, active, x, y) {
+    for (var i = 0; i < tabs.length; i++) {
+      var tx = x + i * 168;
+      var isActive = tabs[i].key === active;
+      ctx.fillStyle = isActive ? '#3a2810' : '#181410';
+      ctx.strokeStyle = isActive ? '#c8a050' : '#2a2420';
+      ctx.lineWidth = isActive ? 2 : 1;
+      ctx.fillRect(tx, y, 156, 28);
+      ctx.strokeRect(tx, y, 156, 28);
+      ctx.font = '12px "Courier New", monospace';
+      ctx.fillStyle = isActive ? '#f0d070' : '#8a7a60';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tabs[i].label, tx + 78, y + 14);
+    }
+  }
+
+  function drawDebugOverlay(ctx, state) {
+    var hunt = state.hunt || {};
+    ctx.fillStyle = 'rgba(7, 6, 5, 0.93)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 24px "Courier New", monospace';
+    ctx.fillStyle = '#f0d070';
+    ctx.fillText('DEBUG OVERLAY', 36, 34);
+    ctx.font = '12px "Courier New", monospace';
+    ctx.fillStyle = '#8a7a60';
+    ctx.fillText('` close  ·  Tab switch  ·  1 planted  ·  2 history', 36, 58);
+
+    drawDebugTabs(ctx, [
+      { key: 'planted', label: '1  PLANTED WORDS' },
+      { key: 'history', label: '2  WORD HISTORY' }
+    ], (state.debug && state.debug.tab) || 'planted', 36, 78);
+
+    if ((state.debug && state.debug.tab) === 'history') {
+      drawDebugHistoryPanel(ctx, state);
+    } else {
+      drawDebugPlantedPanel(ctx, hunt);
+    }
+  }
+
+  function drawDebugPlantedPanel(ctx, hunt) {
+    var words = hunt.plantedWords || [];
+    var x = 36;
+    var y = 126;
+    var colGap = 360;
+    var rowH = 22;
+    var perCol = Math.max(1, Math.floor((canvas.height - y - 36) / rowH));
+
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillStyle = '#8a7a60';
+    ctx.fillText('Word', x, y - 20);
+    ctx.fillText('Orientation', x + 140, y - 20);
+    ctx.fillText('Status', x + 290, y - 20);
+    ctx.fillText('Word', x + colGap, y - 20);
+    ctx.fillText('Orientation', x + colGap + 140, y - 20);
+    ctx.fillText('Status', x + colGap + 290, y - 20);
+
+    for (var i = 0; i < words.length; i++) {
+      var col = Math.floor(i / perCol);
+      var row = i % perCol;
+      var px = x + col * colGap;
+      var py = y + row * rowH;
+      var entry = words[i];
+      var found = !!entry.found;
+
+      ctx.font = (found ? 'bold ' : '') + '12px "Courier New", monospace';
+      ctx.fillStyle = found ? '#f0d070' : '#d4c4a0';
+      ctx.fillText(entry.word, px, py);
+      ctx.font = '11px "Courier New", monospace';
+      ctx.fillStyle = '#8a7a60';
+      ctx.fillText(getPathOrientationText(entry.path, entry.reversed), px + 140, py);
+      ctx.fillStyle = found ? '#80d080' : '#805040';
+      ctx.fillText(found ? 'FOUND' : 'hidden', px + 290, py);
+    }
+  }
+
+  function drawDebugHistoryPanel(ctx, state) {
+    var history = state.wordHistory || [];
+    var x = 36;
+    var y = 126;
+    var rowH = 22;
+    var maxRows = Math.max(1, Math.floor((canvas.height - y - 50) / rowH));
+    var start = Math.max(0, history.length - maxRows);
+
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillStyle = '#8a7a60';
+    ctx.fillText('Word', x, y - 20);
+    ctx.fillText('Score', x + 110, y - 20);
+    ctx.fillText('Why', x + 190, y - 20);
+
+    for (var i = start; i < history.length; i++) {
+      var entry = history[i];
+      var py = y + (i - start) * rowH;
+      ctx.font = '12px "Courier New", monospace';
+      ctx.fillStyle = i === history.length - 1 ? '#f0d070' : '#d4c4a0';
+      ctx.fillText(entry.word, x, py);
+      ctx.fillStyle = '#c8a050';
+      ctx.fillText('+' + entry.score, x + 110, py);
+      ctx.font = '10px "Courier New", monospace';
+      ctx.fillStyle = '#8a7a60';
+      ctx.fillText(entry.reasonText || '', x + 190, py);
+    }
+
+    ctx.textAlign = 'right';
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillStyle = '#8a7a60';
+    ctx.fillText(
+      history.length > maxRows
+        ? 'showing latest ' + maxRows + ' of ' + history.length
+        : String(history.length) + ' words total',
+      canvas.width - 36,
+      canvas.height - 24
+    );
+    ctx.textAlign = 'left';
   }
 
   /**
@@ -1175,16 +1345,11 @@
     const w = canvas.width;
     const h = canvas.height;
     const isWH = state.gameMode === 'wordhunt';
+    const helpTab = state.helpTab || 'basics';
 
     // Dark overlay
     ctx.fillStyle = 'rgba(10, 8, 6, 0.92)';
     ctx.fillRect(0, 0, w, h);
-
-    const col1 = 60;
-    const col2 = 460;
-    let y = 50;
-    const lineH = 20;
-    const sectionGap = 30;
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -1192,166 +1357,168 @@
     // Title
     ctx.font = 'bold 28px "Courier New", monospace';
     ctx.fillStyle = COLORS.highlight;
-    ctx.fillText('LEXICON DEEP — Reference', col1, y);
-    y += 45;
+    ctx.fillText('LEXICON DEEP — Reference', 52, 42);
+    drawDebugTabs(ctx, [
+      { key: 'basics', label: '1  BASICS' },
+      { key: 'scoring', label: '2  SCORING' },
+      { key: 'tiles', label: '3  TILES' }
+    ], helpTab, 52, 78);
 
-    // Controls
-    ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillStyle = '#c8a050';
-    ctx.fillText('CONTROLS', col1, y);
-    y += lineH + 4;
+    const panelX = 52;
+    const panelY = 124;
+    const panelW = w - 104;
+    const panelH = h - 186;
+    ctx.fillStyle = 'rgba(14, 12, 10, 0.82)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = '#2a2420';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+    const col1 = panelX + 24;
+    const col2 = panelX + panelW / 2 + 8;
+    const lineH = 22;
+    let y1 = panelY + 24;
+    let y2 = panelY + 24;
+
     ctx.font = '13px "Courier New", monospace';
     ctx.fillStyle = COLORS.hud;
-    var controls = [
-      ['A-Z keys', 'Type letters to spell a word'],
-      ['Enter', 'Submit word (cast spell)'],
-      ['Backspace', 'Delete last letter'],
-      ['Escape', 'Clear current word'],
-      ['Arrow keys', 'Scroll the viewport'],
-      ['C', isWH ? 'Spend a clue on a hidden word' : ''],
-      ['?', 'Toggle this help screen'],
-    ];
-    for (var ci = 0; ci < controls.length; ci++) {
-      if (!controls[ci][1]) continue;
+
+    if (helpTab === 'basics') {
+      ctx.font = 'bold 16px "Courier New", monospace';
       ctx.fillStyle = '#c8a050';
-      ctx.fillText(controls[ci][0], col1 + 10, y);
+      ctx.fillText('CONTROLS', col1, y1);
+      y1 += 30;
+      ctx.font = '13px "Courier New", monospace';
       ctx.fillStyle = COLORS.hud;
-      ctx.fillText(controls[ci][1], col1 + 150, y);
-      y += lineH;
-    }
-    y += sectionGap;
+      [
+        'A-Z: type a word',
+        'Enter: submit',
+        'Backspace / Escape: edit or clear',
+        'Arrow keys: scroll the board',
+        'C: spend a clue in Word Hunt',
+        '` : toggle debug overlay',
+        '?: open or close help',
+      ].forEach(function (line) {
+        ctx.fillText(line, col1, y1);
+        y1 += lineH;
+      });
 
-    // How to play
-    ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillStyle = '#c8a050';
-    ctx.fillText('HOW TO PLAY', col1, y);
-    y += lineH + 4;
-    ctx.font = '13px "Courier New", monospace';
-    ctx.fillStyle = COLORS.hud;
-    var howto = isWH ? [
-      'Type a word (4+ letters). The game chooses the best-scoring',
-      'valid path on the current board for what you typed.',
-      '',
-      'Long words, straight lines, and combos are worth more.',
-      'Scrolling the board resets your combo.',
-      '',
-      'Find hidden planted words for a discovery bonus, and clear',
-      'the round objectives to advance deeper into the archive.',
-      '',
-      'Use C or the clue button when stuck. A clue reveals one or',
-      'two tiles from an unfound hidden word for a moment.',
-    ] : [
-      'Type a word (3-8 letters). The game finds a connected path',
-      'on the visible grid. Press Enter to cast — tiles activate,',
-      'cleansing corruption within 2 tiles of your word.',
-      '',
-      'Destroy all 6 corruption seals to win.',
-      'Seal destruction: spell a 6+ letter word with 2+ tiles',
-      'adjacent to a seal. The seal shatters and all connected',
-      'corruption is cleansed in a cascade.',
-      '',
-      'Lose if corruption covers 40% of the board.',
-      'Corruption spreads one step after each word you cast.',
-    ];
-    for (var hi = 0; hi < howto.length; hi++) {
-      ctx.fillText(howto[hi], col1 + 10, y);
-      y += howto[hi] === '' ? 8 : lineH;
-    }
-
-    // Right column — scoring
-    y = 95;
-    ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillStyle = '#c8a050';
-    ctx.fillText('LETTER POINTS', col2, y);
-    y += lineH + 4;
-    ctx.font = '13px "Courier New", monospace';
-    var scoring = [
-      [' 1 pt', 'E  A  I  O  N  R  T  L  S  U'],
-      [' 2 pt', 'D  G'],
-      [' 3 pt', 'B  C  M  P'],
-      [' 4 pt', 'F  H  V  W  Y'],
-      [' 5 pt', 'K'],
-      [' 8 pt', 'J  X'],
-      ['10 pt', 'Q  Z'],
-    ];
-    for (var si = 0; si < scoring.length; si++) {
+      ctx.font = 'bold 16px "Courier New", monospace';
       ctx.fillStyle = '#c8a050';
-      ctx.fillText(scoring[si][0], col2 + 10, y);
+      ctx.fillText('HOW WORD HUNT WORKS', col2, y2);
+      y2 += 30;
+      ctx.font = '13px "Courier New", monospace';
       ctx.fillStyle = COLORS.hud;
-      ctx.fillText(scoring[si][1], col2 + 70, y);
-      y += lineH;
-    }
-    y += sectionGap;
-
-    // Length multiplier
-    ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillStyle = '#c8a050';
-    ctx.fillText(isWH ? 'WORD LENGTH BONUS' : 'WORD LENGTH BONUS', col2, y);
-    y += lineH + 4;
-    ctx.font = '13px "Courier New", monospace';
-    var lengths = isWH ? [
-      ['4 letters', '1.5x'],
-      ['5 letters', '2x'],
-      ['6 letters', '3x'],
-      ['7 letters', '5x'],
-      ['8 letters', '8x'],
-      ['Straight line', 'up to 2.0x'],
-      ['Combo chain', '+0.1x each word'],
-    ] : [
-      ['3 letters', '1x'],
-      ['4 letters', '1.5x'],
-      ['5 letters', '2x'],
-      ['6 letters', '3x  (can destroy seals!)'],
-      ['7 letters', '5x'],
-      ['8 letters', '8x'],
-    ];
-    for (var li = 0; li < lengths.length; li++) {
-      ctx.fillStyle = COLORS.hud;
-      ctx.fillText(lengths[li][0], col2 + 10, y);
+      (isWH ? [
+        'Type any 4+ letter dictionary word.',
+        'The game searches the board and picks the',
+        'highest-scoring valid path for that word.',
+        '',
+        'Find hidden planted words for bonus points.',
+        'Clear the three current objectives to finish',
+        'the round and advance deeper.',
+        '',
+        'Scrolling resets combo.',
+        'Clues briefly pulse tiles from an unfound word.'
+      ] : [
+        'Type a word and press Enter to cast.',
+        'Your word cleanses nearby corruption.',
+        'Destroy all seals before corruption overwhelms',
+        'the board.'
+      ]).forEach(function (line) {
+        ctx.fillText(line, col2, y2);
+        y2 += line === '' ? 10 : lineH;
+      });
+    } else if (helpTab === 'scoring') {
+      ctx.font = 'bold 16px "Courier New", monospace';
       ctx.fillStyle = '#c8a050';
-      ctx.fillText(lengths[li][1], col2 + 120, y);
-      y += lineH;
-    }
-    y += sectionGap;
+      ctx.fillText('FORMULA', col1, y1);
+      y1 += 32;
+      ctx.font = '14px "Courier New", monospace';
+      ctx.fillStyle = '#f0d070';
+      ctx.fillText('final = round(base × length × shape × combo × crystal) + ember', col1, y1);
+      y1 += 34;
 
-    // Special tiles
-    ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillStyle = '#c8a050';
-    ctx.fillText('SPECIAL TILES', col2, y);
-    y += lineH + 4;
-    ctx.font = '13px "Courier New", monospace';
-    var specials = isWH ? [
-      ['Ember (orange)', '+20 points when used'],
-      ['Crystal (cyan)', '2x the whole word score'],
-      ['Void (purple)', 'Wildcard — matches any letter'],
-      ['', 'Hidden words are not visually marked'],
-      ['', 'except for temporary clue pulses'],
-    ] : [
-      ['Ember (orange)', 'Cleanse a 5x5 area'],
-      ['Crystal (cyan)', 'Double cleanse radius (2 -> 4)'],
-      ['Void (purple)', 'Wildcard — matches any letter'],
-      ['Bomb (red)', 'Cleanse a 9x9 area (!)'],
-      ['', 'Special tiles act as wildcards in paths'],
-      ['', 'and cannot be corrupted (natural barriers)'],
-    ];
-    for (var ti = 0; ti < specials.length; ti++) {
-      if (specials[ti][0]) {
-        ctx.fillStyle = '#c8a050';
-        ctx.fillText(specials[ti][0], col2 + 10, y);
-        ctx.fillStyle = COLORS.hud;
-        ctx.fillText(specials[ti][1], col2 + 180, y);
-      } else {
-        ctx.fillStyle = '#888';
-        ctx.fillText(specials[ti][1], col2 + 10, y);
-      }
-      y += lineH;
+      ctx.font = '13px "Courier New", monospace';
+      ctx.fillStyle = COLORS.hud;
+      [
+        'base: sum of tile letter points',
+        'length: 4=1.5x, 5=2x, 6=3x, 7=5x, 8+=8x',
+        'shape: straight horizontal/vertical = 2.0x',
+        'shape: straight diagonal = 1.5x',
+        'shape: bent paths lose value by corners',
+        'combo: +0.1x for each chained word before scrolling',
+        'crystal: doubles the whole multiplied score',
+        'ember: adds +20 flat per ember tile used',
+        'discovery: +100 for a planted hidden word',
+        'objective rewards: added after the word resolves'
+      ].forEach(function (line) {
+        ctx.fillText(line, col1, y1);
+        y1 += lineH;
+      });
+
+      ctx.font = 'bold 16px "Courier New", monospace';
+      ctx.fillStyle = '#c8a050';
+      ctx.fillText('LETTER POINTS', col2, y2);
+      y2 += 30;
+      ctx.font = '13px "Courier New", monospace';
+      ctx.fillStyle = COLORS.hud;
+      [
+        '1: E A I O N R T L S U',
+        '2: D G',
+        '3: B C M P',
+        '4: F H V W Y',
+        '5: K',
+        '8: J X',
+        '10: Q Z'
+      ].forEach(function (line) {
+        ctx.fillText(line, col2, y2);
+        y2 += lineH;
+      });
+    } else {
+      ctx.font = 'bold 16px "Courier New", monospace';
+      ctx.fillStyle = '#c8a050';
+      ctx.fillText('WORD HUNT SPECIAL TILES', col1, y1);
+      y1 += 30;
+      ctx.font = '13px "Courier New", monospace';
+      ctx.fillStyle = COLORS.hud;
+      [
+        'Void (?)  : wildcard, can stand in for any letter.',
+        'Crystal x2: include it in your path to double the word.',
+        'Ember +20 : include it in your path for +20 points.',
+        '',
+        'You use special tiles by routing your word through them.',
+        'If a path can reach one and still spell the word, the',
+        'best-path picker will usually prefer the better score.',
+        '',
+        'They are optional. The default game starts with them off.'
+      ].forEach(function (line) {
+        ctx.fillText(line, col1, y1);
+        y1 += line === '' ? 10 : lineH;
+      });
+
+      ctx.font = 'bold 16px "Courier New", monospace';
+      ctx.fillStyle = '#c8a050';
+      ctx.fillText('DEBUG MODE', col2, y2);
+      y2 += 30;
+      ctx.font = '13px "Courier New", monospace';
+      ctx.fillStyle = COLORS.hud;
+      [
+        'Press ` to open debug mode.',
+        'Tab 1 shows every planted word with orientation',
+        'and whether it has been found.',
+        'Tab 2 shows full word history with score reasons.',
+      ].forEach(function (line) {
+        ctx.fillText(line, col2, y2);
+        y2 += lineH;
+      });
     }
 
     // Footer
     ctx.textAlign = 'center';
     ctx.font = '14px "Courier New", monospace';
     ctx.fillStyle = '#888';
-    ctx.fillText('Press ? to close', w / 2, h - 30);
+    ctx.fillText('Press ? or Escape to close · use 1 / 2 / 3 to switch tabs', w / 2, h - 30);
   }
 
   function screenToGrid(mx, my, state) {
