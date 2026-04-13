@@ -37,6 +37,14 @@ It should have:
 - one set of UI components
 - one responsive shell that places those components differently by screen shape
 
+This plan has been tightened around five constraints:
+
+- the bridge contract must be explicit before coding
+- shell migration and board-fit work are separate tracks
+- board-profile work should not be tuned against temporary shell chrome
+- canvas vs shell ownership must be strict
+- the shell must not become a second gameplay brain
+
 ---
 
 ## Product Principles
@@ -110,6 +118,17 @@ These remain canvas-owned:
 - board-space animations
 - gameplay geometry and hit testing
 
+Strict rule:
+
+Canvas owns only UI and visuals that are:
+
+- spatially tied to board coordinates
+- animation-heavy
+- timing-sensitive
+- visually anchored to tiles, paths, or board geometry
+
+Everything else should move to the shell.
+
 In practice, [modules/renderer.js](/Users/vonwao/dev/micro-projects/game-13/modules/renderer.js) should eventually shrink toward:
 
 - board rendering
@@ -167,6 +186,80 @@ Why this stack:
 
 The board remains canvas-based and imperative.
 React is for the shell, not the game core.
+
+## Bridge Contract v1
+
+Before implementation, the bridge contract should be treated as a real public boundary.
+
+### Bridge goals
+
+- React reads normalized summary state only
+- React dispatches commands and UI/settings updates only
+- React does not read gameplay internals directly
+- gameplay modules do not import React
+
+### Read API
+
+Required first-pass API:
+
+- `getShellState()`
+- `subscribeShell(listener)`
+
+Semantics:
+
+- `getShellState()` returns a stable, normalized snapshot intended for rendering
+- it should contain presentation-ready summary data, not deep mutable internals
+- `subscribeShell(listener)` should fire on meaningful state changes, not every animation frame
+- time-based values like countdowns may be published on a throttled cadence suitable for UI, not at render-loop frequency
+
+### Write API
+
+Required first-pass API:
+
+- `setUIState(patch)`
+- `setSettings(patch)`
+- `startGame()`
+- `advanceRound()`
+
+Semantics:
+
+- `setUIState(patch)` is a shallow merge into shell-owned UI state only
+- `setSettings(patch)` is a shallow merge into settings only
+- these functions must reject or ignore fields outside their ownership boundary in development
+
+### Command API
+
+Shell-dispatched gameplay commands should be explicit:
+
+- `LD.Actions.clearCurrentWord()`
+- `LD.Actions.undoTileSelection()`
+- `LD.Actions.submitCurrentWord()`
+- `LD.Actions.useClue()`
+- `LD.Actions.appendLetter(letter)`
+- `LD.Actions.backspaceLetter()`
+
+Only keep:
+
+- `LD.Actions.scrollBoard(dx, dy)`
+
+if scrolling survives as a fallback after board-fit work.
+
+### Ownership boundary
+
+- `LD.Game` owns phase transitions, round lifecycle, and high-level game orchestration
+- `LD.Actions` owns player intents during gameplay
+- the bridge owns normalization, subscription, and shell-safe mutation surfaces
+- the shell owns layout and presentation only
+
+### Development guardrails
+
+Even if the shell remains plain JS at first, the bridge should have:
+
+- JSDoc typedefs for shell state
+- explicit comments documenting public vs internal bridge methods
+- development-time assertions for invalid patches or illegal reads
+
+TypeScript can be revisited later, but the bridge should not stay loosely specified.
 
 ---
 
@@ -299,14 +392,25 @@ To keep the first version disciplined:
 
 At round setup:
 
-1. shell computes available board rectangle
-2. board system picks the profile for current orientation
-3. renderer computes tile size from that profile
-4. if tile size falls below the minimum readable threshold:
+1. shell measures the available board rectangle
+2. shell passes available bounds and orientation to the core
+3. core resolves the requested tier against the current board profile
+4. renderer computes tile size from that resolved profile
+5. if tile size falls below the minimum readable threshold:
    - try a lower density profile
    - or downgrade requested size tier on phone-class devices
 
 This is better than enabling scroll by default.
+
+### Layout authority
+
+This split should be explicit:
+
+- the shell owns layout measurement and responsive placement
+- the core owns board/profile resolution given available bounds and requested tier
+
+The shell should not decide the final tile math.
+The core should not decide shell placement rules.
 
 ## Readability targets
 
@@ -386,12 +490,22 @@ The shell should not touch:
 - animation arrays
 - particle state
 
+The shell must also not become a second gameplay state machine.
+
+Explicitly disallowed in shell code:
+
+- deriving gameplay legality from raw board state
+- recomputing score logic or preview math
+- interpreting planted-word internals
+- doing board-fit resolution beyond measuring available shell bounds
+- maintaining alternate gameplay truth in React component state
+
 ---
 
 ## Proposed File Structure
 
-This is the recommended destination structure.
-It does not need to land in one step.
+This is the recommended early structure.
+It is intentionally simpler than a long-term idealized component tree.
 
 ```text
 index.html
@@ -408,7 +522,6 @@ src/
     gameBridge.js
     layout/
       ShellLayout.jsx
-      DesktopRail.jsx
       MobileSheetLayer.jsx
     panels/
       TitleScreen.jsx
@@ -441,7 +554,18 @@ Notes:
 
 ## Migration Strategy
 
-## Phase 0 — Freeze The Boundary
+This migration is split into two tracks.
+
+- `Track A` = shell migration
+- `Track B` = board-fit / profile system
+
+They are related, but they should not be implemented as one blended refactor.
+
+Track B should begin only after enough shell chrome is real that the board rectangle is trustworthy.
+
+## Track A — Shell Migration
+
+### Phase A0 — Freeze The Boundary
 
 Goal:
 
@@ -452,13 +576,13 @@ Tasks:
 - add this plan
 - define shell summary state
 - define shell command surface
-- define orientation-aware board profile model
+- define bridge semantics explicitly
 
 Acceptance:
 
 - team agrees what stays in canvas and what moves out
 
-## Phase 1 — Introduce Vite + React Shell Skeleton
+### Phase A1 — Introduce Vite + React Shell Skeleton
 
 Goal:
 
@@ -483,7 +607,7 @@ Acceptance:
 - React shell can wrap the canvas
 - desktop and mobile CSS breakpoints are live
 
-## Phase 2 — Add A Bridge Between React And Game Core
+### Phase A2 — Add A Bridge Between React And Game Core
 
 Goal:
 
@@ -508,7 +632,7 @@ Acceptance:
 
 - React shell can render live state without reading deep internals
 
-## Phase 3 — Move Title And Settings Out Of Canvas
+### Phase A3 — Move Title And Settings Out Of Canvas
 
 Goal:
 
@@ -531,7 +655,18 @@ Acceptance:
 - title/settings are fully shell-owned
 - canvas no longer needs to render those screens
 
-## Phase 4 — Move Help, Debug, Objectives, History, Discoveries
+### Phase A4 — Go / No-Go Checkpoint
+
+At the end of A2 or A3, stop and evaluate:
+
+- is the bridge clean and stable enough?
+- is the shell reducing friction rather than adding it?
+- is React improving responsive work materially?
+- is gameplay feel still intact?
+
+If the answer is no, pause before continuing deeper into migration.
+
+### Phase A5 — Move Help, Debug, Objectives, History, Discoveries
 
 Goal:
 
@@ -555,7 +690,7 @@ Acceptance:
 - mobile has readable sheets
 - desktop has a clean side rail
 
-## Phase 5 — Rebuild In-Play HUD And Action Bar In The Shell
+### Phase A6 — Rebuild In-Play HUD And Action Bar In The Shell
 
 Goal:
 
@@ -579,7 +714,32 @@ Acceptance:
 - the board uses most of the screen
 - shell chrome becomes easy to restyle responsively
 
-## Phase 6 — Orientation-Aware Board Profiles
+### Phase A7 — Remove Old Canvas Shell Code
+
+Goal:
+
+- complete the shell migration and reduce dead weight
+
+Tasks:
+
+- remove canvas title/settings/help/debug UI code
+- simplify `modules/renderer.js`
+- retire or rewrite `modules/settings.js`
+
+Acceptance:
+
+- renderer is substantially simpler
+- shell owns all non-board UI
+
+## Track B — Board-Fit / Profile System
+
+Track B begins after A3 at the earliest, and preferably after A5.
+
+The reason is simple:
+
+- board-fit logic should be tuned against the real shell chrome, not temporary placeholders
+
+### Phase B1 — Orientation-Aware Board Profiles
 
 Goal:
 
@@ -598,22 +758,56 @@ Acceptance:
 - no-scroll mobile is viable
 - the board occupies most of the screen
 
-## Phase 7 — Remove Old Canvas Shell Code
+### Phase B2 — Fit Heuristics And Readability Thresholds
 
 Goal:
 
-- complete the migration and reduce dead weight
+- make board-fit decisions measurable, not vague
 
 Tasks:
 
-- remove canvas title/settings/help/debug UI code
-- simplify `modules/renderer.js`
-- retire or rewrite `modules/settings.js`
+- define minimum tile targets per device class
+- define downgrade rules for unsupported density/aspect combinations
+- tune portrait and landscape fit against real shell rectangles
 
 Acceptance:
 
-- renderer is substantially simpler
-- shell owns all non-board UI
+- `small` on reference phones hits readable tile targets
+- `medium` and `large` are either valid or intentionally downgraded
+- no default phone layout depends on visible scrolling
+
+### Phase B3 — Scroll Fallback Review
+
+Goal:
+
+- decide whether any scrolling survives as a fallback
+
+Tasks:
+
+- test two-finger panning only on oversized boards
+- evaluate whether the fallback helps more than it harms
+- remove scroll fallback entirely if it remains confusing
+
+Acceptance:
+
+- scrolling is either clearly justified or deleted
+
+## Phase C — Final Cleanup
+
+Goal:
+
+- finish integration after both tracks are stable
+
+Tasks:
+
+- delete superseded temporary bridge helpers
+- remove dead shell/canvas transitional code
+- update docs to match the new steady state
+
+Acceptance:
+
+- no temporary migration hacks remain in core paths
+- the architecture is easier to explain than before
 
 ---
 
@@ -638,6 +832,7 @@ Do not start with:
 - moving the board itself
 - rewriting input
 - rewriting the full HUD first
+- redesigning board profiles before the shell footprint is real
 
 ---
 
@@ -724,7 +919,7 @@ Dependencies:
 
 - Worker A and B should land first
 - Worker C and E depend on the bridge
-- Worker D can run in parallel with C/E once the overall direction is stable
+- Worker D should wait until shell chrome dimensions are mostly real
 
 ---
 
@@ -739,6 +934,14 @@ We should consider the migration successful when:
 - React shell reads normalized summary state instead of deep gameplay internals
 - canvas owns only board/local visuals
 - mobile default play does not rely on visible scroll mode
+
+Concrete mobile checks:
+
+- on reference portrait phones, `small` hits the minimum tile-size target
+- the shell never permanently overlaps the board
+- primary play actions are reachable with one thumb in portrait
+- help, objectives, and history are reachable within one tap from the main play screen
+- the board pane remains the dominant visual region of the screen
 
 ---
 
@@ -790,9 +993,11 @@ This is the sequence I would start next:
 2. add game bridge and shell summary state
 3. move title screen to React
 4. move settings screen to React
-5. add orientation-aware board profiles for portrait vs landscape
+5. stop for the A2/A3 checkpoint and verify the bridge is clean
 6. move help/debug/objectives/history/discoveries to shell
 7. rebuild in-play HUD/action bar in shell
-8. delete the old canvas shell UI
+8. add orientation-aware board profiles for portrait vs landscape
+9. tune fit heuristics against the real shell footprint
+10. delete the old canvas shell UI
 
 That is the lowest-regret path.
