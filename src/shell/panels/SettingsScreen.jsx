@@ -27,7 +27,7 @@ export default function SettingsScreen({ state, actions }) {
         <button
           type="button"
           className="shell-button"
-          onClick={() => actions.setSettings({ difficulty: cycle(settings.difficulty, ['easy', 'normal', 'hard']) })}
+          onClick={() => actions.setSettings({ difficulty: cycle(settings.difficulty, ['easy', 'medium', 'hard']) })}
         >
           Cycle Difficulty
         </button>
