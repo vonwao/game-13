@@ -89,6 +89,8 @@
   let canvas, ctx;
   let audioInitialized = false;
   let lastTime = 0;
+  const shellListeners = new Set();
+  let lastShellSignature = '';
 
   // ── Init ───────────────────────────────────────────────────────────────────
 
@@ -218,6 +220,7 @@
     STATE.hunt = STATE.hunt || {};
     STATE.hunt.round = 1;
     setupRound(true);
+    notifyShellState(true);
   }
 
   function advanceRound() {
@@ -225,12 +228,170 @@
     STATE.hunt = STATE.hunt || {};
     STATE.hunt.round = (STATE.hunt.round || 1) + 1;
     setupRound(false);
+    notifyShellState(true);
   }
 
-  // Expose startGame for Settings module's Start button
+  function cloneScorePreview(sp) {
+    if (!sp) return null;
+    return {
+      basePts: sp.basePts || 0,
+      lenMult: sp.lenMult || 1,
+      shapeMult: sp.shapeMult || 1,
+      shapeLabel: sp.shapeLabel || '',
+      comboCount: sp.comboCount || 0,
+      comboMult: sp.comboMult || 1,
+      crystalMult: sp.crystalMult || 1,
+      emberBonus: sp.emberBonus || 0,
+      total: sp.total || 0,
+      corners: sp.corners || 0,
+    };
+  }
+
+  function getShellState() {
+    const hunt = STATE.hunt || {};
+    const input = STATE.input || {};
+    const debug = STATE.debug || {};
+    return {
+      phase: STATE.phase,
+      gameMode: STATE.gameMode,
+      settings: {
+        difficulty: STATE.settings.difficulty,
+        boardSize: STATE.settings.boardSize,
+        soundEnabled: !!STATE.settings.soundEnabled,
+        particlesEnabled: !!STATE.settings.particlesEnabled,
+        specialTiles: !!STATE.settings.specialTiles,
+        endCondition: STATE.settings.endCondition,
+      },
+      ui: {
+        showHelp: !!STATE.showHelp,
+        helpTab: STATE.helpTab || 'basics',
+        debug: {
+          enabled: !!debug.enabled,
+          tab: debug.tab || 'planted',
+        },
+      },
+      run: {
+        score: STATE.score || 0,
+        wordsSpelled: STATE.wordsSpelled || 0,
+        longestWord: STATE.longestWord || '',
+        turns: STATE.turns || 0,
+        seedsDestroyed: STATE.seedsDestroyed || 0,
+        totalSeeds: STATE.totalSeeds || 0,
+      },
+      huntSummary: {
+        round: hunt.round || 1,
+        maxRounds: hunt.maxRounds || 3,
+        roundTitle: hunt.roundTitle || '',
+        timeRemaining: Math.max(0, Math.ceil(hunt.timeRemaining || 0)),
+        turnsRemaining: hunt.turnsRemaining || 0,
+        cluesRemaining: hunt.cluesRemaining || 0,
+        combo: hunt.combo || 0,
+        bestCombo: hunt.bestCombo || 0,
+        completedCount: hunt.completedCount || 0,
+        advanceAvailable: !!hunt.advanceAvailable,
+      },
+      inputSummary: {
+        typed: input.typed || '',
+        valid: !!input.valid,
+        hasPath: !!input.hasPath,
+        scorePreview: cloneScorePreview(input.scorePreview),
+      },
+      wordHistory: (STATE.wordHistory || []).map(function(entry) {
+        return {
+          word: entry.word || '',
+          score: entry.score || 0,
+          pathLength: entry.pathLength || 0,
+          basePts: entry.basePts || 0,
+          lenMult: entry.lenMult || 1,
+          shapeMult: entry.shapeMult || 1,
+          shapeLabel: entry.shapeLabel || '',
+          corners: entry.corners || 0,
+          comboCount: entry.comboCount || 0,
+          comboMult: entry.comboMult || 1,
+          crystalMult: entry.crystalMult || 1,
+          emberBonus: entry.emberBonus || 0,
+          discoveryBonus: entry.discoveryBonus || 0,
+          objectiveBonus: entry.objectiveBonus || 0,
+          orientation: entry.orientation || '',
+          reasonText: entry.reasonText || '',
+        };
+      }),
+    };
+  }
+
+  function notifyShellState(force) {
+    const snapshot = getShellState();
+    const signature = JSON.stringify(snapshot);
+    if (!force && signature === lastShellSignature) return;
+    lastShellSignature = signature;
+    shellListeners.forEach(function(listener) {
+      try {
+        listener(snapshot);
+      } catch (err) {
+        console.error('Shell listener error:', err);
+      }
+    });
+  }
+
+  function subscribeShell(listener) {
+    if (typeof listener !== 'function') {
+      throw new Error('subscribeShell(listener) requires a function');
+    }
+    shellListeners.add(listener);
+    listener(getShellState());
+    return function unsubscribeShell() {
+      shellListeners.delete(listener);
+    };
+  }
+
+  function setUIState(patch) {
+    if (!patch || typeof patch !== 'object') return;
+
+    if (Object.prototype.hasOwnProperty.call(patch, 'showHelp')) {
+      STATE.showHelp = !!patch.showHelp;
+      if (STATE.showHelp) {
+        STATE.debug = STATE.debug || {};
+        STATE.debug.enabled = false;
+      }
+    }
+
+    if (typeof patch.helpTab === 'string') {
+      STATE.helpTab = patch.helpTab;
+    }
+
+    if (patch.debug && typeof patch.debug === 'object') {
+      STATE.debug = STATE.debug || {};
+      if (Object.prototype.hasOwnProperty.call(patch.debug, 'enabled')) {
+        STATE.debug.enabled = !!patch.debug.enabled;
+        if (STATE.debug.enabled) STATE.showHelp = false;
+      }
+      if (typeof patch.debug.tab === 'string') {
+        STATE.debug.tab = patch.debug.tab;
+      }
+    }
+
+    notifyShellState(true);
+  }
+
+  function setSettings(patch) {
+    if (!patch || typeof patch !== 'object') return;
+    const allowed = ['difficulty', 'boardSize', 'soundEnabled', 'particlesEnabled', 'specialTiles', 'endCondition'];
+    for (let i = 0; i < allowed.length; i++) {
+      const key = allowed[i];
+      if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+      STATE.settings[key] = patch[key];
+    }
+    notifyShellState(true);
+  }
+
+  // Public shell/game bridge
   window.LD.Game = {
     startGame: startGame,
-    advanceRound: advanceRound
+    advanceRound: advanceRound,
+    getShellState: getShellState,
+    subscribeShell: subscribeShell,
+    setUIState: setUIState,
+    setSettings: setSettings,
   };
 
   function initAudio() {
@@ -263,7 +424,7 @@
 
   // ── Phase transition key handling (captures before input.js) ───────────────
 
-  window.addEventListener('keydown', function(e) {
+    window.addEventListener('keydown', function(e) {
     // Init audio on first interaction
     initAudio();
 
@@ -271,6 +432,7 @@
       e.preventDefault();
       e.stopImmediatePropagation();
       STATE.phase = 'settings';
+      notifyShellState(true);
       return;
     }
 
@@ -294,6 +456,7 @@
         return;
       }
       STATE.phase = 'settings';
+      notifyShellState(true);
       return;
     }
   }, true); // capture phase — fires before input.js
@@ -303,6 +466,7 @@
     initAudio();
     if (STATE.phase === 'title') {
       STATE.phase = 'settings';
+      notifyShellState(true);
     }
   }, { once: false });
 
@@ -330,6 +494,8 @@
         STATE.phase = 'gameover';
       }
     }
+
+    notifyShellState(false);
 
     if (STATE.phase === 'playing' && STATE.gameMode === 'wordhunt' && STATE.hunt) {
       STATE.hunt.clueTimer = Math.max(0, (STATE.hunt.clueTimer || 0) - dt);
@@ -370,6 +536,7 @@
 
     // Start in settings phase
     STATE.phase = 'settings';
+    notifyShellState(true);
 
     // Start render loop
     requestAnimationFrame(gameLoop);
