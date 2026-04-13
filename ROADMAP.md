@@ -18,6 +18,7 @@ The current conclusion is:
 
 The roadmap sets overall priority.
 The sprint plan is the current execution slice derived from it.
+The responsive shell migration plan lives in [RESPONSIVE-SHELL-MIGRATION.md](/Users/vonwao/dev/micro-projects/game-13/RESPONSIVE-SHELL-MIGRATION.md).
 
 ---
 
