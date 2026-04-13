@@ -51,20 +51,59 @@
   function resize(cvs, state) {
     canvas = cvs;
     const vp = state.viewport;
-    const hudH = 60;
-    const inputH = 50;
-    const minimapW = 130;
-    const availW = canvas.width - 20 - minimapW;
-    const availH = canvas.height - hudH - inputH - 10;
-    const tileW = Math.floor(availW / vp.cols);
-    const tileH = Math.floor(availH / vp.rows);
-    vp.tileSize = Math.min(tileW, tileH);
-    vp.offsetX = 10;
-    vp.offsetY = hudH;
+    const isWordHunt = state.gameMode === 'wordhunt';
+
+    if (isWordHunt) {
+      const hudH = 56;
+      const inputH = 50;
+      const sideW = 236;
+      const availW = canvas.width - 18 - sideW;
+      const availH = canvas.height - hudH - inputH - 12;
+      const fullCols = Math.max(1, state.board.width || vp.cols || 1);
+      const fullRows = Math.max(1, state.board.height || vp.rows || 1);
+      const fitTile = Math.floor(Math.min(availW / fullCols, availH / fullRows));
+      const minReadable = state.settings && state.settings.boardSize === 'large' ? 16 : 18;
+      const showWholeBoard = fitTile >= minReadable || (state.settings && state.settings.boardSize !== 'large');
+
+      if (showWholeBoard) {
+        vp.cols = fullCols;
+        vp.rows = fullRows;
+        vp.col = 0;
+        vp.row = 0;
+        vp.tileSize = Math.max(14, fitTile);
+      } else {
+        vp.tileSize = minReadable;
+        vp.cols = Math.max(1, Math.min(fullCols, Math.floor(availW / vp.tileSize)));
+        vp.rows = Math.max(1, Math.min(fullRows, Math.floor(availH / vp.tileSize)));
+        vp.col = Math.max(0, Math.min(fullCols - vp.cols, vp.col));
+        vp.row = Math.max(0, Math.min(fullRows - vp.rows, vp.row));
+      }
+
+      const boardW = vp.cols * vp.tileSize;
+      const boardH = vp.rows * vp.tileSize;
+      vp.offsetX = 10 + Math.max(0, Math.floor((availW - boardW) / 2));
+      vp.offsetY = hudH + Math.max(2, Math.floor((availH - boardH) / 2));
+    } else {
+      const hudH = 60;
+      const inputH = 50;
+      const minimapW = 130;
+      const availW = canvas.width - 20 - minimapW;
+      const availH = canvas.height - hudH - inputH - 10;
+      const tileW = Math.floor(availW / vp.cols);
+      const tileH = Math.floor(availH / vp.rows);
+      vp.tileSize = Math.min(tileW, tileH);
+      vp.offsetX = 10;
+      vp.offsetY = hudH;
+    }
     targetScrollX = vp.col * vp.tileSize;
     targetScrollY = vp.row * vp.tileSize;
     scrollX = targetScrollX;
     scrollY = targetScrollY;
+  }
+
+  function shouldShowMinimap(state) {
+    if (state.gameMode !== 'wordhunt') return true;
+    return state.viewport.cols < state.board.width || state.viewport.rows < state.board.height;
   }
 
   function setViewportTarget(col, row) {
@@ -104,14 +143,14 @@
     }
     if (state.phase === 'gameover') {
       drawBoard(ctx, state);
-      drawMinimap(ctx, state);
+      if (shouldShowMinimap(state)) drawMinimap(ctx, state);
       drawHUD(ctx, state);
       drawGameOverScreen(ctx, state);
       return;
     }
     if (state.phase === 'victory') {
       drawBoard(ctx, state);
-      drawMinimap(ctx, state);
+      if (shouldShowMinimap(state)) drawMinimap(ctx, state);
       drawHUD(ctx, state);
       drawVictoryScreen(ctx, state);
       return;
@@ -131,7 +170,7 @@
 
     ctx.restore();
 
-    drawMinimap(ctx, state);
+    if (shouldShowMinimap(state)) drawMinimap(ctx, state);
     drawHUD(ctx, state);
 
     // Input bar: touch action bar on touch devices, keyboard bar otherwise
@@ -146,6 +185,7 @@
       if (window.LD && window.LD.Challenges) {
         LD.Challenges.renderSidebar(ctx, state, mouseX, mouseY);
       }
+      drawDiscoveryPanel(ctx, state);
       drawWordHistory(ctx, state);
     }
 
@@ -173,6 +213,12 @@
         matchSet.add(p.col + ',' + p.row);
       });
     }
+    const clueSet = new Set();
+    if (state.gameMode === 'wordhunt' && state.hunt && state.hunt.clueTiles) {
+      state.hunt.clueTiles.forEach(function(p) {
+        clueSet.add(p.col + ',' + p.row);
+      });
+    }
 
     for (let vr = 0; vr < vp.rows; vr++) {
       for (let vc = 0; vc < vp.cols; vc++) {
@@ -185,9 +231,10 @@
         const key = gc + ',' + gr;
         const inPath = pathSet.has(key);
         const isMatch = !inPath && matchSet.has(key);
+        const isClue = clueSet.has(key);
         const pathIdx = inPath ? getPathIndex(state.input.path, gc, gr) : -1;
 
-        drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state, isMatch);
+        drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state, isMatch, isClue);
       }
     }
   }
@@ -199,7 +246,7 @@
     return -1;
   }
 
-  function drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state, isMatch) {
+  function drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state, isMatch, isClue) {
     const pad = 1;
     const inner = ts - pad * 2;
     const time = state.time || 0;
@@ -329,12 +376,12 @@
       ctx.strokeRect(x + pad, y + pad, inner, inner);
     }
 
-    // Planted tile indicator — tiny gold corner dot (before discovery)
-    if (tile.planted && !tile.found && ts >= 16) {
-      ctx.fillStyle = '#6a5020';
-      ctx.beginPath();
-      ctx.arc(x + ts - 4, y + 4, 2, 0, Math.PI * 2);
-      ctx.fill();
+    if (isClue && !tile.found) {
+      var pulse = 0.5 + 0.5 * Math.sin(time * 8);
+      ctx.strokeStyle = 'rgba(128,216,255,' + (0.45 + pulse * 0.35) + ')';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + pad + 1, y + pad + 1, inner - 2, inner - 2);
+      ctx.lineWidth = 1;
     }
 
     // Word color stripe(s) at the bottom of each used tile
@@ -373,7 +420,7 @@
   }
 
   function drawLetter(ctx, letter, x, y, ts, color, embossColor, points) {
-    const fontSize = Math.max(12, Math.floor(ts * 0.55));
+    const fontSize = Math.max(10, Math.floor(ts * 0.55));
     ctx.font = 'bold ' + fontSize + 'px "Courier New", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -595,6 +642,10 @@
     const w = canvas.width;
     const h = 55;
     const hunt = state.hunt || {};
+    const foundCount = (hunt.plantedWords || []).filter(function (p) { return p.found; }).length;
+    const totalHidden = (hunt.plantedWords || []).length;
+    const objectiveTotal = (hunt.challenges && hunt.challenges.length) || 0;
+    const objectiveDone = hunt.completedCount || 0;
 
     ctx.fillStyle = COLORS.hudBg;
     ctx.fillRect(0, 0, w, h);
@@ -611,13 +662,15 @@
     ctx.fillText('WORD HUNT', 12, 16);
     ctx.font = '11px "Courier New", monospace';
     ctx.fillStyle = '#8a7a60';
-    ctx.fillText('Round ' + (hunt.round || 1) + ': The First Page', 12, 32);
+    ctx.fillText('Round ' + (hunt.round || 1) + '/' + (hunt.maxRounds || 3) + ' · ' + (hunt.roundTitle || 'The First Page'), 12, 32);
 
     // Score + words
     ctx.fillStyle = COLORS.hud;
     ctx.font = '13px "Courier New", monospace';
     ctx.fillText('Score: ' + (state.score || 0).toLocaleString(), 170, 22);
     ctx.fillText('Words: ' + (state.wordsSpelled || 0), 170, 40);
+    ctx.fillText('Hidden: ' + foundCount + '/' + totalHidden, 320, 22);
+    ctx.fillText('Clues: ' + (hunt.cluesRemaining || 0), 320, 40);
 
     // Combo
     if (hunt.combo > 1) {
@@ -633,15 +686,13 @@
     ctx.fillStyle = COLORS.hud;
     const endCond = (state.settings && state.settings.endCondition) || 'challenges';
     if (endCond === 'challenges') {
-      const total = (hunt.challenges && hunt.challenges.length) || 10;
-      const done  = hunt.completedCount || 0;
-      ctx.fillText('Challenges: ' + done + '/' + total, w - 20, 22);
+      ctx.fillText('Objectives: ' + objectiveDone + '/' + objectiveTotal, w - 20, 22);
       // Mini progress bar
       const bw = 140, bh = 6, bx = w - bw - 20, by = 34;
       ctx.fillStyle = '#2a2420';
       ctx.fillRect(bx, by, bw, bh);
       ctx.fillStyle = COLORS.highlight;
-      ctx.fillRect(bx, by, Math.round((done / Math.max(total, 1)) * bw), bh);
+      ctx.fillRect(bx, by, Math.round((objectiveDone / Math.max(objectiveTotal, 1)) * bw), bh);
       ctx.strokeStyle = '#444';
       ctx.strokeRect(bx, by, bw, bh);
     } else if (endCond === 'timed') {
@@ -649,9 +700,13 @@
       const mm = Math.floor(secs / 60);
       const ss = String(secs % 60).padStart(2, '0');
       ctx.fillStyle = secs < 30 ? '#ff6040' : COLORS.hud;
-      ctx.fillText('Time: ' + mm + ':' + ss, w - 20, 28);
+      ctx.fillText('Time: ' + mm + ':' + ss, w - 20, 22);
+      ctx.fillStyle = '#8a7a60';
+      ctx.fillText('Round score: ' + (hunt.roundScore || 0), w - 20, 40);
     } else if (endCond === 'turns') {
-      ctx.fillText('Turns left: ' + (hunt.turnsRemaining || 0), w - 20, 28);
+      ctx.fillText('Turns left: ' + (hunt.turnsRemaining || 0), w - 20, 22);
+      ctx.fillStyle = '#8a7a60';
+      ctx.fillText('Round score: ' + (hunt.roundScore || 0), w - 20, 40);
     }
   }
 
@@ -848,35 +903,44 @@
       ctx.font = '11px "Courier New", monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Type a word · Enter to submit · Arrow keys to scroll · ? for help', 20, barY + 41);
+      ctx.fillText('Type a word · Enter submit · C clue · Arrow keys scroll · ? help', 20, barY + 41);
     }
   }
 
   /**
-   * Draw word history panel in the right column, below the challenges sidebar.
-   * Challenges sidebar ends around y=330; minimap starts around y=536.
+   * Shared measurements for the Word Hunt right column.
    */
-  function drawWordHistory(ctx, state) {
+  function getWordHuntSidebarMetrics(state) {
+    const objectiveCount = (state.hunt && state.hunt.challenges) ? state.hunt.challenges.length : 0;
+    const sideW = 220;
+    const sideX = canvas.width - sideW - 8;
+    const objectiveY = 60;
+    const objectiveH = 28 + objectiveCount * 48 + 12;
+    const discoveryY = objectiveY + objectiveH + 10;
+    const minimapTop = shouldShowMinimap(state) ? (canvas.height - 120 - 60 - 8) : (canvas.height - 8);
+    return {
+      x: sideX,
+      w: sideW,
+      objectiveY: objectiveY,
+      objectiveH: objectiveH,
+      discoveryY: discoveryY,
+      minimapTop: minimapTop,
+    };
+  }
+
+  function drawDiscoveryPanel(ctx, state) {
     const hunt = state.hunt;
-    if (!hunt || !hunt.wordsThisRound || hunt.wordsThisRound.length === 0) return;
+    if (!hunt) return;
 
-    const history  = hunt.wordsThisRound;
-    const maxShow  = Math.min(10, history.length);
-    const lineH    = 18;
-    const padX     = 8;
-    const padY     = 6;
-    const panelW   = 160;
-    const panelH   = maxShow * lineH + padY * 2 + 20; // +20 for header
-
-    // Right column: same x as challenge sidebar
-    const panelX   = canvas.width - panelW - 4;
-    // Below challenges sidebar (which has 10 rows × 22px + 28 header + 12 = 260px from y=66)
-    const challengesBottom = 66 + 28 + 10 * 22 + 12 + 6; // ≈ 334
-    const panelY   = challengesBottom;
-
-    // Don't draw if it would overflow into minimap area
-    const mmTop = canvas.height - 120 - 60 - 8; // minimap top with margin
-    if (panelY + panelH > mmTop) return;
+    const found = (hunt.plantedWords || []).filter(function (p) { return p.found; }).length;
+    const total = (hunt.plantedWords || []).length;
+    const recent = (hunt.discoveredWords || []).slice(-4).reverse();
+    const m = getWordHuntSidebarMetrics(state);
+    const panelX = m.x;
+    const panelY = m.discoveryY;
+    const panelW = m.w;
+    const panelH = 104;
+    if (panelY + panelH > m.minimapTop) return;
 
     // Background
     ctx.fillStyle = 'rgba(10, 8, 6, 0.88)';
@@ -885,15 +949,61 @@
     ctx.lineWidth = 1;
     ctx.strokeRect(panelX, panelY, panelW, panelH);
 
-    // Header
     ctx.font = 'bold 10px "Courier New", monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#5a4a30';
-    ctx.fillText('WORDS PLAYED  ' + history.length, panelX + padX, panelY + padY);
+    ctx.fillText('DISCOVERIES  ' + found + '/' + total, panelX + 8, panelY + 6);
+    ctx.textAlign = 'right';
+    ctx.fillText('CLUES ' + (hunt.cluesRemaining || 0), panelX + panelW - 8, panelY + 6);
+
+    ctx.textAlign = 'left';
+    ctx.font = '10px "Courier New", monospace';
+    ctx.fillStyle = '#7a6a50';
+    if (recent.length === 0) {
+      ctx.fillText('No hidden words found yet.', panelX + 8, panelY + 28);
+      ctx.fillText('Use C or the clue button when stuck.', panelX + 8, panelY + 44);
+      return;
+    }
+
+    for (let i = 0; i < recent.length; i++) {
+      ctx.fillStyle = i === 0 ? '#f0d070' : '#8a7a60';
+      ctx.font = (i === 0 ? 'bold ' : '') + '11px "Courier New", monospace';
+      ctx.fillText(recent[i], panelX + 8, panelY + 28 + i * 16);
+    }
+  }
+
+  function drawWordHistory(ctx, state) {
+    const hunt = state.hunt;
+    if (!hunt || !hunt.wordsThisRound || hunt.wordsThisRound.length === 0) return;
+
+    const history = hunt.wordsThisRound;
+    const lineH = 18;
+    const padX = 8;
+    const padY = 6;
+    const m = getWordHuntSidebarMetrics(state);
+    const panelX = m.x;
+    const panelY = m.discoveryY + 114;
+    const panelW = m.w;
+    const maxAvailable = Math.floor((m.minimapTop - panelY - 24) / lineH);
+    const maxShow = Math.max(0, Math.min(6, history.length, maxAvailable));
+    if (maxShow <= 0) return;
+    const panelH = maxShow * lineH + padY * 2 + 20;
+    if (panelY + panelH > m.minimapTop) return;
+
+    ctx.fillStyle = 'rgba(10, 8, 6, 0.88)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = '#2a2420';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+    ctx.font = 'bold 10px "Courier New", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#5a4a30';
+    ctx.fillText('RECENT WORDS  ' + history.length, panelX + padX, panelY + padY);
 
     const listTop = panelY + padY + 18;
-
     for (let i = 0; i < maxShow; i++) {
       const entry  = history[history.length - maxShow + i];
       const isLast = i === maxShow - 1;
@@ -997,10 +1107,10 @@
     if (isWH && state.hunt) {
       const hunt = state.hunt;
       const done  = hunt.completedCount || 0;
-      const total = (hunt.challenges && hunt.challenges.length) || 10;
+      const total = (hunt.challenges && hunt.challenges.length) || 3;
       const pw = (hunt.plantedWords || []).filter(function(p) { return p.found; }).length;
       const pwT = (hunt.plantedWords || []).length;
-      ctx.fillText('Challenges: ' + done + '/' + total, w / 2, h / 2 + 70);
+      ctx.fillText('Objectives: ' + done + '/' + total, w / 2, h / 2 + 70);
       ctx.fillText('Hidden words found: ' + pw + '/' + pwT, w / 2, h / 2 + 96);
     } else {
       ctx.fillText('Seeds Destroyed: ' + (state.seedsDestroyed || 0) + '/' + state.totalSeeds, w / 2, h / 2 + 70);
@@ -1025,7 +1135,11 @@
 
     ctx.font = 'bold 44px "Courier New", monospace';
     ctx.fillStyle = COLORS.highlight;
-    ctx.fillText(isWH ? 'ROUND COMPLETE!' : 'THE ARCHIVE ENDURES', w / 2, h / 2 - 80);
+    if (isWH) {
+      ctx.fillText(state.hunt && state.hunt.advanceAvailable ? 'ROUND COMPLETE!' : 'ARCHIVE MASTERED', w / 2, h / 2 - 80);
+    } else {
+      ctx.fillText('THE ARCHIVE ENDURES', w / 2, h / 2 - 80);
+    }
 
     ctx.font = '16px "Courier New", monospace';
     ctx.fillStyle = COLORS.hud;
@@ -1039,18 +1153,28 @@
       const pwT = (hunt.plantedWords || []).length;
       ctx.fillText('Hidden words found: ' + pw + '/' + pwT, w / 2, h / 2 + 70);
       ctx.fillText('Best combo: ×' + (hunt.bestCombo || 0), w / 2, h / 2 + 96);
+      if (hunt.advanceAvailable) {
+        ctx.fillText('Next: Round ' + ((hunt.round || 1) + 1) + '/' + (hunt.maxRounds || 3), w / 2, h / 2 + 122);
+      }
     } else {
       ctx.fillText('All ' + state.totalSeeds + ' seals destroyed!', w / 2, h / 2 + 70);
     }
 
     ctx.globalAlpha = 0.5 + 0.5 * Math.sin(time * 2.5);
-    ctx.fillText('Press Enter to Play Again', w / 2, h / 2 + 140);
+    ctx.fillText(
+      isWH && state.hunt && state.hunt.advanceAvailable
+        ? 'Press Enter for the Next Round'
+        : 'Press Enter to Play Again',
+      w / 2,
+      h / 2 + 140
+    );
     ctx.globalAlpha = 1;
   }
 
   function drawHelpScreen(ctx, state) {
     const w = canvas.width;
     const h = canvas.height;
+    const isWH = state.gameMode === 'wordhunt';
 
     // Dark overlay
     ctx.fillStyle = 'rgba(10, 8, 6, 0.92)';
@@ -1084,9 +1208,11 @@
       ['Backspace', 'Delete last letter'],
       ['Escape', 'Clear current word'],
       ['Arrow keys', 'Scroll the viewport'],
+      ['C', isWH ? 'Spend a clue on a hidden word' : ''],
       ['?', 'Toggle this help screen'],
     ];
     for (var ci = 0; ci < controls.length; ci++) {
+      if (!controls[ci][1]) continue;
       ctx.fillStyle = '#c8a050';
       ctx.fillText(controls[ci][0], col1 + 10, y);
       ctx.fillStyle = COLORS.hud;
@@ -1102,7 +1228,19 @@
     y += lineH + 4;
     ctx.font = '13px "Courier New", monospace';
     ctx.fillStyle = COLORS.hud;
-    var howto = [
+    var howto = isWH ? [
+      'Type a word (4+ letters). The game chooses the best-scoring',
+      'valid path on the current board for what you typed.',
+      '',
+      'Long words, straight lines, and combos are worth more.',
+      'Scrolling the board resets your combo.',
+      '',
+      'Find hidden planted words for a discovery bonus, and clear',
+      'the round objectives to advance deeper into the archive.',
+      '',
+      'Use C or the clue button when stuck. A clue reveals one or',
+      'two tiles from an unfound hidden word for a moment.',
+    ] : [
       'Type a word (3-8 letters). The game finds a connected path',
       'on the visible grid. Press Enter to cast — tiles activate,',
       'cleansing corruption within 2 tiles of your word.',
@@ -1112,7 +1250,7 @@
       'adjacent to a seal. The seal shatters and all connected',
       'corruption is cleansed in a cascade.',
       '',
-      'Lose if corruption covers 40% of the board (640+ tiles).',
+      'Lose if corruption covers 40% of the board.',
       'Corruption spreads one step after each word you cast.',
     ];
     for (var hi = 0; hi < howto.length; hi++) {
@@ -1148,10 +1286,18 @@
     // Length multiplier
     ctx.font = 'bold 16px "Courier New", monospace';
     ctx.fillStyle = '#c8a050';
-    ctx.fillText('WORD LENGTH BONUS', col2, y);
+    ctx.fillText(isWH ? 'WORD LENGTH BONUS' : 'WORD LENGTH BONUS', col2, y);
     y += lineH + 4;
     ctx.font = '13px "Courier New", monospace';
-    var lengths = [
+    var lengths = isWH ? [
+      ['4 letters', '1.5x'],
+      ['5 letters', '2x'],
+      ['6 letters', '3x'],
+      ['7 letters', '5x'],
+      ['8 letters', '8x'],
+      ['Straight line', 'up to 2.0x'],
+      ['Combo chain', '+0.1x each word'],
+    ] : [
       ['3 letters', '1x'],
       ['4 letters', '1.5x'],
       ['5 letters', '2x'],
@@ -1174,7 +1320,13 @@
     ctx.fillText('SPECIAL TILES', col2, y);
     y += lineH + 4;
     ctx.font = '13px "Courier New", monospace';
-    var specials = [
+    var specials = isWH ? [
+      ['Ember (orange)', '+20 points when used'],
+      ['Crystal (cyan)', '2x the whole word score'],
+      ['Void (purple)', 'Wildcard — matches any letter'],
+      ['', 'Hidden words are not visually marked'],
+      ['', 'except for temporary clue pulses'],
+    ] : [
       ['Ember (orange)', 'Cleanse a 5x5 area'],
       ['Crystal (cyan)', 'Double cleanse radius (2 -> 4)'],
       ['Void (purple)', 'Wildcard — matches any letter'],

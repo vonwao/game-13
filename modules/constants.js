@@ -29,6 +29,8 @@
         plantedWordMaxLen:   { easy: 6,  medium: 7,  hard: 8  }[diff],
         plantedDiagonalPct: { easy: 0,  medium: 0.2, hard: 0.5 }[diff],
         plantedReversePct:  { easy: 0,  medium: 0.15, hard: 0.4 }[diff],
+        commonWordRankLimit:{ easy: 1800, medium: 2600, hard: 3400 }[diff],
+        commonWordRankStep: 700,
         // Fragments
         fragmentCount: { easy: 18, medium: 12, hard: 6 }[diff],
         // Special tiles
@@ -36,6 +38,9 @@
         voidCount:    settings.specialTiles ? 5 : 0,
         emberCount:   settings.specialTiles ? 4 : 0,
         bombCount:    0,
+        // Discovery / progression
+        clueCount:   { easy: 3, medium: 2, hard: 1 }[diff],
+        roundsToWin: 3,
         // Scoring
         pathBonuses:  true,
         comboBonuses: true,

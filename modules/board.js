@@ -303,22 +303,153 @@
     [-1, -1], // up-left
   ];
 
+  var BORING_WORDS = {
+    ABOUT: true, OTHER: true, WHICH: true, THEIR: true, THERE: true,
+    WOULD: true, THESE: true, AFTER: true, WHERE: true, SHOULD: true,
+    THROUGH: true, UNDER: true, BEFORE: true, BECAUSE: true, THOSE: true,
+    USING: true, BEING: true, WITHIN: true, WITHOUT: true, BETWEEN: true,
+    WHILE: true, TODAY: true, EVERY: true, DURING: true, SINCE: true,
+    AROUND: true, ACROSS: true, REALLY: true, THINGS: true, THING: true,
+    PEOPLE: true, NUMBER: true, SYSTEM: true, PRODUCT: true, PRODUCTS: true,
+    SERVICE: true, SERVICES: true, POLICY: true, SUPPORT: true, SEARCH: true,
+    CONTACT: true, CLICK: true, EMAIL: true, ONLINE: true, PRICE: true,
+    PRICES: true, MESSAGE: true, PUBLIC: true, RIGHTS: true, COMPANY: true,
+    COMPANIES: true, WEBSITE: true, SOFTWARE: true, BUSINESS: true,
+    ACCOUNT: true, PROFILE: true, ORDER: true, ORDERS: true, SHIPPING: true,
+    PRIVACY: true, TERMS: true, REPORT: true, REPORTS: true, ARTICLE: true,
+    ARTICLES: true, COMMENT: true, COMMENTS: true, FORUM: true, FORUMS: true,
+    HISTORY: true, COUNTRY: true, PROBLEM: true, PRESENT: true,
+    CONTROL: true, CENTRAL: true, CENTURY: true, SUBJECT: true,
+    THOUGHT: true, FAMILY: true, SECOND: true, COURSE: true,
+    PERIOD: true, PERSON: true, SCHOOL: true, CULTURE: true,
+    CHANGE: true, PROJECT: true, MARKET: true, OUTSIDE: true,
+    LITTLE: true, AMERICA: true, CHINESE: true, GERMAN: true,
+    AFRICAN: true, BRITISH: true, PROGRAM: true, FIGURE: true,
+    PROCESS: true, SPECIAL: true, FOREIGN: true, PRODUCE: true,
+    SIMILAR: true, COMPLEX: true, MEDICAL: true, NATURAL: true,
+    SURFACE: true, SERIOUS: true, DEVELOP: true, TYPICAL: true,
+    POPULAR: true, SIMPLE: true, NORMAL: true, ACTIVE: true,
+    REGULAR: true, INITIAL: true, CAPITAL: true, THEORY: true,
+    VALUE: true, PLACE: true, POINT: true, WATER: true, HOUSE: true,
+    HUMAN: true, SOCIETY: true, STATES: true, YEARS: true,
+    GROUP: true, WOMEN: true, BROUGHT: true, GIVEN: true, FOUND: true
+  };
+
+  var JUICY_WORDS = {
+    ANIMAL: true, ARCHIVE: true, AURORA: true, BADGE: true, BALLOON: true,
+    BANANA: true, BEACON: true, BLANKET: true, BLOOM: true, BRAVE: true,
+    CANNON: true, CASTLE: true, CATALYST: true, CIRCUS: true, CLIFF: true,
+    CLOAK: true, COAST: true, COMET: true, COSMIC: true, COURAGE: true,
+    CRADLE: true, CRYSTAL: true, DANGER: true, DESTINY: true, DRAGON: true,
+    ECHOES: true, ELEPHANT: true, EMBER: true, EMERALD: true, ENGINE: true,
+    FAIRY: true, FALCON: true, FOREST: true, FREEZE: true, FRONTIER: true,
+    GALAXY: true, GARDEN: true, GARLIC: true, GHOST: true, GLOW: true,
+    GROOVE: true, HARBOR: true, HIDDEN: true, HOLLOW: true, HUNGER: true,
+    JAGUAR: true, JUNGLE: true, KNIGHT: true, LADDER: true, LANTERN: true,
+    LEGEND: true, MARBLE: true, MARVEL: true, MELODY: true, MEMORY: true,
+    METEOR: true, MIRACLE: true, MIRROR: true, MONSTER: true, MYSTIC: true,
+    NEBULA: true, OASIS: true, OCEAN: true, ORBIT: true, PIRATE: true,
+    PLANET: true, POISON: true, PUPPY: true, PUZZLE: true, QUARTZ: true,
+    RANGER: true, REBEL: true, RELIC: true, RHYTHM: true, ROCKET: true,
+    SHADOW: true, SHARK: true, SHIELD: true, SILVER: true, SIREN: true,
+    SKELETON: true, SPARK: true, SPHERE: true, SPIRIT: true, STORM: true,
+    STRANGER: true, SUNSET: true, SURGE: true, THUNDER: true, TIGER: true,
+    TRAUMA: true, TRIUMPH: true, TUNNEL: true, TURTLE: true, VAMPIRE: true,
+    VIKING: true, VOLCANO: true, WAGON: true, WHALE: true, WICKED: true,
+    WILLOW: true, WINTER: true, WIZARD: true
+  };
+
+  function countUniqueLetters(word) {
+    var seen = {};
+    var count = 0;
+    for (var i = 0; i < word.length; i++) {
+      var ch = word[i];
+      if (!seen[ch]) {
+        seen[ch] = true;
+        count++;
+      }
+    }
+    return count;
+  }
+
+  function scoreCandidateWord(word, rank) {
+    var score = 280 - rank * 0.05;
+    var uniqueCount = countUniqueLetters(word);
+    var vowels = (word.match(/[AEIOUY]/g) || []).length;
+
+    score += word.length * 10;
+    score += uniqueCount * 6;
+    score += vowels >= 2 && vowels <= Math.max(3, word.length - 2) ? 12 : -30;
+
+    if (JUICY_WORDS[word]) score += 520;
+    if (BORING_WORDS[word]) score -= 280;
+    if (/[QZXJKV]/.test(word)) score += 12;
+    if (/ING$|ED$|ER$|ERS$|TION$|MENT$|NESS$|ANCE$|ENCE$|ITY$|ISM$|IST$|SHIP$/.test(word)) score -= 80;
+    if (/S$/.test(word) && !/SS$|US$|IS$/.test(word)) score -= 20;
+    if (word.length < 5 && !JUICY_WORDS[word]) score -= 35;
+    if (/^[A-Z]+$/.test(word) === false) score -= 1000;
+
+    return score;
+  }
+
   function selectPlantableWords(config) {
     var minLen = config.plantedWordMinLen || 5;
     var maxLen = config.plantedWordMaxLen || 7;
     var count  = config.plantedWordCount  || 15;
-    var candidates = [];
+    var rankLimit = config.commonWordRankLimit || 2500;
+    var ranked = (window.LD && window.LD.CommonWords && window.LD.CommonWords.RANKED)
+      ? window.LD.CommonWords.RANKED
+      : [];
+    var scored = [];
 
-    // LD.Dict.DICT is the flat array of words
-    var dict = (window.LD && window.LD.Dict && window.LD.Dict.DICT) ? window.LD.Dict.DICT : [];
-    for (var i = 0; i < dict.length; i++) {
-      var w = dict[i];
-      if (w.length >= minLen && w.length <= maxLen) {
-        candidates.push(w.toUpperCase());
-      }
+    for (var i = 0; i < ranked.length && i < rankLimit; i++) {
+      var word = ranked[i];
+      if (word.length < minLen || word.length > maxLen) continue;
+      var wordScore = scoreCandidateWord(word, i);
+      if (wordScore <= 0) continue;
+      scored.push({
+        word: word,
+        score: wordScore
+      });
     }
-    shuffle(candidates);
-    return candidates.slice(0, count * 3); // grab extras
+
+    if (scored.length === 0) {
+      var juicyKeys = Object.keys(JUICY_WORDS);
+      shuffle(juicyKeys);
+      return juicyKeys.filter(function (word) {
+        return word.length >= minLen &&
+          word.length <= maxLen &&
+          window.LD &&
+          window.LD.Dict &&
+          window.LD.Dict.isValid &&
+          window.LD.Dict.isValid(word);
+      }).slice(0, count * 3);
+    }
+
+    scored.sort(function (a, b) { return b.score - a.score; });
+
+    var selected = [];
+    var seen = {};
+    var juicyPool = Object.keys(JUICY_WORDS).filter(function (word) {
+      return word.length >= minLen &&
+        word.length <= maxLen &&
+        window.LD &&
+        window.LD.Dict &&
+        window.LD.Dict.isValid &&
+        window.LD.Dict.isValid(word);
+    });
+    shuffle(juicyPool);
+    for (var jp = 0; jp < juicyPool.length && selected.length < count * 3; jp++) {
+      selected.push(juicyPool[jp]);
+      seen[juicyPool[jp]] = true;
+    }
+    for (var j = 0; j < scored.length && selected.length < count * 4; j++) {
+      if (seen[scored[j].word]) continue;
+      selected.push(scored[j].word);
+      seen[scored[j].word] = true;
+    }
+    shuffle(selected);
+    return selected;
   }
 
   function plantWords(board, config, W, H) {
@@ -617,7 +748,8 @@
 
   /**
    * checkPlantedWord(board, word, path) — return matching planted word or null.
-   * Matching: same word (case-insensitive), path tiles cover planted path positions.
+   * Matching: same word (case-insensitive). Path is ignored because Word Hunt
+   * now prefers the best-scoring path when duplicates exist.
    * Finding backwards counts.
    */
   function checkPlantedWord(board, word, path) {

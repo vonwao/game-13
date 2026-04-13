@@ -204,7 +204,7 @@
 
     drawModeCard(ctx, card1X, cardY, cardW, cardH, 'wordhunt',
       'WORD HUNT',
-      ['Find words, complete', 'challenges, discover', 'hidden words'],
+      ['Find words, clear round', 'objectives, discover', 'hidden words'],
       state.gameMode === 'wordhunt');
 
     drawModeCard(ctx, card2X, cardY, cardW, cardH, 'siege',
@@ -284,7 +284,7 @@
       cursor += 24;
 
       var goals = [
-        { key: 'challenges', label: 'Challenges' },
+        { key: 'challenges', label: 'Objectives' },
         { key: 'zen',        label: 'Zen' },
         { key: 'timed',      label: 'Timed' },
         { key: 'turns',      label: 'Turns' },

@@ -49,15 +49,23 @@
     config: {},
     hunt: {
       round:          1,
+      maxRounds:      3,
       challenges:     [],
       completedCount: 0,
       plantedWords:   [],
+      discoveredWords: [],
       timeRemaining:  0,
       turnsRemaining: 0,
       combo:          0,
       bestCombo:      0,
+      roundScore:     0,
       wordsThisRound: [],
       usedTileKeys:   new Set(),
+      cluesRemaining: 0,
+      clueTiles:      [],
+      clueTimer:      0,
+      roundTitle:     'The First Page',
+      advanceAvailable: false,
     },
     touch: {
       enabled: false,
@@ -97,7 +105,16 @@
     }
   }
 
-  function startGame() {
+  function getRoundTitle(round) {
+    var titles = [
+      'The First Page',
+      'Dust and Echoes',
+      'The Black Index'
+    ];
+    return titles[round - 1] || ('Round ' + round);
+  }
+
+  function buildRoundConfig() {
     // Resolve constants for this game
     if (LD.Constants) {
       STATE.config = LD.Constants.resolve(STATE.gameMode, STATE.settings);
@@ -105,17 +122,35 @@
       STATE.config = { boardWidth: 30, boardHeight: 25 };
     }
 
+    if (STATE.gameMode === 'wordhunt') {
+      var round = (STATE.hunt && STATE.hunt.round) || 1;
+      if (round > 1) {
+        STATE.config.commonWordRankLimit += (round - 1) * (STATE.config.commonWordRankStep || 0);
+        STATE.config.fragmentCount = Math.max(3, (STATE.config.fragmentCount || 8) - (round - 1) * 2);
+        STATE.config.plantedDiagonalPct = Math.min(0.8, (STATE.config.plantedDiagonalPct || 0) + (round - 1) * 0.12);
+        STATE.config.plantedReversePct  = Math.min(0.65, (STATE.config.plantedReversePct  || 0) + (round - 1) * 0.10);
+        STATE.config.clueCount = Math.max(0, (STATE.config.clueCount || 0) - Math.floor((round - 1) / 2));
+      }
+    }
+  }
+
+  function setupRound(resetRunStats) {
+    buildRoundConfig();
+
     STATE.phase = 'playing';
-    STATE.score = 0;
-    STATE.wordsSpelled = 0;
-    STATE.turns = 0;
-    STATE.longestWord = '';
-    STATE.seedsDestroyed = 0;
-    STATE.totalSeeds = STATE.config.sealCount || 6;
+    if (resetRunStats) {
+      STATE.score = 0;
+      STATE.wordsSpelled = 0;
+      STATE.turns = 0;
+      STATE.longestWord = '';
+      STATE.seedsDestroyed = 0;
+    }
+    STATE.totalSeeds = STATE.gameMode === 'siege' ? (STATE.config.sealCount || 6) : 0;
     STATE.input.typed = '';
     STATE.input.path = [];
     STATE.input.valid = false;
     STATE.input.hasPath = false;
+    STATE.input.scorePreview = null;
 
     // Update board size from config
     STATE.board.width  = STATE.config.boardWidth  || 30;
@@ -124,15 +159,23 @@
     // Reset Word Hunt runtime state
     STATE.hunt = {
       round:          STATE.hunt ? STATE.hunt.round : 1,
+      maxRounds:      STATE.config.roundsToWin || (STATE.hunt ? STATE.hunt.maxRounds : 3) || 3,
       challenges:     [],
       completedCount: 0,
       plantedWords:   [],
+      discoveredWords: [],
       timeRemaining:  STATE.config.timeLimit  || 300,
       turnsRemaining: STATE.config.turnLimit  || 50,
       combo:          0,
-      bestCombo:      0,
+      bestCombo:      resetRunStats ? 0 : (STATE.hunt ? STATE.hunt.bestCombo : 0),
+      roundScore:     0,
       wordsThisRound: [],
       usedTileKeys:   new Set(),
+      cluesRemaining: STATE.config.clueCount || 0,
+      clueTiles:      [],
+      clueTimer:      0,
+      roundTitle:     getRoundTitle(STATE.hunt ? STATE.hunt.round : 1),
+      advanceAvailable: false,
     };
 
     // Generate board (pass board sub-object, gameMode, config)
@@ -140,7 +183,7 @@
 
     // Generate challenges for Word Hunt
     if (STATE.gameMode === 'wordhunt' && LD.Challenges) {
-      STATE.hunt.challenges = LD.Challenges.generate(STATE.hunt.round);
+      STATE.hunt.challenges = LD.Challenges.generate(STATE.hunt.round, STATE.config);
     }
 
     // Show the full board — let resize() compute tile size to fit
@@ -156,8 +199,24 @@
     if (LD.Particles && LD.Particles.clear) LD.Particles.clear();
   }
 
+  function startGame() {
+    STATE.hunt = STATE.hunt || {};
+    STATE.hunt.round = 1;
+    setupRound(true);
+  }
+
+  function advanceRound() {
+    if (STATE.gameMode !== 'wordhunt') return;
+    STATE.hunt = STATE.hunt || {};
+    STATE.hunt.round = (STATE.hunt.round || 1) + 1;
+    setupRound(false);
+  }
+
   // Expose startGame for Settings module's Start button
-  window.LD.Game = { startGame: startGame };
+  window.LD.Game = {
+    startGame: startGame,
+    advanceRound: advanceRound
+  };
 
   function initAudio() {
     if (!audioInitialized && LD.Audio) {
@@ -189,6 +248,15 @@
     if ((STATE.phase === 'gameover' || STATE.phase === 'victory') && e.key === 'Enter') {
       e.preventDefault();
       e.stopImmediatePropagation();
+      if (
+        STATE.phase === 'victory' &&
+        STATE.gameMode === 'wordhunt' &&
+        STATE.hunt &&
+        STATE.hunt.advanceAvailable
+      ) {
+        advanceRound();
+        return;
+      }
       STATE.phase = 'settings';
       return;
     }
@@ -221,6 +289,13 @@
       STATE.hunt.timeRemaining = Math.max(0, (STATE.hunt.timeRemaining || 0) - dt);
       if (STATE.hunt.timeRemaining <= 0) {
         STATE.phase = 'gameover';
+      }
+    }
+
+    if (STATE.phase === 'playing' && STATE.gameMode === 'wordhunt' && STATE.hunt) {
+      STATE.hunt.clueTimer = Math.max(0, (STATE.hunt.clueTimer || 0) - dt);
+      if (STATE.hunt.clueTimer <= 0) {
+        STATE.hunt.clueTiles = [];
       }
     }
 

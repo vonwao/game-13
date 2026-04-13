@@ -120,15 +120,12 @@
     }
     _state.input.typed   = word;
     _state.input.path    = path.slice();
-
-    // Dictionary + path validation (Word Hunt requires min 4 letters)
-    var minLen = (_state.gameMode === 'wordhunt') ? 4 : 2;
-    if (word.length >= minLen && window.LD && window.LD.Dict) {
-      _state.input.valid = LD.Dict.isValid(word);
+    if (window.LD && window.LD.Input && window.LD.Input._refreshInputState) {
+      window.LD.Input._refreshInputState();
     } else {
       _state.input.valid = false;
+      _state.input.hasPath = path.length > 0;
     }
-    _state.input.hasPath = path.length > 0;
   }
 
   function handleUndo() {
@@ -147,6 +144,8 @@
     _state.input.path    = [];
     _state.input.valid   = false;
     _state.input.hasPath = false;
+    _state.input.matchingTiles = [];
+    _state.input.scorePreview = null;
   }
 
   function handleSubmit() {
@@ -160,6 +159,12 @@
       if (window.LD && window.LD.Input && window.LD.Input._rejectWord) {
         window.LD.Input._rejectWord();
       }
+    }
+  }
+
+  function handleClue() {
+    if (window.LD && window.LD.Input && window.LD.Input._useClue) {
+      window.LD.Input._useClue();
     }
   }
 
@@ -354,24 +359,35 @@
     }
 
     // Buttons
-    var btnW = Math.min(130, Math.floor((W - 40) / 4));
+    var isWordHunt = state.gameMode === 'wordhunt';
+    var btnCount = isWordHunt ? 5 : 4;
+    var btnW = Math.min(122, Math.floor((W - 40) / btnCount));
     var btnH = 36;
     var btnY = barY + 30;
-    var totalBtns = btnW * 4 + 30;
+    var totalBtns = btnW * btnCount + (btnCount - 1) * 10;
     var btnStartX = Math.floor((W - totalBtns) / 2);
     var gap = 10;
 
     var btnDefs = [
       { label: '✗ Clear',  action: handleClear,  enabled: !isEmpty },
       { label: '↩ Undo',   action: handleUndo,   enabled: !isEmpty },
-      { label: '✓ Submit', action: handleSubmit,  enabled: isValid  },
-      {
+      { label: '✓ Submit', action: handleSubmit, enabled: isValid  },
+    ];
+
+    if (isWordHunt) {
+      btnDefs.push({
+        label: '✦ Clue',
+        action: handleClue,
+        enabled: !!(state.hunt && state.hunt.cluesRemaining > 0),
+      });
+    }
+
+    btnDefs.push({
         label: _scrollMode ? '↕ Scroll ON' : '↕ Scroll',
         action: function() { _scrollMode = !_scrollMode; },
         enabled: true,
         active: _scrollMode,
-      },
-    ];
+      });
 
     for (var i = 0; i < btnDefs.length; i++) {
       var def = btnDefs[i];
@@ -448,6 +464,7 @@
     handleUndo:     handleUndo,
     handleClear:    handleClear,
     handleSubmit:   handleSubmit,
+    handleClue:     handleClue,
     renderActionBar: renderActionBar,
     update:         update,
   };

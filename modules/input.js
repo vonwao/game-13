@@ -57,6 +57,8 @@
     _state.input.path     = [];
     _state.input.valid    = false;
     _state.input.hasPath  = false;
+    _state.input.matchingTiles = [];
+    _state.input.scorePreview = null;
   }
 
   /**
@@ -350,6 +352,9 @@
     const planted = safeCall(window.LD?.Board?.checkPlantedWord, board, typed, path);
     if (planted) {
       planted.found = true;
+      if (hunt && hunt.discoveredWords) {
+        hunt.discoveredWords.push(planted.word);
+      }
       // Mark individual tile objects as found (golden tint) + count as 1 use
       for (let i = 0; i < planted.path.length; i++) {
         const pt = planted.path[i];
@@ -372,7 +377,11 @@
       safeCall(window.LD?.Audio?.play, 'challenge_complete');
     }
 
-    // 6. Check challenges
+    if (hunt) {
+      hunt.roundScore = (hunt.roundScore || 0) + earned;
+    }
+
+    // 6. Check round objectives
     const wordData = {
       word:         typed,
       path:         path,
@@ -383,6 +392,7 @@
       corners:      shape.corners,
       isPlantedWord: !!planted,
       tilesUsed:    path,
+      roundScore:   hunt ? (hunt.roundScore || 0) : 0,
     };
     const newlyCompleted = (window.LD?.Challenges?.checkAll)
       ? window.LD.Challenges.checkAll(_state, wordData)
@@ -419,7 +429,7 @@
       });
     }
 
-    // 8. Mark tiles with word color + increment useCount; track for cross challenge
+    // 8. Mark tiles with word color + increment useCount
     const wordColor = WORD_COLORS[(_state.wordsSpelled - 1) % WORD_COLORS.length];
     path.forEach(p => {
       const t = board.tiles[p.row * board.width + p.col];
@@ -435,6 +445,9 @@
     if (_state.settings.endCondition === 'challenges') {
       const total = (hunt && hunt.challenges) ? hunt.challenges.length : 0;
       if (total > 0 && (hunt.completedCount || 0) >= total) {
+        if (hunt) {
+          hunt.advanceAvailable = (hunt.round || 1) < (hunt.maxRounds || 3);
+        }
         _state.phase = 'victory';
       }
     } else if (_state.settings.endCondition === 'turns') {
@@ -464,6 +477,45 @@
     }
 
     clearInput();
+  }
+
+  function useClue() {
+    if (!_state || _state.phase !== 'playing' || _state.gameMode !== 'wordhunt') return false;
+
+    const hunt = _state.hunt;
+    if (!hunt || (hunt.cluesRemaining || 0) <= 0) return false;
+
+    const unfound = (hunt.plantedWords || []).filter(function (entry) {
+      return !entry.found;
+    });
+    if (unfound.length === 0) return false;
+
+    unfound.sort(function (a, b) {
+      return a.word.length - b.word.length;
+    });
+
+    const chosen = unfound[Math.floor(Math.random() * Math.min(3, unfound.length))];
+    const clueTiles = [];
+    if (chosen.path.length > 0) clueTiles.push(chosen.path[0]);
+    if (chosen.path.length >= 6) clueTiles.push(chosen.path[chosen.path.length - 1]);
+
+    hunt.cluesRemaining--;
+    hunt.clueTiles = clueTiles;
+    hunt.clueTimer = 3.2;
+
+    if (window.LD?.Particles?.text) {
+      const vp = _state.viewport;
+      const ts = vp.tileSize || 24;
+      const clue = clueTiles[0];
+      if (clue) {
+        const x = vp.offsetX + (clue.col - vp.col) * ts + ts / 2;
+        const y = vp.offsetY + (clue.row - vp.row) * ts + ts / 2;
+        LD.Particles.text(x, y - 18, 'CLUE · ' + chosen.word.length + ' letters', '#80d8ff', 16);
+      }
+    }
+
+    safeCall(window.LD?.Audio?.play, 'tap');
+    return true;
   }
 
   /**
@@ -672,6 +724,13 @@
 
     if (isGameOver) return; // no word input after game ends
 
+    // ── C — spend a clue in Word Hunt ──────────────────────────────────────
+    if ((key === 'c' || key === 'C') && _state.gameMode === 'wordhunt') {
+      e.preventDefault();
+      useClue();
+      return;
+    }
+
     // ── Escape — clear input ──────────────────────────────────────────────────
     if (key === 'Escape') {
       e.preventDefault();
@@ -752,5 +811,7 @@
     // Exposed for touch module to trigger submission directly
     _submitWord: submitWord,
     _rejectWord: rejectWord,
+    _useClue: useClue,
+    _refreshInputState: refreshInputState,
   };
 })();
