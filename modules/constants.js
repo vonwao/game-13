@@ -9,6 +9,85 @@
     large:  { width: 40, height: 40 },
   };
 
+  // Orientation-aware board profile hints.
+  //
+  // These are pure lookup data for future callers that want to pick a board
+  // presentation profile based on both size tier and aspect/orientation.
+  // Nothing in the current runtime uses them yet, so existing behavior stays
+  // unchanged until a caller opts in.
+  var BOARD_PROFILES = {
+    landscape: {
+      small: {
+        boardSize: 'small',
+        orientation: 'landscape',
+        boardWidth: 20,
+        boardHeight: 16,
+        tileTargets: {
+          preferred: 28,
+          minimumReadable: 22,
+          maximum: 34,
+        },
+      },
+      medium: {
+        boardSize: 'medium',
+        orientation: 'landscape',
+        boardWidth: 30,
+        boardHeight: 25,
+        tileTargets: {
+          preferred: 22,
+          minimumReadable: 18,
+          maximum: 28,
+        },
+      },
+      large: {
+        boardSize: 'large',
+        orientation: 'landscape',
+        boardWidth: 40,
+        boardHeight: 40,
+        tileTargets: {
+          preferred: 16,
+          minimumReadable: 14,
+          maximum: 20,
+        },
+      },
+    },
+    portrait: {
+      small: {
+        boardSize: 'small',
+        orientation: 'portrait',
+        boardWidth: 13,
+        boardHeight: 18,
+        tileTargets: {
+          preferred: 24,
+          minimumReadable: 19,
+          maximum: 30,
+        },
+      },
+      medium: {
+        boardSize: 'medium',
+        orientation: 'portrait',
+        boardWidth: 16,
+        boardHeight: 22,
+        tileTargets: {
+          preferred: 20,
+          minimumReadable: 16,
+          maximum: 24,
+        },
+      },
+      large: {
+        boardSize: 'large',
+        orientation: 'portrait',
+        boardWidth: 18,
+        boardHeight: 26,
+        tileTargets: {
+          preferred: 16,
+          minimumReadable: 13,
+          maximum: 20,
+        },
+      },
+    },
+  };
+
   var FRAGMENTS = [
     'ING', 'TION', 'COM', 'PRE', 'OUT', 'STR', 'IGHT', 'MENT',
     'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'ANCE'
@@ -75,10 +154,83 @@
     return { boardWidth: size.width, boardHeight: size.height };
   }
 
+  function normalizeBoardSizeKey(sizeKey) {
+    return BOARD_SIZES[sizeKey] ? sizeKey : 'medium';
+  }
+
+  function resolveBoardOrientation(layout) {
+    if (typeof layout === 'string') {
+      return layout === 'portrait' ? 'portrait' : 'landscape';
+    }
+
+    if (layout && typeof layout.orientation === 'string') {
+      return layout.orientation === 'portrait' ? 'portrait' : 'landscape';
+    }
+
+    if (layout && typeof layout.aspect === 'string') {
+      return layout.aspect === 'tall' || layout.aspect === 'portrait' ? 'portrait' : 'landscape';
+    }
+
+    if (layout && typeof layout.aspect === 'number') {
+      return layout.aspect < 1 ? 'portrait' : 'landscape';
+    }
+
+    if (layout && typeof layout.width === 'number' && typeof layout.height === 'number') {
+      return layout.width < layout.height ? 'portrait' : 'landscape';
+    }
+
+    if (layout && typeof layout.orientationHint === 'string') {
+      return layout.orientationHint === 'portrait' ? 'portrait' : 'landscape';
+    }
+
+    return 'landscape';
+  }
+
+  function cloneBoardProfile(profile, sizeKey, orientation) {
+    if (!profile) return null;
+    var tileTargets = profile.tileTargets || {};
+    return {
+      sizeKey: sizeKey,
+      orientation: orientation,
+      boardSize: profile.boardSize,
+      boardWidth: profile.boardWidth,
+      boardHeight: profile.boardHeight,
+      tileTargets: {
+        preferred: tileTargets.preferred,
+        minimumReadable: tileTargets.minimumReadable,
+        maximum: tileTargets.maximum,
+      },
+      tileTarget: tileTargets.preferred,
+      tileTargetMin: tileTargets.minimumReadable,
+      tileTargetMax: tileTargets.maximum,
+      aspectHint: profile.orientation === 'portrait' ? 'tall' : 'wide',
+    };
+  }
+
+  function resolveBoardProfile(sizeKey, layout) {
+    var normalizedSizeKey = normalizeBoardSizeKey(sizeKey);
+    var orientation = resolveBoardOrientation(layout);
+    var profile = BOARD_PROFILES[orientation] && BOARD_PROFILES[orientation][normalizedSizeKey];
+    if (!profile) {
+      profile = BOARD_PROFILES.landscape.medium;
+      normalizedSizeKey = 'medium';
+      orientation = 'landscape';
+    }
+    return cloneBoardProfile(profile, normalizedSizeKey, orientation);
+  }
+
+  function getBoardTileTargets(sizeKey, layout) {
+    var profile = resolveBoardProfile(sizeKey, layout);
+    return profile ? profile.tileTargets : null;
+  }
+
   window.LD.Constants = {
-    BOARD_SIZES: BOARD_SIZES,
-    FRAGMENTS:   FRAGMENTS,
-    resolve:     resolve,
+    BOARD_SIZES:        BOARD_SIZES,
+    BOARD_PROFILES:      BOARD_PROFILES,
+    FRAGMENTS:           FRAGMENTS,
+    resolve:             resolve,
+    resolveBoardProfile: resolveBoardProfile,
+    getBoardTileTargets: getBoardTileTargets,
   };
 
 })();
