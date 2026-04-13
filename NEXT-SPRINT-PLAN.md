@@ -4,11 +4,14 @@
 
 This sprint is about making the codebase more trustworthy and the game feel more tactile on desktop and touch, without overhauling the full stack.
 
+This document is the current execution plan.
+If [ROADMAP.md](/Users/vonwao/dev/micro-projects/game-13/ROADMAP.md) and this file ever feel out of sync, the roadmap sets overall priority and this file should be updated to match it.
+
 The immediate focus is:
 
 1. establish one canonical source of truth
-2. unify gameplay input around pointer events
-3. remove cross-module private-helper calls
+2. add one honest gameplay action layer
+3. unify gameplay input around pointer events
 4. prepare, but do not yet execute, a later move of text-heavy UI from canvas into DOM/CSS overlays
 
 This is an execution plan, not a speculative design memo.
@@ -96,7 +99,7 @@ Touch and mouse are both pointer-capable devices. The gameplay layer should unif
 
 Raw events should not call semi-private logic across modules.
 
-We will introduce a shared action layer that sits between:
+We will introduce a dedicated shared action module that sits between:
 
 - raw events
 - gameplay logic
@@ -111,6 +114,18 @@ The action layer will own player intents such as:
 - submit current word
 - use clue
 - scroll board
+
+Chosen location:
+
+- `modules/actions.js`
+
+Recommended ownership split:
+
+- action module owns gameplay intents
+- `modules/input.js` becomes the keyboard adapter plus validation/scoring helpers
+- pointer/touch adapter becomes the pointer event adapter
+
+The important point is that keyboard wiring and action semantics should not stay conceptually fused.
 
 ### 4. UI rendering split
 
@@ -132,6 +147,7 @@ This UI migration is intentionally decoupled from the input cleanup sprint.
 By the end of the sprint:
 
 - `modules/` is clearly the only source of truth
+- one dedicated action module exists
 - desktop mouse can play the board through pointer input
 - touch still works
 - keyboard still works
@@ -163,7 +179,80 @@ By the end of the sprint:
 
 ---
 
-## Phase 2 — Pointer Input Refactor
+## Phase 2 — Shared Action Layer
+
+### Goal
+
+Stop cross-module underscore calls and replace them with explicit shared actions.
+
+### Why this comes before pointer work
+
+The pointer adapter should land against a stable action contract.
+If pointer work happens first, there is a high risk of re-creating the current coupling in a new form.
+
+### Why this matters
+
+Right now calls like these leak private implementation details across modules:
+
+- `LD.Input._refreshInputState()`
+- `LD.Input._submitWord()`
+- `LD.Input._rejectWord()`
+- `LD.Input._useClue()`
+
+This creates:
+
+- misleading API boundaries
+- brittle refactors
+- event-layer coupling to internal implementation details
+
+### Preferred design
+
+Introduce a real action API in `modules/actions.js` rather than burying it under `LD.Input`.
+
+Candidate actions:
+
+- `startPath(tile)`
+- `extendPath(tile)`
+- `trimPathTo(tile)`
+- `restartPath(tile)`
+- `clearCurrentWord()`
+- `submitCurrentWord()`
+- `rejectCurrentWord()`
+- `useClue()`
+- `scrollBoard(dx, dy)`
+
+### Compatibility transition
+
+The lowest-risk transition is:
+
+1. add stable public gameplay actions
+2. migrate keyboard input to those actions
+3. migrate pointer/touch input to those actions
+4. remove underscore-based cross-module usage
+5. internalize any leftovers that are still private
+
+### Important boundary
+
+Raw event modules should express intent only.
+
+Examples:
+
+- keyboard adapter says "submit current word"
+- pointer adapter says "extend path to this tile"
+- settings/menu says "change mode"
+
+They should not reach directly into internal scoring or validation helpers.
+
+### Acceptance criteria
+
+- one dedicated action module exists
+- keyboard uses the shared actions where appropriate
+- no new work depends on underscore-prefixed input helpers
+- the pointer layer can be built against the action contract
+
+---
+
+## Phase 3 — Pointer Input Refactor
 
 ### Goal
 
@@ -216,73 +305,6 @@ Replace touch-only gameplay pathing with unified pointer-based gameplay input.
 
 ---
 
-## Phase 3 — Shared Action Layer
-
-### Goal
-
-Stop cross-module underscore calls and replace them with explicit shared actions.
-
-### Why this matters
-
-Right now calls like these leak private implementation details across modules:
-
-- `LD.Input._refreshInputState()`
-- `LD.Input._submitWord()`
-- `LD.Input._rejectWord()`
-- `LD.Input._useClue()`
-
-This creates:
-
-- misleading API boundaries
-- brittle refactors
-- event-layer coupling to internal implementation details
-
-### Preferred design
-
-Introduce a real action API, likely under a new module or under `LD.Input` with clearly public names during transition.
-
-Candidate actions:
-
-- `startPath(tile)`
-- `extendPath(tile)`
-- `trimPathTo(tile)`
-- `restartPath(tile)`
-- `clearCurrentWord()`
-- `submitCurrentWord()`
-- `rejectCurrentWord()`
-- `useClue()`
-- `scrollBoard(dx, dy)`
-- `rebuildPathWord()` or equivalent internal helper
-
-### Important boundary
-
-Raw event modules should express intent only.
-
-Examples:
-
-- pointer adapter says "start path at this tile"
-- keyboard handler says "submit current word"
-- settings/menu says "change mode"
-
-They should not reach into scoring helpers or private validation helpers.
-
-### Implementation note
-
-This can be done in one of two ways:
-
-1. transitional: promote current underscore helpers to honest public APIs
-2. preferred: create shared actions and make both keyboard and pointer code call them
-
-We should prefer option 2, but option 1 can be used briefly as an intermediate commit if needed.
-
-### Acceptance criteria
-
-- no cross-module calls to underscore-prefixed input helpers remain
-- gameplay input modules call shared public actions instead
-- behavior is unchanged from the player perspective
-
----
-
 ## Phase 4 — State Boundary Cleanup
 
 ### Goal
@@ -297,7 +319,16 @@ Make state easier to reason about without a giant rewrite.
 - UI state
 - settings state
 
-### Concrete near-term cleanup
+### Scope limit
+
+This phase is intentionally narrow.
+It should not become:
+
+- a full state schema redesign
+- a nested-store rewrite
+- a broad rename/move-everything refactor
+
+### Concrete near-term cleanup only
 
 - treat `showHelp`, `helpTab`, `debug`, hover state, and related flags as UI-facing state
 - reduce the use of `STATE.touch.enabled` as a gameplay branch
@@ -402,7 +433,7 @@ Responsibilities:
 - define the shared gameplay action contract
 - expose honest public entry points
 - remove underscore-private leakage
-- preserve keyboard behavior
+- migrate keyboard behavior onto the action contract
 
 Why it parallelizes cleanly:
 
@@ -419,7 +450,7 @@ Responsibilities:
 - convert touch-only gameplay input to pointer events
 - implement desktop mouse pathing
 - keep action-bar behavior coherent
-- call Worker A’s action contract
+- call Worker A’s action contract, not input internals
 
 Why it parallelizes cleanly:
 
@@ -486,10 +517,11 @@ Why it parallelizes cleanly:
 
 1. `chore: mark assembled html as generated output`
 2. `refactor: add shared gameplay action API`
-3. `feat: unify board input with pointer events`
-4. `refactor: decouple gameplay input from touch mode gating`
-5. `polish: tune pointer interaction and renderer glue`
-6. `docs: add DOM overlay migration plan`
+3. `refactor: migrate keyboard input to shared actions`
+4. `feat: unify board input with pointer events`
+5. `refactor: remove touch-mode gameplay gating`
+6. `polish: tune pointer interaction and renderer glue`
+7. `docs: add DOM overlay migration plan`
 
 This sequence keeps the riskiest behavioral changes separated from the structural cleanup.
 
@@ -514,6 +546,15 @@ This sequence keeps the riskiest behavioral changes separated from the structura
 - no cross-module underscore calls remain for gameplay actions
 - `modules/` remains the sole source of truth
 - pointer gameplay no longer depends on device detection as the core switch
+
+### Minimal sanity checks
+
+These do not need to be elaborate, but they should be explicit:
+
+- assembled file contains the generated banner
+- no gameplay module still reaches into underscore-prefixed input helpers
+- gameplay pointer module registers the expected pointer events
+- build and verification steps are documented and repeatable
 
 ---
 

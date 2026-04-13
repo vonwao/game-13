@@ -16,6 +16,9 @@ The current conclusion is:
 - clarity and observability are improving in the right way
 - the main risk is technical muddle slowing down design momentum
 
+The roadmap sets overall priority.
+The sprint plan is the current execution slice derived from it.
+
 ---
 
 ## Current Thesis
@@ -72,7 +75,7 @@ Success looks like:
 
 ---
 
-## 2. Unify Gameplay Input
+## 2. Add A Shared Gameplay Action Layer
 
 Category:
 
@@ -84,41 +87,12 @@ Priority:
 
 Why:
 
-- Desktop pointer play is currently second-class.
-- The architecture still treats touch more like a mode than an input device.
-
-What to do:
-
-- move gameplay input to unified pointer events
-- support mouse, touch, and pen from one adapter
-- keep keyboard as a parallel first-class path
-
-Success looks like:
-
-- desktop mouse pathing feels native
-- touch still works
-- the mental model is simpler
-
----
-
-## 3. Add A Shared Gameplay Action Layer
-
-Category:
-
-- code
-
-Priority:
-
-- immediate, right after or alongside pointer cleanup
-
-Why:
-
 - cross-module underscore calls are a real maintainability smell
 - raw event adapters should express intent, not reach into private helpers
 
 What to do:
 
-- define shared gameplay actions
+- define shared gameplay actions in `modules/actions.js`
 - route keyboard and pointer adapters through those actions
 - stop calling private-ish input helpers across modules
 
@@ -127,6 +101,36 @@ Success looks like:
 - cleaner module boundaries
 - easier refactors
 - less hidden coupling
+
+---
+
+## 3. Unify Gameplay Input
+
+Category:
+
+- code
+
+Priority:
+
+- immediate, right after the action layer is in place
+
+Why:
+
+- Desktop pointer play is currently second-class.
+- The architecture still treats touch more like a mode than an input device.
+
+What to do:
+
+- move gameplay input to unified pointer events
+- support mouse, touch, and pen from one adapter
+- keep keyboard as a parallel first-class path
+- build the pointer adapter against the shared action contract
+
+Success looks like:
+
+- desktop mouse pathing feels native
+- touch still works
+- the mental model is simpler
 
 ---
 
@@ -395,8 +399,8 @@ Avoid these traps:
 ### Right now
 
 - source-of-truth hardening
-- pointer-input cleanup
 - shared action layer
+- pointer-input cleanup
 
 ### Immediately after
 
