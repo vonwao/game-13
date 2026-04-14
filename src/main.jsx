@@ -8,18 +8,12 @@ import './styles/app.css';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
-async function bootstrap() {
-  try {
-    await loadLegacyCore();
-  } catch (error) {
-    console.error('Legacy game core failed to load:', error);
-  }
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
 
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-}
-
-bootstrap();
+loadLegacyCore().catch((error) => {
+  console.error('Legacy game core failed to load:', error);
+});
