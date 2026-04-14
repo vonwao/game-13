@@ -30,6 +30,7 @@ function loadScript(src) {
 
 export function loadLegacyCore() {
   if (typeof window === 'undefined') return Promise.resolve();
+  window.__LD_SHELL_MODE__ = true;
   if (window.LD && window.LD.Game) return Promise.resolve(window.LD.Game);
   if (loadPromise) return loadPromise;
 

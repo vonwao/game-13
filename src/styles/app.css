@@ -94,7 +94,23 @@ button {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.6fr) minmax(250px, 0.8fr);
+  grid-template-areas: 'primary stage secondary';
   gap: var(--space-5);
+  align-items: start;
+}
+
+.shell-column {
+  min-height: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.shell-column--primary {
+  grid-area: primary;
+}
+
+.shell-column--secondary {
+  grid-area: secondary;
 }
 
 .shell-rail,
@@ -105,6 +121,7 @@ button {
 }
 
 .shell-stage {
+  grid-area: stage;
   align-content: start;
 }
 
@@ -141,6 +158,20 @@ button {
   display: grid;
   gap: var(--space-3);
   margin-top: var(--space-4);
+}
+
+.panel-frame--compact .panel-frame__body {
+  gap: var(--space-2);
+}
+
+.panel-frame__body--scroll {
+  max-height: clamp(16rem, 46vh, 28rem);
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.panel-frame__body--stacked {
+  gap: var(--space-2);
 }
 
 .panel-note {
@@ -383,10 +414,13 @@ button {
 
 @media (max-width: 1180px) {
   .shell-layout__main {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'stage stage'
+      'primary secondary';
   }
 
-  .shell-rail {
+  .shell-column {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -405,11 +439,19 @@ button {
     justify-content: flex-start;
   }
 
-  .shell-rail {
+  .shell-layout__main {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'stage'
+      'primary'
+      'secondary';
+  }
+
+  .shell-column {
     grid-template-columns: 1fr;
   }
 
   .game-canvas-shell__mount {
-    min-height: 360px;
+    min-height: clamp(360px, 68vh, 620px);
   }
 }
