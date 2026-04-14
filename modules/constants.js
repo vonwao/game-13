@@ -93,15 +93,20 @@
     'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'ANCE'
   ];
 
-  function resolve(gameMode, settings) {
+  function resolve(gameMode, settings, layout) {
+    settings = settings || {};
+
     var diff = settings.difficulty || 'medium';
     var sizeKey = settings.boardSize || 'medium';
     var size = BOARD_SIZES[sizeKey] || BOARD_SIZES.medium;
+    var profile = layout ? resolveBoardProfile(sizeKey, layout) : null;
+    var boardWidth = profile ? profile.boardWidth : size.width;
+    var boardHeight = profile ? profile.boardHeight : size.height;
 
     if (gameMode === 'wordhunt') {
       return {
-        boardWidth:  size.width,
-        boardHeight: size.height,
+        boardWidth:  boardWidth,
+        boardHeight: boardHeight,
         // Planted words
         plantedWordCount:    { easy: 20, medium: 15, hard: 10 }[diff],
         plantedWordMinLen:   { easy: 4,  medium: 5,  hard: 6  }[diff],
@@ -131,8 +136,8 @@
 
     if (gameMode === 'siege') {
       return {
-        boardWidth:  size.width,
-        boardHeight: size.height,
+        boardWidth:  boardWidth,
+        boardHeight: boardHeight,
         // Corruption
         sealCount:                { easy: 4, medium: 6, hard: 8 }[diff],
         corruptionSpreadChance:   { easy: 0.2, medium: 0.3, hard: 0.45 }[diff],

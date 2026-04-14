@@ -74,6 +74,7 @@
       lastTap: null,
     },
     inputAdapter: null,
+    shellLayout: null,
     showHelp: false,
     helpTab: 'basics',
     debug: {
@@ -158,6 +159,79 @@
       objectiveBonus: entry.objectiveBonus || 0,
       orientation: entry.orientation || '',
       reasonText: entry.reasonText || '',
+    };
+  }
+
+  function normalizeShellLayout(layout) {
+    if (!layout) return null;
+
+    if (typeof layout === 'string') {
+      return {
+        orientation: layout === 'portrait' ? 'portrait' : 'landscape',
+      };
+    }
+
+    if (typeof layout !== 'object') return null;
+
+    var bounds = layout.bounds || layout.rect || layout.viewport || layout.frame || layout.size || null;
+    var orientation = null;
+    var width = null;
+    var height = null;
+    var aspect = null;
+
+    if (typeof layout.orientation === 'string') {
+      orientation = layout.orientation === 'portrait' ? 'portrait' : 'landscape';
+    } else if (typeof layout.orientationHint === 'string') {
+      orientation = layout.orientationHint === 'portrait' ? 'portrait' : 'landscape';
+    }
+
+    if (typeof layout.width === 'number' && isFinite(layout.width)) {
+      width = layout.width;
+    } else if (bounds && typeof bounds.width === 'number' && isFinite(bounds.width)) {
+      width = bounds.width;
+    }
+
+    if (typeof layout.height === 'number' && isFinite(layout.height)) {
+      height = layout.height;
+    } else if (bounds && typeof bounds.height === 'number' && isFinite(bounds.height)) {
+      height = bounds.height;
+    }
+
+    if (typeof layout.aspect === 'number' && isFinite(layout.aspect)) {
+      aspect = layout.aspect;
+    } else if (typeof layout.aspect === 'string') {
+      aspect = layout.aspect;
+    } else if (width !== null && height !== null && height !== 0) {
+      aspect = width / height;
+    }
+
+    if (!orientation && width !== null && height !== null) {
+      orientation = width < height ? 'portrait' : 'landscape';
+    }
+
+    if (!orientation && aspect !== null && typeof aspect === 'number') {
+      orientation = aspect < 1 ? 'portrait' : 'landscape';
+    }
+
+    if (!orientation && width === null && height === null && aspect === null) {
+      return null;
+    }
+
+    var normalized = {};
+    if (orientation) normalized.orientation = orientation;
+    if (width !== null) normalized.width = width;
+    if (height !== null) normalized.height = height;
+    if (aspect !== null) normalized.aspect = aspect;
+    return normalized;
+  }
+
+  function cloneShellLayout(layout) {
+    if (!layout) return null;
+    return {
+      orientation: layout.orientation || 'landscape',
+      width: typeof layout.width === 'number' ? layout.width : null,
+      height: typeof layout.height === 'number' ? layout.height : null,
+      aspect: typeof layout.aspect === 'number' ? layout.aspect : layout.aspect || null,
     };
   }
 
@@ -249,7 +323,7 @@
   function buildRoundConfig() {
     // Resolve constants for this game
     if (LD.Constants) {
-      STATE.config = LD.Constants.resolve(STATE.gameMode, STATE.settings);
+      STATE.config = LD.Constants.resolve(STATE.gameMode, STATE.settings, STATE.shellLayout);
     } else {
       STATE.config = { boardWidth: 30, boardHeight: 25 };
     }
@@ -361,6 +435,11 @@
     notifyShellState(true);
   }
 
+  function setShellLayout(layout) {
+    STATE.shellLayout = normalizeShellLayout(layout);
+    notifyShellState(true);
+  }
+
   function returnToSettings() {
     STATE.phase = 'settings';
     notifyShellState(true);
@@ -393,6 +472,7 @@
       phase: STATE.phase,
       shellMode: isShellMode(),
       gameMode: STATE.gameMode,
+      shellLayout: cloneShellLayout(STATE.shellLayout),
       settings: {
         difficulty: STATE.settings.difficulty,
         boardSize: STATE.settings.boardSize,
@@ -526,6 +606,7 @@
     startGame: startGame,
     advanceRound: advanceRound,
     setGameMode: setGameMode,
+    setShellLayout: setShellLayout,
     returnToSettings: returnToSettings,
     getShellState: getShellState,
     subscribeShell: subscribeShell,
