@@ -193,6 +193,7 @@
   }
 
   function renderSidebar(ctx, state) {
+    if (window.__LD_SHELL_MODE__) return;
     var hunt = state.hunt || {};
     var objectives = hunt.challenges || [];
     if (objectives.length === 0) return;

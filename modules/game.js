@@ -99,6 +99,109 @@
     return !!window.__LD_SHELL_MODE__;
   }
 
+  function normalizeObjective(objective) {
+    if (!objective) {
+      return {
+        id: '',
+        type: '',
+        title: '',
+        description: '',
+        target: 0,
+        reward: 0,
+        progress: 0,
+        completed: false,
+      };
+    }
+    return {
+      id: objective.id || '',
+      type: objective.type || '',
+      title: objective.title || '',
+      description: objective.description || '',
+      target: objective.target || 0,
+      reward: objective.reward || 0,
+      progress: objective.progress || 0,
+      completed: !!objective.completed,
+    };
+  }
+
+  function normalizeDiscoveryWord(word, index) {
+    if (word && typeof word === 'object') {
+      return {
+        word: word.word || '',
+        found: word.found !== false,
+        index: typeof word.index === 'number' ? word.index : (typeof index === 'number' ? index : 0),
+      };
+    }
+    return {
+      word: String(word || ''),
+      found: true,
+      index: typeof index === 'number' ? index : 0,
+    };
+  }
+
+  function normalizeHistoryEntry(entry) {
+    entry = entry || {};
+    return {
+      word: entry.word || '',
+      score: entry.score || 0,
+      pathLength: entry.pathLength || 0,
+      basePts: entry.basePts || 0,
+      lenMult: entry.lenMult || 1,
+      shapeMult: entry.shapeMult || 1,
+      shapeLabel: entry.shapeLabel || '',
+      corners: entry.corners || 0,
+      comboCount: entry.comboCount || 0,
+      comboMult: entry.comboMult || 1,
+      crystalMult: entry.crystalMult || 1,
+      emberBonus: entry.emberBonus || 0,
+      discoveryBonus: entry.discoveryBonus || 0,
+      objectiveBonus: entry.objectiveBonus || 0,
+      orientation: entry.orientation || '',
+      reasonText: entry.reasonText || '',
+    };
+  }
+
+  function getHelpState() {
+    const isWH = STATE.gameMode === 'wordhunt';
+    return {
+      open: !!STATE.showHelp,
+      tab: STATE.helpTab || 'basics',
+      tabs: [
+        { key: 'basics', label: 'Basics' },
+        { key: 'scoring', label: 'Scoring' },
+        { key: 'tiles', label: 'Tiles' },
+      ],
+      sections: {
+        basics: isWH ? [
+          'Type any 4+ letter dictionary word.',
+          'Click or drag tiles to spell on the board.',
+          'The game picks the best-scoring path for that word.',
+          'Find hidden planted words for bonus points.',
+          'Clear the objectives to finish the round.',
+        ] : [
+          'Type a word and submit it to cast.',
+          'Use words to clear corruption from the board.',
+          'Destroy all seals before corruption wins.',
+        ],
+        scoring: [
+          'base = sum of tile letter points',
+          'length = longer words score more',
+          'shape = straight paths score best',
+          'combo = chained words add multiplier',
+          'discovery = planted words grant bonus points',
+          'objective rewards are added after the word resolves',
+        ],
+        tiles: [
+          'Void (?) can stand in for any letter.',
+          'Crystal x2 doubles the word when routed through it.',
+          'Ember +20 adds flat points when routed through it.',
+          'Special tiles only count if the chosen path uses them.',
+        ],
+      },
+      footer: 'Press ? or Escape to close',
+    };
+  }
+
   // ── Init ───────────────────────────────────────────────────────────────────
 
   function initCanvas(explicitCanvas) {
@@ -283,8 +386,12 @@
     const hunt = STATE.hunt || {};
     const input = STATE.input || {};
     const debug = STATE.debug || {};
+    const objectives = (hunt.challenges || []).map(normalizeObjective);
+    const discoveries = (hunt.discoveredWords || []).map(normalizeDiscoveryWord);
+    const history = (STATE.wordHistory || []).map(normalizeHistoryEntry);
     return {
       phase: STATE.phase,
+      shellMode: isShellMode(),
       gameMode: STATE.gameMode,
       settings: {
         difficulty: STATE.settings.difficulty,
@@ -302,6 +409,7 @@
           tab: debug.tab || 'planted',
         },
       },
+      help: getHelpState(),
       run: {
         score: STATE.score || 0,
         wordsSpelled: STATE.wordsSpelled || 0,
@@ -322,32 +430,29 @@
         completedCount: hunt.completedCount || 0,
         advanceAvailable: !!hunt.advanceAvailable,
       },
+      objectives: {
+        total: objectives.length,
+        completed: hunt.completedCount || 0,
+        items: objectives,
+      },
+      discoveries: {
+        total: (hunt.plantedWords || []).length,
+        found: (hunt.plantedWords || []).filter(function(p) { return p.found; }).length,
+        recent: discoveries.slice(-4).reverse(),
+        items: discoveries,
+      },
       inputSummary: {
         typed: input.typed || '',
         valid: !!input.valid,
         hasPath: !!input.hasPath,
         scorePreview: cloneScorePreview(input.scorePreview),
       },
-      wordHistory: (STATE.wordHistory || []).map(function(entry) {
-        return {
-          word: entry.word || '',
-          score: entry.score || 0,
-          pathLength: entry.pathLength || 0,
-          basePts: entry.basePts || 0,
-          lenMult: entry.lenMult || 1,
-          shapeMult: entry.shapeMult || 1,
-          shapeLabel: entry.shapeLabel || '',
-          corners: entry.corners || 0,
-          comboCount: entry.comboCount || 0,
-          comboMult: entry.comboMult || 1,
-          crystalMult: entry.crystalMult || 1,
-          emberBonus: entry.emberBonus || 0,
-          discoveryBonus: entry.discoveryBonus || 0,
-          objectiveBonus: entry.objectiveBonus || 0,
-          orientation: entry.orientation || '',
-          reasonText: entry.reasonText || '',
-        };
-      }),
+      history: {
+        total: history.length,
+        items: history,
+        recent: history.slice(-6).reverse(),
+      },
+      wordHistory: history,
     };
   }
 
@@ -571,6 +676,10 @@
       }
       notifyShellState(true);
       return window.LD.Game;
+    }
+
+    if (explicitCanvas) {
+      window.__LD_SHELL_MODE__ = true;
     }
 
     initCanvas(explicitCanvas);

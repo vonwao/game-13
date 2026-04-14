@@ -109,6 +109,7 @@
   }
 
   function shouldShowMinimap(state) {
+    if (isShellMode()) return false;
     if (isCompactLayout()) return false;
     if (state.gameMode !== 'wordhunt') return true;
     return state.viewport.cols < state.board.width || state.viewport.rows < state.board.height;
@@ -116,6 +117,10 @@
 
   function isCompactLayout() {
     return !!canvas && (canvas.width < 900 || canvas.height > canvas.width);
+  }
+
+  function isShellMode() {
+    return !!window.__LD_SHELL_MODE__;
   }
 
   function getGameplayAdapter(state) {
@@ -202,19 +207,21 @@
 
     // Challenge sidebar (Word Hunt only)
     if (state.gameMode === 'wordhunt') {
-      if (window.LD && window.LD.Challenges) {
+      if (!isShellMode() && window.LD && window.LD.Challenges) {
         LD.Challenges.renderSidebar(ctx, state, mouseX, mouseY);
       }
-      drawDiscoveryPanel(ctx, state);
-      drawWordHistory(ctx, state);
+      if (!isShellMode()) {
+        drawDiscoveryPanel(ctx, state);
+        drawWordHistory(ctx, state);
+      }
     }
 
-    if (state.debug && state.debug.enabled) {
+    if (!isShellMode() && state.debug && state.debug.enabled) {
       drawDebugOverlay(ctx, state);
     }
 
     // Help overlay
-    if (state.showHelp) {
+    if (!isShellMode() && state.showHelp) {
       drawHelpScreen(ctx, state);
     }
   }
@@ -1043,6 +1050,7 @@
   }
 
   function drawDebugOverlay(ctx, state) {
+    if (isShellMode()) return;
     var hunt = state.hunt || {};
     ctx.fillStyle = 'rgba(7, 6, 5, 0.93)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1167,6 +1175,7 @@
   }
 
   function drawDiscoveryPanel(ctx, state) {
+    if (isShellMode()) return;
     const hunt = state.hunt;
     if (!hunt) return;
 
@@ -1213,6 +1222,7 @@
   }
 
   function drawWordHistory(ctx, state) {
+    if (isShellMode()) return;
     const hunt = state.hunt;
     if (!hunt || !hunt.wordsThisRound || hunt.wordsThisRound.length === 0) return;
 
@@ -1412,6 +1422,7 @@
   }
 
   function drawHelpScreen(ctx, state) {
+    if (isShellMode()) return;
     const w = canvas.width;
     const h = canvas.height;
     const isWH = state.gameMode === 'wordhunt';
