@@ -223,15 +223,20 @@ canvas {
     'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'ANCE'
   ];
 
-  function resolve(gameMode, settings) {
+  function resolve(gameMode, settings, layout) {
+    settings = settings || {};
+
     var diff = settings.difficulty || 'medium';
     var sizeKey = settings.boardSize || 'medium';
     var size = BOARD_SIZES[sizeKey] || BOARD_SIZES.medium;
+    var profile = layout ? resolveBoardProfile(sizeKey, layout) : null;
+    var boardWidth = profile ? profile.boardWidth : size.width;
+    var boardHeight = profile ? profile.boardHeight : size.height;
 
     if (gameMode === 'wordhunt') {
       return {
-        boardWidth:  size.width,
-        boardHeight: size.height,
+        boardWidth:  boardWidth,
+        boardHeight: boardHeight,
         // Planted words
         plantedWordCount:    { easy: 20, medium: 15, hard: 10 }[diff],
         plantedWordMinLen:   { easy: 4,  medium: 5,  hard: 6  }[diff],
@@ -261,8 +266,8 @@ canvas {
 
     if (gameMode === 'siege') {
       return {
-        boardWidth:  size.width,
-        boardHeight: size.height,
+        boardWidth:  boardWidth,
+        boardHeight: boardHeight,
         // Corruption
         sealCount:                { easy: 4, medium: 6, hard: 8 }[diff],
         corruptionSpreadChance:   { easy: 0.2, medium: 0.3, hard: 0.45 }[diff],
@@ -6994,6 +6999,7 @@ canvas {
       lastTap: null,
     },
     inputAdapter: null,
+    shellLayout: null,
     showHelp: false,
     helpTab: 'basics',
     debug: {
@@ -7078,6 +7084,79 @@ canvas {
       objectiveBonus: entry.objectiveBonus || 0,
       orientation: entry.orientation || '',
       reasonText: entry.reasonText || '',
+    };
+  }
+
+  function normalizeShellLayout(layout) {
+    if (!layout) return null;
+
+    if (typeof layout === 'string') {
+      return {
+        orientation: layout === 'portrait' ? 'portrait' : 'landscape',
+      };
+    }
+
+    if (typeof layout !== 'object') return null;
+
+    var bounds = layout.bounds || layout.rect || layout.viewport || layout.frame || layout.size || null;
+    var orientation = null;
+    var width = null;
+    var height = null;
+    var aspect = null;
+
+    if (typeof layout.orientation === 'string') {
+      orientation = layout.orientation === 'portrait' ? 'portrait' : 'landscape';
+    } else if (typeof layout.orientationHint === 'string') {
+      orientation = layout.orientationHint === 'portrait' ? 'portrait' : 'landscape';
+    }
+
+    if (typeof layout.width === 'number' && isFinite(layout.width)) {
+      width = layout.width;
+    } else if (bounds && typeof bounds.width === 'number' && isFinite(bounds.width)) {
+      width = bounds.width;
+    }
+
+    if (typeof layout.height === 'number' && isFinite(layout.height)) {
+      height = layout.height;
+    } else if (bounds && typeof bounds.height === 'number' && isFinite(bounds.height)) {
+      height = bounds.height;
+    }
+
+    if (typeof layout.aspect === 'number' && isFinite(layout.aspect)) {
+      aspect = layout.aspect;
+    } else if (typeof layout.aspect === 'string') {
+      aspect = layout.aspect;
+    } else if (width !== null && height !== null && height !== 0) {
+      aspect = width / height;
+    }
+
+    if (!orientation && width !== null && height !== null) {
+      orientation = width < height ? 'portrait' : 'landscape';
+    }
+
+    if (!orientation && aspect !== null && typeof aspect === 'number') {
+      orientation = aspect < 1 ? 'portrait' : 'landscape';
+    }
+
+    if (!orientation && width === null && height === null && aspect === null) {
+      return null;
+    }
+
+    var normalized = {};
+    if (orientation) normalized.orientation = orientation;
+    if (width !== null) normalized.width = width;
+    if (height !== null) normalized.height = height;
+    if (aspect !== null) normalized.aspect = aspect;
+    return normalized;
+  }
+
+  function cloneShellLayout(layout) {
+    if (!layout) return null;
+    return {
+      orientation: layout.orientation || 'landscape',
+      width: typeof layout.width === 'number' ? layout.width : null,
+      height: typeof layout.height === 'number' ? layout.height : null,
+      aspect: typeof layout.aspect === 'number' ? layout.aspect : layout.aspect || null,
     };
   }
 
@@ -7169,7 +7248,7 @@ canvas {
   function buildRoundConfig() {
     // Resolve constants for this game
     if (LD.Constants) {
-      STATE.config = LD.Constants.resolve(STATE.gameMode, STATE.settings);
+      STATE.config = LD.Constants.resolve(STATE.gameMode, STATE.settings, STATE.shellLayout);
     } else {
       STATE.config = { boardWidth: 30, boardHeight: 25 };
     }
@@ -7281,6 +7360,11 @@ canvas {
     notifyShellState(true);
   }
 
+  function setShellLayout(layout) {
+    STATE.shellLayout = normalizeShellLayout(layout);
+    notifyShellState(true);
+  }
+
   function returnToSettings() {
     STATE.phase = 'settings';
     notifyShellState(true);
@@ -7313,6 +7397,7 @@ canvas {
       phase: STATE.phase,
       shellMode: isShellMode(),
       gameMode: STATE.gameMode,
+      shellLayout: cloneShellLayout(STATE.shellLayout),
       settings: {
         difficulty: STATE.settings.difficulty,
         boardSize: STATE.settings.boardSize,
@@ -7446,6 +7531,7 @@ canvas {
     startGame: startGame,
     advanceRound: advanceRound,
     setGameMode: setGameMode,
+    setShellLayout: setShellLayout,
     returnToSettings: returnToSettings,
     getShellState: getShellState,
     subscribeShell: subscribeShell,

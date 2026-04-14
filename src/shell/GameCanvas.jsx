@@ -1,12 +1,55 @@
 import { useEffect, useRef } from 'react';
+import { setShellLayout } from './gameBridge.js';
 
 export default function GameCanvas({ state }) {
   const canvasRef = useRef(null);
+  const mountRef = useRef(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
     if (!window.LD || !window.LD.Game || typeof window.LD.Game.mount !== 'function') return;
     window.LD.Game.mount(canvasRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!mountRef.current) return;
+
+    const node = mountRef.current;
+    let frame = 0;
+
+    function emitLayout() {
+      frame = 0;
+      const rect = node.getBoundingClientRect();
+      const width = Math.max(1, Math.round(rect.width));
+      const height = Math.max(1, Math.round(rect.height));
+      setShellLayout({
+        width,
+        height,
+        aspect: width / Math.max(1, height),
+        orientation: width < height ? 'portrait' : 'landscape',
+      });
+    }
+
+    function scheduleLayout() {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(emitLayout);
+    }
+
+    scheduleLayout();
+
+    let observer = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(scheduleLayout);
+      observer.observe(node);
+    } else {
+      window.addEventListener('resize', scheduleLayout);
+    }
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      if (observer) observer.disconnect();
+      else window.removeEventListener('resize', scheduleLayout);
+    };
   }, []);
 
   const showCanvas =
@@ -17,7 +60,7 @@ export default function GameCanvas({ state }) {
   return (
     <section className="game-canvas-shell" aria-label="Game canvas mount area">
       <div className="game-canvas-shell__badge">{showCanvas ? 'Live canvas' : 'Shell-owned phase'}</div>
-      <div className="game-canvas-shell__mount">
+      <div ref={mountRef} className="game-canvas-shell__mount">
         <canvas
           id="game"
           ref={canvasRef}

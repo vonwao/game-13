@@ -233,3 +233,10 @@ export function returnToSettings() {
     phase: 'settings',
   });
 }
+
+export function setShellLayout(layout) {
+  const game = getGameApi();
+  if (game && typeof game.setShellLayout === 'function') {
+    game.setShellLayout(layout);
+  }
+}
