@@ -60,26 +60,34 @@
       const sideW = compact ? 0 : 236;
       const outerPadX = compact ? 12 : 18;
       const outerPadY = compact ? 8 : 12;
+      const boardProfile = state.config && state.config.boardProfile;
+      const tileTargets = boardProfile && boardProfile.tileTargets;
       const availW = canvas.width - outerPadX - sideW;
       const availH = canvas.height - hudH - inputH - outerPadY;
       const fullCols = Math.max(1, state.board.width || vp.cols || 1);
       const fullRows = Math.max(1, state.board.height || vp.rows || 1);
       const fitTile = Math.floor(Math.min(availW / fullCols, availH / fullRows));
-      const minReadable = compact
-        ? (state.settings && state.settings.boardSize === 'large' ? 14 : (state.settings && state.settings.boardSize === 'medium' ? 16 : 17))
-        : (state.settings && state.settings.boardSize === 'large' ? 16 : 18);
-      const showWholeBoard = compact
-        ? fitTile >= minReadable
-        : (fitTile >= minReadable || (state.settings && state.settings.boardSize !== 'large'));
+      const minReadable = tileTargets && tileTargets.minimumReadable
+        ? tileTargets.minimumReadable
+        : (compact
+          ? (state.settings && state.settings.boardSize === 'large' ? 14 : (state.settings && state.settings.boardSize === 'medium' ? 16 : 17))
+          : (state.settings && state.settings.boardSize === 'large' ? 16 : 18));
+      const preferredTile = tileTargets && tileTargets.preferred
+        ? tileTargets.preferred
+        : minReadable;
+      const maxTile = tileTargets && tileTargets.maximum
+        ? tileTargets.maximum
+        : Math.max(minReadable, fitTile);
+      const showWholeBoard = fitTile >= minReadable;
 
       if (showWholeBoard) {
         vp.cols = fullCols;
         vp.rows = fullRows;
         vp.col = 0;
         vp.row = 0;
-        vp.tileSize = Math.max(compact ? minReadable : 14, fitTile);
+        vp.tileSize = Math.min(maxTile, Math.max(minReadable, fitTile));
       } else {
-        vp.tileSize = minReadable;
+        vp.tileSize = Math.min(maxTile, Math.max(minReadable, preferredTile));
         vp.cols = Math.max(1, Math.min(fullCols, Math.floor(availW / vp.tileSize)));
         vp.rows = Math.max(1, Math.min(fullRows, Math.floor(availH / vp.tileSize)));
         vp.col = Math.max(0, Math.min(fullCols - vp.cols, vp.col));

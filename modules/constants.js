@@ -107,6 +107,7 @@
       return {
         boardWidth:  boardWidth,
         boardHeight: boardHeight,
+        boardProfile: profile,
         // Planted words
         plantedWordCount:    { easy: 20, medium: 15, hard: 10 }[diff],
         plantedWordMinLen:   { easy: 4,  medium: 5,  hard: 6  }[diff],
@@ -138,6 +139,7 @@
       return {
         boardWidth:  boardWidth,
         boardHeight: boardHeight,
+        boardProfile: profile,
         // Corruption
         sealCount:                { easy: 4, medium: 6, hard: 8 }[diff],
         corruptionSpreadChance:   { easy: 0.2, medium: 0.3, hard: 0.45 }[diff],
@@ -156,7 +158,7 @@
     }
 
     // Fallback (should not happen)
-    return { boardWidth: size.width, boardHeight: size.height };
+    return { boardWidth: boardWidth, boardHeight: boardHeight, boardProfile: profile };
   }
 
   function normalizeBoardSizeKey(sizeKey) {
