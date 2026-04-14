@@ -196,6 +196,19 @@ button {
   font-size: 0.93rem;
 }
 
+.panel-copy--stack {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.panel-copy--stack p {
+  margin: 0;
+}
+
+.panel-copy--stack .is-spacer {
+  min-height: 0.9rem;
+}
+
 .segmented-toggle {
   display: flex;
   flex-wrap: wrap;
@@ -406,6 +419,75 @@ button {
 .panel-list__score {
   font: 700 0.9rem/1 var(--font-mono);
   color: var(--accent-soft);
+}
+
+.objective-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.objective-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.objective-card--complete {
+  border-color: rgba(216, 177, 93, 0.36);
+  background: rgba(216, 177, 93, 0.08);
+}
+
+.objective-card__header,
+.objective-card__footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.objective-card__reward {
+  font: 700 0.82rem/1 var(--font-mono);
+  color: var(--accent-soft);
+}
+
+.objective-card__meter {
+  height: 0.55rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.objective-card__meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(216, 177, 93, 0.82), rgba(124, 196, 255, 0.82));
+}
+
+.objective-card__footer {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.discovery-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.discovery-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(216, 177, 93, 0.32);
+  background: rgba(216, 177, 93, 0.1);
+  color: var(--accent-soft);
+  font: 700 0.78rem/1 var(--font-mono);
+  letter-spacing: 0.04em;
 }
 
 .is-muted {

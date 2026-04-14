@@ -17,6 +17,21 @@ const fallbackShellState = {
       tab: 'planted',
     },
   },
+  help: {
+    open: false,
+    tab: 'basics',
+    tabs: [
+      { key: 'basics', label: 'Basics' },
+      { key: 'scoring', label: 'Scoring' },
+      { key: 'tiles', label: 'Tiles' },
+    ],
+    sections: {
+      basics: [],
+      scoring: [],
+      tiles: [],
+    },
+    footer: '',
+  },
   run: {
     score: 0,
     wordsSpelled: 0,
@@ -42,6 +57,22 @@ const fallbackShellState = {
     valid: false,
     hasPath: false,
     scorePreview: null,
+  },
+  objectives: {
+    total: 0,
+    completed: 0,
+    items: [],
+  },
+  discoveries: {
+    total: 0,
+    found: 0,
+    recent: [],
+    items: [],
+  },
+  history: {
+    total: 0,
+    items: [],
+    recent: [],
   },
   wordHistory: [],
 };
@@ -112,6 +143,13 @@ export function setUIState(patch) {
           }
         : localShellState.ui.debug,
     },
+    help: {
+      ...localShellState.help,
+      open: Object.prototype.hasOwnProperty.call(patch || {}, 'showHelp')
+        ? !!patch.showHelp
+        : localShellState.help.open,
+      tab: typeof patch?.helpTab === 'string' ? patch.helpTab : localShellState.help.tab,
+    },
   });
 }
 
@@ -142,6 +180,10 @@ export function startGame() {
     ui: {
       ...localShellState.ui,
       showHelp: false,
+    },
+    help: {
+      ...localShellState.help,
+      open: false,
     },
   });
 }

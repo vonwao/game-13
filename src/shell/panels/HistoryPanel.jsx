@@ -20,21 +20,20 @@ function buildHistoryDetail(entry) {
   return parts.length > 0 ? parts.join(' · ') : (entry.reasonText || 'core-recorded scoring');
 }
 
-export default function HistoryPanel({ state }) {
-  const history = state.wordHistory || [];
-  const recent = history.slice(-14).reverse();
+export default function HistoryPanel({ history }) {
+  const recent = history?.recent || [];
 
   return (
     <PanelFrame
       eyebrow="History"
       title="Recent words"
-      subtitle="A shell-side readout of the last run's scoring history."
+      subtitle="A shell-side readout of the run's scoring history."
       footer="The list is scrollable so the shell can show a fuller run history without duplicating gameplay logic."
       bodyClassName="panel-frame__body--scroll"
     >
       <div className="shell-kv">
         <span className="shell-kv__label">Words</span>
-        <span className="shell-kv__value">{history.length}</span>
+        <span className="shell-kv__value">{history?.total || 0}</span>
       </div>
 
       {recent.length === 0 ? (

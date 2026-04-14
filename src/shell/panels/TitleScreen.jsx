@@ -44,7 +44,7 @@ export default function TitleScreen({ state, actions }) {
         <button
           type="button"
           className="shell-button"
-          onClick={() => actions.setUIState({ showHelp: !state.ui.showHelp })}
+          onClick={() => actions.setUIState({ showHelp: !state.ui.showHelp, helpTab: state.ui.helpTab || 'basics' })}
         >
           {state.ui.showHelp ? 'Hide Help' : 'Show Help'}
         </button>

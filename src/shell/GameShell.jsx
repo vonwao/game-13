@@ -7,7 +7,7 @@ import HelpPanel from './panels/HelpPanel.jsx';
 import ObjectivesPanel from './panels/ObjectivesPanel.jsx';
 import DiscoveriesPanel from './panels/DiscoveriesPanel.jsx';
 import HistoryPanel from './panels/HistoryPanel.jsx';
-import StatusPanel from './panels/StatusPanel.jsx';
+import InspectorPanel from './panels/InspectorPanel.jsx';
 import ShellLayout from './layout/ShellLayout.jsx';
 
 function LiveRunPanel({ state, actions }) {
@@ -18,7 +18,7 @@ function LiveRunPanel({ state, actions }) {
       eyebrow="Run"
       title={hunt.roundTitle || 'In Progress'}
       subtitle="The shell reads live run state while the board still owns tile-level rendering."
-      footer="Use the shell panels for help, history, and discovery review."
+      footer="Use the shell panels for reference, objectives, discoveries, and score history."
     >
       <div className="shell-kv">
         <span className="shell-kv__label">Score</span>
@@ -45,10 +45,10 @@ function LiveRunPanel({ state, actions }) {
       <div className="panel-actions">
         <button
           type="button"
-          className="shell-button shell-button--accent"
-          onClick={() => actions.setUIState({ showHelp: true, helpTab: 'basics' })}
+          className={`shell-button${state.ui.showHelp ? ' shell-button--accent' : ''}`}
+          onClick={() => actions.setUIState({ showHelp: !state.ui.showHelp, helpTab: state.ui.helpTab || 'basics' })}
         >
-          Open Help
+          {state.ui.showHelp ? 'Hide Reference' : 'Open Reference'}
         </button>
         <button
           type="button"
@@ -84,6 +84,7 @@ export default function GameShell() {
     state.phase === 'playing' ||
     state.phase === 'victory' ||
     state.phase === 'gameover';
+  const showWordHuntPanels = isPlaying && state.gameMode === 'wordhunt';
 
   return (
     <ShellLayout state={state}>
@@ -96,6 +97,10 @@ export default function GameShell() {
         ) : (
           <LiveRunPanel state={state} actions={actions} />
         )}
+
+        {state.ui.showHelp ? (
+          <HelpPanel help={state.help} actions={actions} gameMode={state.gameMode} />
+        ) : null}
       </section>
 
       <div className="shell-stage">
@@ -103,11 +108,17 @@ export default function GameShell() {
       </div>
 
       <aside className="shell-column shell-column--secondary">
-        <HelpPanel state={state} actions={actions} />
-        <ObjectivesPanel state={state} />
-        <DiscoveriesPanel state={state} />
-        <HistoryPanel state={state} />
-        <StatusPanel state={state} actions={actions} />
+        {showWordHuntPanels ? (
+          <>
+            <ObjectivesPanel objectives={state.objectives} />
+            <DiscoveriesPanel
+              discoveries={state.discoveries}
+              cluesRemaining={state.huntSummary.cluesRemaining}
+            />
+          </>
+        ) : null}
+        <HistoryPanel history={state.history || { total: state.wordHistory.length, recent: state.wordHistory }} />
+        <InspectorPanel state={state} actions={actions} />
       </aside>
     </ShellLayout>
   );
