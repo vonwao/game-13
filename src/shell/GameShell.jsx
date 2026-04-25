@@ -7,7 +7,6 @@ import HelpPanel from './panels/HelpPanel.jsx';
 import ObjectivesPanel from './panels/ObjectivesPanel.jsx';
 import DiscoveriesPanel from './panels/DiscoveriesPanel.jsx';
 import HistoryPanel from './panels/HistoryPanel.jsx';
-import InspectorPanel from './panels/InspectorPanel.jsx';
 import ShellLayout from './layout/ShellLayout.jsx';
 
 function LiveRunPanel({ state, actions }) {
@@ -116,7 +115,6 @@ export default function GameShell() {
           </>
         ) : null}
         <HistoryPanel history={state.history || { total: state.wordHistory.length, recent: state.wordHistory }} />
-        <InspectorPanel state={state} actions={actions} />
       </aside>
     </ShellLayout>
   );
