@@ -1,3 +1,5 @@
+import { notifyCoreReady } from './gameBridge.js';
+
 const LEGACY_MODULES = [
   'dictionary',
   'common_words',
@@ -31,7 +33,10 @@ function loadScript(src) {
 export function loadLegacyCore() {
   if (typeof window === 'undefined') return Promise.resolve();
   window.__LD_SHELL_MODE__ = true;
-  if (window.LD && window.LD.Game) return Promise.resolve(window.LD.Game);
+  if (window.LD && window.LD.Game) {
+    notifyCoreReady();
+    return Promise.resolve(window.LD.Game);
+  }
   if (loadPromise) return loadPromise;
 
   window.__LD_DISABLE_AUTO_BOOT__ = true;
@@ -39,7 +44,10 @@ export function loadLegacyCore() {
 
   loadPromise = LEGACY_MODULES.reduce((chain, name) => {
     return chain.then(() => loadScript(`/modules/${name}.js`));
-  }, Promise.resolve()).then(() => window.LD.Game || null);
+  }, Promise.resolve()).then(() => {
+    notifyCoreReady();
+    return window.LD.Game || null;
+  });
 
   return loadPromise;
 }

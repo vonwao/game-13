@@ -77,8 +77,16 @@ const fallbackShellState = {
   wordHistory: [],
 };
 
-let localShellState = cloneFallbackState();
-const localListeners = new Set();
+function cloneFallbackState() {
+  return JSON.parse(JSON.stringify(fallbackShellState));
+}
+
+// Single stable listener set. React subscribes here; the bridge pumps snapshots
+// from the legacy core (when available) or from the local fallback writes.
+const listeners = new Set();
+let currentSnapshot = cloneFallbackState();
+let coreUnsubscribe = null;
+let attached = false;
 
 function getGameApi() {
   if (typeof window === 'undefined' || !window.LD || !window.LD.Game) {
@@ -87,154 +95,191 @@ function getGameApi() {
   return window.LD.Game;
 }
 
-function cloneFallbackState() {
-  return JSON.parse(JSON.stringify(fallbackShellState));
-}
-
-function emitLocal() {
-  localListeners.forEach((listener) => {
-    listener(localShellState);
+function emit() {
+  listeners.forEach((listener) => {
+    try {
+      listener(currentSnapshot);
+    } catch (err) {
+      console.error('Shell bridge listener error:', err);
+    }
   });
 }
 
-function patchLocalShellState(patch) {
-  localShellState = {
-    ...localShellState,
+function attachToCore() {
+  if (attached) return true;
+  const game = getGameApi();
+  if (!game || typeof game.subscribeShell !== 'function') return false;
+
+  attached = true;
+  coreUnsubscribe = game.subscribeShell((snap) => {
+    currentSnapshot = snap;
+    emit();
+  });
+  return true;
+}
+
+function tryAttachSoon() {
+  if (attached) return;
+  if (typeof window === 'undefined') return;
+  if (attachToCore()) return;
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      attachToCore();
+    });
+  }
+}
+
+// Hook for loadLegacyCore.js to call once scripts have loaded.
+export function notifyCoreReady() {
+  attachToCore();
+}
+
+function patchLocalSnapshot(patch) {
+  currentSnapshot = {
+    ...currentSnapshot,
     ...patch,
   };
-  emitLocal();
+  emit();
 }
 
 export function getShellState() {
-  const game = getGameApi();
-  if (game && typeof game.getShellState === 'function') {
-    return game.getShellState();
-  }
-  return localShellState;
+  return currentSnapshot;
 }
 
 export function subscribeShell(listener) {
-  const game = getGameApi();
-  if (game && typeof game.subscribeShell === 'function') {
-    return game.subscribeShell(listener);
-  }
-  localListeners.add(listener);
-  listener(localShellState);
+  listeners.add(listener);
+  // Opportunistically attach if the core is now available.
+  tryAttachSoon();
+  listener(currentSnapshot);
   return () => {
-    localListeners.delete(listener);
+    listeners.delete(listener);
   };
 }
 
 export function setUIState(patch) {
-  const game = getGameApi();
-  if (game && typeof game.setUIState === 'function') {
-    game.setUIState(patch);
-    return;
+  if (attachToCore()) {
+    const game = getGameApi();
+    if (game && typeof game.setUIState === 'function') {
+      game.setUIState(patch);
+      return;
+    }
   }
 
-  patchLocalShellState({
+  patchLocalSnapshot({
     ui: {
-      ...localShellState.ui,
+      ...currentSnapshot.ui,
       ...patch,
       debug: patch && patch.debug
         ? {
-            ...localShellState.ui.debug,
+            ...currentSnapshot.ui.debug,
             ...patch.debug,
           }
-        : localShellState.ui.debug,
+        : currentSnapshot.ui.debug,
     },
     help: {
-      ...localShellState.help,
+      ...currentSnapshot.help,
       open: Object.prototype.hasOwnProperty.call(patch || {}, 'showHelp')
         ? !!patch.showHelp
-        : localShellState.help.open,
-      tab: typeof patch?.helpTab === 'string' ? patch.helpTab : localShellState.help.tab,
+        : currentSnapshot.help.open,
+      tab: typeof patch?.helpTab === 'string' ? patch.helpTab : currentSnapshot.help.tab,
     },
   });
 }
 
 export function setSettings(patch) {
-  const game = getGameApi();
-  if (game && typeof game.setSettings === 'function') {
-    game.setSettings(patch);
-    return;
+  if (attachToCore()) {
+    const game = getGameApi();
+    if (game && typeof game.setSettings === 'function') {
+      game.setSettings(patch);
+      return;
+    }
   }
 
-  patchLocalShellState({
+  patchLocalSnapshot({
     settings: {
-      ...localShellState.settings,
+      ...currentSnapshot.settings,
       ...patch,
     },
   });
 }
 
 export function startGame() {
-  const game = getGameApi();
-  if (game && typeof game.startGame === 'function') {
-    game.startGame();
-    return;
+  if (attachToCore()) {
+    const game = getGameApi();
+    if (game && typeof game.startGame === 'function') {
+      game.startGame();
+      return;
+    }
   }
 
-  patchLocalShellState({
+  patchLocalSnapshot({
     phase: 'playing',
     ui: {
-      ...localShellState.ui,
+      ...currentSnapshot.ui,
       showHelp: false,
     },
     help: {
-      ...localShellState.help,
+      ...currentSnapshot.help,
       open: false,
     },
   });
 }
 
 export function advanceRound() {
-  const game = getGameApi();
-  if (game && typeof game.advanceRound === 'function') {
-    game.advanceRound();
-    return;
+  if (attachToCore()) {
+    const game = getGameApi();
+    if (game && typeof game.advanceRound === 'function') {
+      game.advanceRound();
+      return;
+    }
   }
 
   const nextRound = Math.min(
-    (localShellState.huntSummary.round || 1) + 1,
-    localShellState.huntSummary.maxRounds || 3
+    (currentSnapshot.huntSummary.round || 1) + 1,
+    currentSnapshot.huntSummary.maxRounds || 3
   );
 
-  patchLocalShellState({
+  patchLocalSnapshot({
     phase: 'playing',
     huntSummary: {
-      ...localShellState.huntSummary,
+      ...currentSnapshot.huntSummary,
       round: nextRound,
-      advanceAvailable: nextRound < (localShellState.huntSummary.maxRounds || 3),
+      advanceAvailable: nextRound < (currentSnapshot.huntSummary.maxRounds || 3),
     },
   });
 }
 
 export function setGameMode(mode) {
-  const game = getGameApi();
-  if (game && typeof game.setGameMode === 'function') {
-    game.setGameMode(mode);
-    return;
+  if (attachToCore()) {
+    const game = getGameApi();
+    if (game && typeof game.setGameMode === 'function') {
+      game.setGameMode(mode);
+      return;
+    }
   }
 
-  patchLocalShellState({
+  patchLocalSnapshot({
     gameMode: mode,
   });
 }
 
 export function returnToSettings() {
-  const game = getGameApi();
-  if (game && typeof game.returnToSettings === 'function') {
-    game.returnToSettings();
-    return;
+  if (attachToCore()) {
+    const game = getGameApi();
+    if (game && typeof game.returnToSettings === 'function') {
+      game.returnToSettings();
+      return;
+    }
   }
 
-  patchLocalShellState({
+  patchLocalSnapshot({
     phase: 'settings',
   });
 }
 
 export function setShellLayout(layout) {
+  // Try to attach (in case core just arrived) before forwarding.
+  attachToCore();
   const game = getGameApi();
   if (game && typeof game.setShellLayout === 'function') {
     game.setShellLayout(layout);
