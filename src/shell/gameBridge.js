@@ -87,6 +87,10 @@ const listeners = new Set();
 let currentSnapshot = cloneFallbackState();
 let coreUnsubscribe = null;
 let attached = false;
+// Remember the most recent layout the shell pushed before the core was attached
+// so we can replay it as soon as the core arrives. Without this, the canvas
+// boots at window-fallback dimensions and only corrects on the next resize.
+let pendingShellLayout = null;
 
 function getGameApi() {
   if (typeof window === 'undefined' || !window.LD || !window.LD.Game) {
@@ -111,10 +115,17 @@ function attachToCore() {
   if (!game || typeof game.subscribeShell !== 'function') return false;
 
   attached = true;
+  if (import.meta?.env?.DEV) {
+    console.info('[bridge] attached to legacy core; first snapshot pumping into shell');
+  }
   coreUnsubscribe = game.subscribeShell((snap) => {
     currentSnapshot = snap;
     emit();
   });
+  if (pendingShellLayout && typeof game.setShellLayout === 'function') {
+    game.setShellLayout(pendingShellLayout);
+    pendingShellLayout = null;
+  }
   return true;
 }
 
@@ -318,5 +329,9 @@ export function setShellLayout(layout) {
   const game = getGameApi();
   if (game && typeof game.setShellLayout === 'function') {
     game.setShellLayout(layout);
+    pendingShellLayout = null;
+    return;
   }
+  // Core not ready yet — remember the latest layout so attachToCore can replay it.
+  pendingShellLayout = layout;
 }
