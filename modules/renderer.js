@@ -449,13 +449,19 @@
     const useCount = tile.useCount || 0;
     const isExhausted = useCount >= 2 && !isFoundPlanted;
 
-    let tileFill = COLORS.tileFill;
-    if (isFoundPlanted) tileFill = '#c8a840';
-    else if (isExhausted) tileFill = '#6a6050';
-    else if (isMatch)   tileFill = '#e0c880';
+    const shellMode = isShellMode();
+    var st = shellMode ? getSkinTokens() : null;
 
-    ctx.fillStyle = tileFill;
-    ctx.fillRect(x + pad, y + pad, inner, inner);
+    let tileFill = shellMode ? 'transparent' : COLORS.tileFill;
+    if (isFoundPlanted) tileFill = '#c8a840';
+    else if (isExhausted) tileFill = shellMode ? 'rgba(0,0,0,0.18)' : '#6a6050';
+    else if (isMatch)   tileFill = shellMode ? (st.tileOn + '55') : '#e0c880';
+
+    // Only fill if not transparent
+    if (tileFill !== 'transparent') {
+      ctx.fillStyle = tileFill;
+      ctx.fillRect(x + pad, y + pad, inner, inner);
+    }
 
     if (isFoundPlanted) {
       ctx.strokeStyle = '#f0d070';
@@ -463,16 +469,19 @@
       ctx.strokeRect(x + pad, y + pad, inner, inner);
       ctx.lineWidth = 1;
     } else if (isExhausted) {
-      ctx.strokeStyle = '#4a4038';
+      ctx.strokeStyle = shellMode ? 'rgba(0,0,0,0.15)' : '#4a4038';
       ctx.lineWidth = 1;
       ctx.strokeRect(x + pad, y + pad, inner, inner);
     } else if (isMatch) {
-      ctx.strokeStyle = '#c8a050';
+      ctx.strokeStyle = shellMode ? st.accent : '#c8a050';
       ctx.lineWidth = 2;
       ctx.strokeRect(x + pad, y + pad, inner, inner);
       ctx.lineWidth = 1;
-    } else {
+    } else if (!shellMode) {
       ctx.strokeStyle = COLORS.tileBorder;
+      ctx.strokeRect(x + pad, y + pad, inner, inner);
+    } else if (st.tileBorder && st.tileBorder !== 'transparent') {
+      ctx.strokeStyle = st.tileBorder;
       ctx.strokeRect(x + pad, y + pad, inner, inner);
     }
 
@@ -511,17 +520,18 @@
     }
 
     if (tile.letter) {
-      let letterColor  = COLORS.tileText;
-      let embossColor  = COLORS.tileTextEmboss;
-      if (isMatch)          { letterColor = '#5a3a10'; embossColor = '#f0d890'; }
-      else if (isExhausted) { letterColor = '#9a8868'; embossColor = null; }
+      let letterColor  = shellMode ? st.ink : COLORS.tileText;
+      let embossColor  = shellMode ? null  : COLORS.tileTextEmboss;
+      if (isMatch)          { letterColor = shellMode ? st.accent : '#5a3a10'; embossColor = shellMode ? null : '#f0d890'; }
+      else if (isExhausted) { letterColor = shellMode ? (st.ink + '66') : '#9a8868'; embossColor = null; }
       drawLetter(ctx, tile.letter, x, y, ts, letterColor, embossColor, isExhausted ? 0 : tile.points);
     }
   }
 
   function drawLetter(ctx, letter, x, y, ts, color, embossColor, points) {
     const fontSize = Math.max(10, Math.floor(ts * 0.55));
-    ctx.font = 'bold ' + fontSize + 'px "Courier New", monospace';
+    var fontStack = isShellMode() ? getSkinTokens().fontDisplay : '"Courier New", monospace';
+    ctx.font = 'bold ' + fontSize + 'px ' + fontStack;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const cx = x + ts / 2;
@@ -537,7 +547,7 @@
     // Point value in bottom-right corner
     if (points && points > 1 && ts >= 30) {
       const ptSize = Math.max(8, Math.floor(ts * 0.22));
-      ctx.font = ptSize + 'px "Courier New", monospace';
+      ctx.font = ptSize + 'px ' + fontStack;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'bottom';
       ctx.globalAlpha = 0.5;
@@ -1698,6 +1708,11 @@
     inputFlashColor = color;
     inputFlashTimer = duration || 0.2;
   }
+
+  // Subscribe to skin changes — renderer reads tokens fresh each frame anyway,
+  // but this forces an immediate redraw request on skin switch.
+  var _skinVersion = 0;
+  subscribeSkinChange(function() { _skinVersion++; });
 
   window.LD.Renderer = {
     init: init,
