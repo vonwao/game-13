@@ -1,5 +1,6 @@
 import GameCanvas from './GameCanvas.jsx';
 import useGameShellState from './useGameShellState.js';
+import ActionBar from './components/ActionBar.jsx';
 import GameHUD from './components/GameHUD.jsx';
 import PanelFrame from './components/PanelFrame.jsx';
 import TitleScreen from './panels/TitleScreen.jsx';
@@ -104,6 +105,7 @@ export default function GameShell() {
       <div className="shell-stage">
         {isPlaying ? <GameHUD state={state} /> : null}
         <GameCanvas state={state} />
+        {isPlaying ? <ActionBar state={state} actions={actions} /> : null}
       </div>
 
       <aside className="shell-column shell-column--secondary">

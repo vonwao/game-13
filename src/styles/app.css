@@ -273,6 +273,58 @@ button {
   background: rgba(255, 138, 120, 0.12);
 }
 
+.shell-button:disabled,
+.shell-button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+  border-color: var(--panel-line);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-dim);
+}
+
+.shell-actionbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(22, 28, 40, 0.95), rgba(14, 18, 26, 0.92));
+}
+
+.shell-actionbar__preview {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-height: 1.6rem;
+  flex: 1 1 12rem;
+}
+
+.shell-actionbar__word {
+  font: 700 1.05rem/1 var(--font-mono);
+  color: var(--text);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shell-actionbar__score {
+  font: 700 0.9rem/1 var(--font-mono);
+  color: var(--accent-soft);
+}
+
+.shell-actionbar__hint {
+  font-size: 0.9rem;
+}
+
+.shell-actionbar__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .shell-kv {
   display: grid;
   grid-template-columns: 1fr auto;

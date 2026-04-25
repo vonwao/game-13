@@ -277,6 +277,41 @@ export function returnToSettings() {
   });
 }
 
+function getActionsApi() {
+  if (typeof window === 'undefined' || !window.LD || !window.LD.Actions) {
+    return null;
+  }
+  return window.LD.Actions;
+}
+
+export function clearCurrentWord() {
+  const api = getActionsApi();
+  if (api && typeof api.clearCurrentWord === 'function') {
+    api.clearCurrentWord();
+  }
+}
+
+export function submitCurrentWord() {
+  const api = getActionsApi();
+  if (api && typeof api.submitCurrentWord === 'function') {
+    api.submitCurrentWord();
+  }
+}
+
+export function undoTileSelection() {
+  const api = getActionsApi();
+  if (api && typeof api.undoTileSelection === 'function') {
+    api.undoTileSelection();
+  }
+}
+
+export function useClue() {
+  const api = getActionsApi();
+  if (api && typeof api.useClue === 'function') {
+    api.useClue();
+  }
+}
+
 export function setShellLayout(layout) {
   // Try to attach (in case core just arrived) before forwarding.
   attachToCore();

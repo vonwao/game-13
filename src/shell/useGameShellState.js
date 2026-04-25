@@ -1,13 +1,17 @@
 import { useSyncExternalStore } from 'react';
 import {
   advanceRound,
+  clearCurrentWord,
   getShellState,
   returnToSettings,
   setGameMode,
   setSettings,
   setUIState,
   startGame,
+  submitCurrentWord,
   subscribeShell,
+  undoTileSelection,
+  useClue,
 } from './gameBridge.js';
 
 export default function useGameShellState() {
@@ -22,6 +26,10 @@ export default function useGameShellState() {
       startGame,
       advanceRound,
       returnToSettings,
+      clearCurrentWord,
+      submitCurrentWord,
+      undoTileSelection,
+      useClue,
     },
   };
 }
