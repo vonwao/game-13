@@ -54,12 +54,14 @@
     const isWordHunt = state.gameMode === 'wordhunt';
     const compact = isCompactLayout();
 
+    const shell = isShellMode();
+
     if (isWordHunt) {
-      const hudH = compact ? 68 : 56;
-      const inputH = compact ? 78 : 50;
-      const sideW = compact ? 0 : 236;
-      const outerPadX = compact ? 12 : 18;
-      const outerPadY = compact ? 8 : 12;
+      const hudH = shell ? 0 : (compact ? 68 : 56);
+      const inputH = shell ? 0 : (compact ? 78 : 50);
+      const sideW = shell ? 0 : (compact ? 0 : 236);
+      const outerPadX = shell ? 0 : (compact ? 12 : 18);
+      const outerPadY = shell ? 0 : (compact ? 8 : 12);
       const boardProfile = state.config && state.config.boardProfile;
       const tileTargets = boardProfile && boardProfile.tileTargets;
       const availW = canvas.width - outerPadX - sideW;
@@ -99,16 +101,18 @@
       vp.offsetX = Math.floor(outerPadX / 2) + Math.max(0, Math.floor((availW - boardW) / 2));
       vp.offsetY = hudH + Math.max(2, Math.floor((availH - boardH) / 2));
     } else {
-      const hudH = 60;
-      const inputH = 50;
-      const minimapW = 130;
-      const availW = canvas.width - 20 - minimapW;
-      const availH = canvas.height - hudH - inputH - 10;
+      const hudH = shell ? 0 : 60;
+      const inputH = shell ? 0 : 50;
+      const minimapW = shell ? 0 : 130;
+      const padX = shell ? 0 : 20;
+      const padY = shell ? 0 : 10;
+      const availW = canvas.width - padX - minimapW;
+      const availH = canvas.height - hudH - inputH - padY;
       const tileW = Math.floor(availW / vp.cols);
       const tileH = Math.floor(availH / vp.rows);
       vp.tileSize = Math.min(tileW, tileH);
-      vp.offsetX = 10;
-      vp.offsetY = hudH;
+      vp.offsetX = shell ? Math.max(0, Math.floor((availW - vp.tileSize * vp.cols) / 2)) : 10;
+      vp.offsetY = shell ? Math.max(0, Math.floor((availH - vp.tileSize * vp.rows) / 2)) : hudH;
     }
     targetScrollX = vp.col * vp.tileSize;
     targetScrollY = vp.row * vp.tileSize;
@@ -176,14 +180,14 @@
     if (state.phase === 'gameover') {
       drawBoard(ctx, state);
       if (shouldShowMinimap(state)) drawMinimap(ctx, state);
-      drawHUD(ctx, state);
+      if (!isShellMode()) drawHUD(ctx, state);
       drawGameOverScreen(ctx, state);
       return;
     }
     if (state.phase === 'victory') {
       drawBoard(ctx, state);
       if (shouldShowMinimap(state)) drawMinimap(ctx, state);
-      drawHUD(ctx, state);
+      if (!isShellMode()) drawHUD(ctx, state);
       drawVictoryScreen(ctx, state);
       return;
     }
@@ -203,14 +207,17 @@
     ctx.restore();
 
     if (shouldShowMinimap(state)) drawMinimap(ctx, state);
-    drawHUD(ctx, state);
+    if (!isShellMode()) drawHUD(ctx, state);
 
-    // Input bar: gameplay adapter action bar when available, keyboard bar otherwise
-    const gameplayAdapter = getGameplayAdapter(state);
-    if (gameplayAdapter && gameplayAdapter.renderActionBar) {
-      gameplayAdapter.renderActionBar(ctx, state);
-    } else {
-      drawInputBar(ctx, state);
+    // Input bar: gameplay adapter action bar when available, keyboard bar otherwise.
+    // The shell renders these as DOM components, so suppress them in shell mode.
+    if (!isShellMode()) {
+      const gameplayAdapter = getGameplayAdapter(state);
+      if (gameplayAdapter && gameplayAdapter.renderActionBar) {
+        gameplayAdapter.renderActionBar(ctx, state);
+      } else {
+        drawInputBar(ctx, state);
+      }
     }
 
     // Challenge sidebar (Word Hunt only)
