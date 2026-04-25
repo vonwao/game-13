@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { setShellLayout } from './gameBridge.js';
+import { setShellLayout, startGame } from './gameBridge.js';
 
 export default function GameCanvas({ state }) {
   const canvasRef = useRef(null);
@@ -59,7 +59,6 @@ export default function GameCanvas({ state }) {
 
   return (
     <section className="game-canvas-shell" aria-label="Game canvas mount area">
-      <div className="game-canvas-shell__badge">{showCanvas ? 'Live canvas' : 'Shell-owned phase'}</div>
       <div ref={mountRef} className="game-canvas-shell__mount">
         <canvas
           id="game"
@@ -69,20 +68,18 @@ export default function GameCanvas({ state }) {
         />
         {!showCanvas ? (
           <div className="game-canvas-shell__placeholder">
-            <h2>Shell-owned setup phase</h2>
+            <h2>Ready when you are</h2>
             <p>
-              Title and settings now live in the React shell. The canvas game stays mounted
-              behind the scenes and takes over once a round starts.
+              Mode: <strong>{state.gameMode}</strong>. Tweak setup on the left, then start.
             </p>
-            <p className="is-muted" style={{ marginTop: '0.85rem' }}>
-              Phase: {state.phase} · Mode: {state.gameMode} · Score: {state.run.score}
-            </p>
-          </div>
-        ) : null}
-        {showCanvas ? (
-          <div className="game-canvas-shell__overlay">
-            <span>{state.gameMode}</span>
-            <span>score {state.run.score}</span>
+            <button
+              type="button"
+              className="shell-button shell-button--accent"
+              style={{ marginTop: '1rem' }}
+              onClick={startGame}
+            >
+              Start Game
+            </button>
           </div>
         ) : null}
       </div>
