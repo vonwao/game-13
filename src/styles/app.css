@@ -308,6 +308,86 @@ button {
   box-shadow: var(--shadow-lg);
 }
 
+.shell-hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(22, 28, 40, 0.95), rgba(14, 18, 26, 0.92));
+}
+
+.shell-hud__title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shell-hud__eyebrow {
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font: 700 10px/1.2 var(--font-mono);
+}
+
+.shell-hud__round {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.shell-hud__round-title {
+  color: var(--text-soft);
+}
+
+.shell-hud__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.shell-hud__stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--panel-line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.shell-hud__stat-label {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.shell-hud__stat-value {
+  font: 700 0.92rem/1 var(--font-mono);
+  color: var(--text);
+}
+
+.shell-hud__stat--accent {
+  border-color: rgba(216, 177, 93, 0.45);
+  background: rgba(216, 177, 93, 0.14);
+}
+
+.shell-hud__stat--accent .shell-hud__stat-value {
+  color: var(--accent-soft);
+}
+
+.shell-hud__stat--danger {
+  border-color: rgba(255, 138, 120, 0.42);
+  background: rgba(255, 138, 120, 0.12);
+}
+
+.shell-hud__stat--danger .shell-hud__stat-value {
+  color: var(--danger);
+}
+
 .game-canvas-shell__mount {
   position: relative;
   min-height: 540px;

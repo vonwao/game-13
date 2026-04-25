@@ -1,5 +1,6 @@
 import GameCanvas from './GameCanvas.jsx';
 import useGameShellState from './useGameShellState.js';
+import GameHUD from './components/GameHUD.jsx';
 import PanelFrame from './components/PanelFrame.jsx';
 import TitleScreen from './panels/TitleScreen.jsx';
 import SettingsScreen from './panels/SettingsScreen.jsx';
@@ -101,6 +102,7 @@ export default function GameShell() {
       </section>
 
       <div className="shell-stage">
+        {isPlaying ? <GameHUD state={state} /> : null}
         <GameCanvas state={state} />
       </div>
 
