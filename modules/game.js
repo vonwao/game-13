@@ -294,13 +294,21 @@
   }
 
   function resizeCanvas() {
-    const isMobileLike = window.innerWidth < 900 || window.innerHeight > window.innerWidth;
-    let displayW = window.innerWidth;
-    let displayH = window.innerHeight;
+    let displayW;
+    let displayH;
 
-    if (!isMobileLike) {
-      displayW = Math.min(displayW, 1280);
-      displayH = Math.min(displayH, 720);
+    if (isShellMode() && STATE.shellLayout && STATE.shellLayout.width && STATE.shellLayout.height) {
+      displayW = STATE.shellLayout.width;
+      displayH = STATE.shellLayout.height;
+    } else {
+      const isMobileLike = window.innerWidth < 900 || window.innerHeight > window.innerWidth;
+      displayW = window.innerWidth;
+      displayH = window.innerHeight;
+
+      if (!isMobileLike) {
+        displayW = Math.min(displayW, 1280);
+        displayH = Math.min(displayH, 720);
+      }
     }
 
     canvas.width = Math.max(1, Math.floor(displayW));
@@ -439,6 +447,9 @@
 
   function setShellLayout(layout) {
     STATE.shellLayout = normalizeShellLayout(layout);
+    if (canvas) {
+      resizeCanvas();
+    }
     notifyShellState(true);
   }
 
