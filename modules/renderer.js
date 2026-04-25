@@ -35,6 +35,42 @@
     white: '#ffffff',
   };
 
+  // ─── Skin token bridge ────────────────────────────────────
+  // Default tokens match the legacy standalone appearance (close to SKIN_PAGE).
+  var _skinTokensDefault = {
+    bg: '#1a1714',
+    ink: '#3a2a1a',
+    accent: '#742818',
+    tileOn: '#c8a050',
+    tileOnColor: '#ffffff',
+    pathColor: '#c8a050',
+    pathStyle: 'ink',
+    fontDisplay: '"Courier New", monospace',
+    tileBg: '#d4c4a0',
+    tileBorder: '#b0a080',
+  };
+
+  function getSkinTokens() {
+    var vars = window.LD && window.LD.Theme && window.LD.Theme.vars;
+    if (!vars) return _skinTokensDefault;
+    return {
+      bg:           vars['--bg']           || _skinTokensDefault.bg,
+      ink:          vars['--ink']          || _skinTokensDefault.ink,
+      accent:       vars['--accent']       || _skinTokensDefault.accent,
+      tileOn:       vars['--tile-on']      || _skinTokensDefault.tileOn,
+      tileOnColor:  vars['--tile-on-color']|| _skinTokensDefault.tileOnColor,
+      pathColor:    vars['--path-color']   || _skinTokensDefault.pathColor,
+      pathStyle:    vars['--path-style']   || _skinTokensDefault.pathStyle,
+      fontDisplay:  vars['--font-display'] || _skinTokensDefault.fontDisplay,
+      tileBg:       vars['--tile-bg']      || 'transparent',
+      tileBorder:   vars['--tile-border']  || 'transparent',
+    };
+  }
+
+  function subscribeSkinChange(cb) {
+    window.addEventListener('ld:skin-change', function() { cb(); });
+  }
+
   function init(cvs, state) {
     canvas = cvs;
     resize(canvas, state);
@@ -163,9 +199,12 @@
   function render(ctx, state) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Background
-    ctx.fillStyle = COLORS.bg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Background — in shell mode leave canvas transparent so the skin's
+    // HTML Background shows through. In standalone mode fill as before.
+    if (!isShellMode()) {
+      ctx.fillStyle = COLORS.bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
     if (state.phase === 'title') {
       drawTitleScreen(ctx, state);
@@ -327,24 +366,39 @@
     }
 
     if (inPath) {
-      // Highlighted tile
-      const glowPhase = Math.max(0, Math.min(1, (time * 5 - pathIdx * 0.25) % 2));
-      const brightness = 0.7 + 0.3 * Math.sin(glowPhase * Math.PI);
-      const r = Math.floor(200 * brightness);
-      const g2 = Math.floor(160 * brightness);
-      const b = Math.floor(80 * brightness);
-      ctx.fillStyle = 'rgb(' + r + ',' + g2 + ',' + b + ')';
-      ctx.fillRect(x + pad, y + pad, inner, inner);
-      // Glow border
-      ctx.strokeStyle = COLORS.highlightBright;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x + pad, y + pad, inner, inner);
-      ctx.lineWidth = 1;
-      // Letter in white
-      if (tile.letter) {
-        drawLetter(ctx, tile.letter, x, y, ts, '#ffffff', '#c8a050', tile.points);
-      } else if (tile.icon) {
-        drawIcon(ctx, tile.icon, x, y, ts, true);
+      // Highlighted tile — use skin tokens in shell mode
+      if (isShellMode()) {
+        var st = getSkinTokens();
+        ctx.fillStyle = st.tileOn;
+        ctx.fillRect(x + pad, y + pad, inner, inner);
+        ctx.strokeStyle = st.tileOn;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + pad, y + pad, inner, inner);
+        ctx.lineWidth = 1;
+        if (tile.letter) {
+          drawLetter(ctx, tile.letter, x, y, ts, st.tileOnColor, null, tile.points);
+        } else if (tile.icon) {
+          drawIcon(ctx, tile.icon, x, y, ts, true);
+        }
+      } else {
+        const glowPhase = Math.max(0, Math.min(1, (time * 5 - pathIdx * 0.25) % 2));
+        const brightness = 0.7 + 0.3 * Math.sin(glowPhase * Math.PI);
+        const r = Math.floor(200 * brightness);
+        const g2 = Math.floor(160 * brightness);
+        const b = Math.floor(80 * brightness);
+        ctx.fillStyle = 'rgb(' + r + ',' + g2 + ',' + b + ')';
+        ctx.fillRect(x + pad, y + pad, inner, inner);
+        // Glow border
+        ctx.strokeStyle = COLORS.highlightBright;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + pad, y + pad, inner, inner);
+        ctx.lineWidth = 1;
+        // Letter in white
+        if (tile.letter) {
+          drawLetter(ctx, tile.letter, x, y, ts, '#ffffff', '#c8a050', tile.points);
+        } else if (tile.icon) {
+          drawIcon(ctx, tile.icon, x, y, ts, true);
+        }
       }
       return;
     }
