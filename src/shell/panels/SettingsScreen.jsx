@@ -1,9 +1,8 @@
 import PanelFrame from '../components/PanelFrame.jsx';
 
-function cycle(value, list) {
-  const index = list.indexOf(value);
-  return list[(index + 1) % list.length];
-}
+const DIFFICULTY_OPTIONS = ['easy', 'medium', 'hard'];
+const BOARD_SIZE_OPTIONS = ['small', 'medium', 'large'];
+const END_CONDITION_OPTIONS = ['challenges', 'timed', 'turns'];
 
 function describeMode(mode) {
   return mode === 'siege'
@@ -23,17 +22,52 @@ export default function SettingsScreen({ state, actions }) {
     >
       <div className="shell-kv">
         <span className="shell-kv__label">Difficulty</span>
-        <span className="shell-kv__value">{settings.difficulty}</span>
+      </div>
+      <div className="segmented-toggle" role="group" aria-label="Difficulty">
+        {DIFFICULTY_OPTIONS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`segmented-toggle__btn${settings.difficulty === option ? ' segmented-toggle__btn--active' : ''}`}
+            onClick={() => actions.setSettings({ difficulty: option })}
+          >
+            {option}
+          </button>
+        ))}
       </div>
       <div className="shell-kv">
         <span className="shell-kv__label">Board size</span>
-        <span className="shell-kv__value">{settings.boardSize}</span>
+      </div>
+      <div className="segmented-toggle" role="group" aria-label="Board size">
+        {BOARD_SIZE_OPTIONS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`segmented-toggle__btn${settings.boardSize === option ? ' segmented-toggle__btn--active' : ''}`}
+            onClick={() => actions.setSettings({ boardSize: option })}
+          >
+            {option}
+          </button>
+        ))}
       </div>
       {canShowEndCondition ? (
-        <div className="shell-kv">
-          <span className="shell-kv__label">End condition</span>
-          <span className="shell-kv__value">{settings.endCondition}</span>
-        </div>
+        <>
+          <div className="shell-kv">
+            <span className="shell-kv__label">End condition</span>
+          </div>
+          <div className="segmented-toggle" role="group" aria-label="End condition">
+            {END_CONDITION_OPTIONS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={`segmented-toggle__btn${settings.endCondition === option ? ' segmented-toggle__btn--active' : ''}`}
+                onClick={() => actions.setSettings({ endCondition: option })}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </>
       ) : null}
       <div className="shell-kv">
         <span className="shell-kv__label">Special tiles</span>
@@ -43,39 +77,9 @@ export default function SettingsScreen({ state, actions }) {
         <button
           type="button"
           className="shell-button"
-          onClick={() => actions.setSettings({ difficulty: cycle(settings.difficulty, ['easy', 'medium', 'hard']) })}
-        >
-          Cycle Difficulty
-        </button>
-        <button
-          type="button"
-          className="shell-button"
-          onClick={() => actions.setSettings({ boardSize: cycle(settings.boardSize, ['small', 'medium', 'large']) })}
-        >
-          Cycle Board
-        </button>
-        {canShowEndCondition ? (
-          <button
-            type="button"
-            className="shell-button"
-            onClick={() => actions.setSettings({ endCondition: cycle(settings.endCondition, ['challenges', 'timed', 'turns']) })}
-          >
-            Cycle End Condition
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className="shell-button"
           onClick={() => actions.setSettings({ specialTiles: !settings.specialTiles })}
         >
           Toggle Special Tiles
-        </button>
-        <button
-          type="button"
-          className="shell-button"
-          onClick={() => actions.setSettings({ particlesEnabled: !settings.particlesEnabled })}
-        >
-          Toggle Particles
         </button>
       </div>
       <div className="segmented-toggle" role="group" aria-label="Auxiliary settings">
