@@ -11,36 +11,11 @@ import DiscoveriesPanel from './panels/DiscoveriesPanel.jsx';
 import HistoryPanel from './panels/HistoryPanel.jsx';
 import ShellLayout from './layout/ShellLayout.jsx';
 
-function LiveRunPanel({ state, actions }) {
+function RunControlsPanel({ state, actions }) {
   const hunt = state.huntSummary;
 
   return (
-    <PanelFrame
-      eyebrow="Run"
-      title={hunt.roundTitle || 'In Progress'}
-    >
-      <div className="shell-kv">
-        <span className="shell-kv__label">Score</span>
-        <span className="shell-kv__value">{state.run.score}</span>
-      </div>
-      <div className="shell-kv">
-        <span className="shell-kv__label">Words</span>
-        <span className="shell-kv__value">{state.run.wordsSpelled}</span>
-      </div>
-      <div className="shell-kv">
-        <span className="shell-kv__label">Round</span>
-        <span className="shell-kv__value">
-          {hunt.round}/{hunt.maxRounds}
-        </span>
-      </div>
-      <div className="shell-kv">
-        <span className="shell-kv__label">Combo</span>
-        <span className="shell-kv__value">×{hunt.combo}</span>
-      </div>
-      <div className="shell-kv">
-        <span className="shell-kv__label">Clues</span>
-        <span className="shell-kv__value">{hunt.cluesRemaining}</span>
-      </div>
+    <PanelFrame eyebrow="Run" title="Controls">
       <div className="panel-actions">
         <button
           type="button"
@@ -49,6 +24,15 @@ function LiveRunPanel({ state, actions }) {
         >
           {state.ui.showHelp ? 'Hide Reference' : 'Open Reference'}
         </button>
+        {hunt.advanceAvailable ? (
+          <button
+            type="button"
+            className="shell-button shell-button--accent"
+            onClick={actions.advanceRound}
+          >
+            Advance Round
+          </button>
+        ) : null}
         <button
           type="button"
           className="shell-button"
@@ -63,15 +47,6 @@ function LiveRunPanel({ state, actions }) {
         >
           Back To Setup
         </button>
-        {hunt.advanceAvailable ? (
-          <button
-            type="button"
-            className="shell-button shell-button--accent"
-            onClick={actions.advanceRound}
-          >
-            Advance Round
-          </button>
-        ) : null}
       </div>
     </PanelFrame>
   );
@@ -94,7 +69,7 @@ export default function GameShell() {
             <SettingsScreen state={state} actions={actions} />
           </>
         ) : (
-          <LiveRunPanel state={state} actions={actions} />
+          <RunControlsPanel state={state} actions={actions} />
         )}
 
         {state.ui.showHelp ? (
