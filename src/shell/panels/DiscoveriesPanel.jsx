@@ -8,7 +8,7 @@ export default function DiscoveriesPanel({ discoveries, cluesRemaining }) {
       eyebrow="Discoveries"
       title={`Hidden words ${discoveries?.found || 0}/${discoveries?.total || 0}`}
       subtitle={`Clues remaining: ${cluesRemaining || 0}`}
-      footer="Finding planted words is a real scoring and progression lever, not just flavor."
+      footer="Hidden words boost your score and progression."
     >
       {recent.length === 0 ? (
         <div className="panel-note">

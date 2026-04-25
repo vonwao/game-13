@@ -27,8 +27,6 @@ export default function HistoryPanel({ history }) {
     <PanelFrame
       eyebrow="History"
       title="Recent words"
-      subtitle="A shell-side readout of the run's scoring history."
-      footer="The list is scrollable so the shell can show a fuller run history without duplicating gameplay logic."
       bodyClassName="panel-frame__body--scroll"
     >
       <div className="shell-kv">

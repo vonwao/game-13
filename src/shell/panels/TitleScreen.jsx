@@ -5,8 +5,7 @@ export default function TitleScreen({ state, actions }) {
     <PanelFrame
       eyebrow="Title"
       title="Lexicon Deep"
-      subtitle="The React shell now owns the pre-play experience while the board remains canvas-based."
-      footer="This panel is a real setup surface now, not just a placeholder."
+      subtitle="A word puzzle in the archive."
     >
       <div className="shell-kv">
         <span className="shell-kv__label">Current mode</span>

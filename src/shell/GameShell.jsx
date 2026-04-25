@@ -17,8 +17,6 @@ function LiveRunPanel({ state, actions }) {
     <PanelFrame
       eyebrow="Run"
       title={hunt.roundTitle || 'In Progress'}
-      subtitle="The shell reads live run state while the board still owns tile-level rendering."
-      footer="Use the shell panels for reference, objectives, discoveries, and score history."
     >
       <div className="shell-kv">
         <span className="shell-kv__label">Score</span>

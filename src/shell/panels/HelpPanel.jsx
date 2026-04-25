@@ -10,8 +10,7 @@ export default function HelpPanel({ help, actions, gameMode }) {
     <PanelFrame
       eyebrow="Reference"
       title={gameMode === 'wordhunt' ? 'Word Hunt guide' : 'Siege guide'}
-      subtitle="Shell-owned help replaces the old canvas overlay."
-      footer={help?.footer || 'Close help when you want the board to own the full stage again.'}
+      footer={help?.footer || 'Press ? or Escape to close.'}
     >
       <div className="segmented-toggle" role="tablist" aria-label="Help sections">
         {tabs.map((tab) => (

@@ -5,12 +5,7 @@ export default function ShellLayout({ state, children }) {
         <header className="shell-layout__header">
           <div className="shell-brand">
             <p className="shell-brand__eyebrow">Lexicon Deep</p>
-            <h1 className="shell-brand__title">Board-first responsive shell</h1>
-            <p className="shell-brand__copy">
-              This Vite/React slice owns the responsive shell: title, settings,
-              help, objectives, discoveries, history, and other text-heavy surfaces
-              while the board stays in canvas.
-            </p>
+            <h1 className="shell-brand__title">Lexicon Deep</h1>
           </div>
 
           <div className="shell-chips" aria-label="Shell summary">

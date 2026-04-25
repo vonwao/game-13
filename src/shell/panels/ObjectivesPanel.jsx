@@ -12,7 +12,6 @@ export default function ObjectivesPanel({ objectives }) {
     <PanelFrame
       eyebrow="Objectives"
       title={`Round goals ${objectives?.completed || 0}/${objectives?.total || 0}`}
-      subtitle="The shell now owns this text-heavy progress view."
       footer="Complete the current round goals to advance deeper."
     >
       {items.length === 0 ? (

@@ -19,7 +19,6 @@ export default function SettingsScreen({ state, actions }) {
     <PanelFrame
       eyebrow="Settings"
       title="Run setup"
-      subtitle="These controls now drive the actual game bridge. The shell owns setup intent; the core still owns the rules."
       footer={describeMode(state.gameMode)}
     >
       <div className="shell-kv">
