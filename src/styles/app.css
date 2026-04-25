@@ -442,9 +442,7 @@ button {
 
 .game-canvas-shell__mount {
   position: relative;
-  min-height: 540px;
-  display: grid;
-  place-items: center;
+  height: clamp(420px, 70vh, 780px);
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: calc(var(--radius-lg) - 6px);
@@ -458,9 +456,9 @@ button {
 }
 
 .game-canvas-shell__canvas {
+  display: block;
   width: 100%;
-  height: auto;
-  max-width: 100%;
+  height: 100%;
   border-radius: calc(var(--radius-lg) - 6px);
   image-rendering: pixelated;
 }

@@ -294,10 +294,13 @@
   }
 
   function resizeCanvas() {
+    const shellMode =
+      isShellMode() && STATE.shellLayout && STATE.shellLayout.width && STATE.shellLayout.height;
+
     let displayW;
     let displayH;
 
-    if (isShellMode() && STATE.shellLayout && STATE.shellLayout.width && STATE.shellLayout.height) {
+    if (shellMode) {
       displayW = STATE.shellLayout.width;
       displayH = STATE.shellLayout.height;
     } else {
@@ -313,8 +316,15 @@
 
     canvas.width = Math.max(1, Math.floor(displayW));
     canvas.height = Math.max(1, Math.floor(displayH));
-    canvas.style.width = displayW + 'px';
-    canvas.style.height = displayH + 'px';
+
+    if (shellMode) {
+      // CSS sizes the canvas to fill the mount; we only own the pixel buffer.
+      canvas.style.width = '';
+      canvas.style.height = '';
+    } else {
+      canvas.style.width = displayW + 'px';
+      canvas.style.height = displayH + 'px';
+    }
 
     if (LD.Renderer) {
       LD.Renderer.init(canvas, STATE);
