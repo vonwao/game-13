@@ -92,6 +92,8 @@
   let lastTime = 0;
   const shellListeners = new Set();
   let lastShellSignature = '';
+  let lastShellEmitAt = 0;
+  const SHELL_THROTTLE_MS = 100; // ~10Hz cap for unforced notifyShellState
   let resizeBound = false;
   let loopStarted = false;
   let booted = false;
@@ -536,7 +538,20 @@
     };
   }
 
+  // Throttle: unforced calls (per-frame from gameLoop) skipped if <100ms since last emit;
+  // explicit mutators pass force=true and always emit through the dedupe.
   function notifyShellState(force) {
+    if (!force) {
+      var now = (typeof performance !== 'undefined' && performance.now)
+        ? performance.now()
+        : Date.now();
+      if (now - lastShellEmitAt < SHELL_THROTTLE_MS) return;
+      lastShellEmitAt = now;
+    } else {
+      lastShellEmitAt = (typeof performance !== 'undefined' && performance.now)
+        ? performance.now()
+        : Date.now();
+    }
     const snapshot = getShellState();
     const signature = JSON.stringify(snapshot);
     if (!force && signature === lastShellSignature) return;
