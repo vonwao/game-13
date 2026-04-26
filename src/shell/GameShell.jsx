@@ -131,7 +131,16 @@ export default function GameShell() {
 
   return (
     <ShellLayout>
-      <HUDStrip skin={skin} state={state} phone={phone} />
+      <HUDStrip
+        skin={skin}
+        state={state}
+        phone={phone}
+        onHelp={() => actions.setUIState({ showHelp: true })}
+        onSettings={() => {
+          actions.setUIState({ showHelp: false });
+          setShowSettings(true);
+        }}
+      />
       <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
         <div
           style={{

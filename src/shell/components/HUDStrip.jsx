@@ -27,7 +27,7 @@ function formatTime(secs) {
   return `${mm}:${ss}`;
 }
 
-export default function HUDStrip({ skin, state, phone }) {
+export default function HUDStrip({ skin, state, phone, onHelp, onSettings }) {
   const hunt = state.huntSummary || {};
   const run = state.run || {};
   const settings = state.settings || {};
@@ -93,7 +93,46 @@ export default function HUDStrip({ skin, state, phone }) {
       {!phone && <Stat skin={skin} label="Words" value={String(hud.wordsSpelled).padStart(2, '0')} />}
       <Stat skin={skin} label="Clues" value={String(hud.clues)} />
       <Stat skin={skin} label="Time" value={hud.time} mono accent={hud.timeWarning} />
+      {(onHelp || onSettings) && (
+        <div style={{ display: 'flex', gap: 6, marginLeft: 6, flexShrink: 0 }}>
+          {onHelp && (
+            <IconBtn skin={skin} title="How to play (?)" onClick={onHelp}>?</IconBtn>
+          )}
+          {onSettings && (
+            <IconBtn skin={skin} title="Settings (s)" onClick={onSettings}>⚙</IconBtn>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function IconBtn({ skin, title, onClick, children }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      style={{
+        appearance: 'none',
+        width: 32,
+        height: 32,
+        padding: 0,
+        border: '1px solid var(--rule-faint)',
+        borderRadius: skin.id === 'terminal' ? 0 : 999,
+        background: 'transparent',
+        color: 'var(--ink-soft)',
+        fontFamily: skin.id === 'terminal' ? 'var(--font-mono)' : 'var(--font-body)',
+        fontSize: 16,
+        lineHeight: 1,
+        cursor: 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {children}
+    </button>
   );
 }
 

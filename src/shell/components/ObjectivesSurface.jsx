@@ -463,8 +463,8 @@ function RailSurface({ skin, model }) {
 
       <div style={{ height: 16 }} />
 
-      <RailHeading skin={skin}>{skin.id === 'terminal' ? 'Scrollback' : 'Discovered'}</RailHeading>
-      <div style={{ marginTop: 8, flex: 1, overflow: 'hidden', minHeight: 0 }}>
+      <RailHeading skin={skin}>{skin.id === 'terminal' ? 'Scrollback' : 'Recent'}</RailHeading>
+      <div style={{ marginTop: 8, flex: 1, overflow: 'auto', minHeight: 0 }}>
         {model.recent.length === 0 ? (
           <EmptyState>no words yet</EmptyState>
         ) : (

@@ -377,8 +377,10 @@ export const SKIN_FULLBLEED = {
       )}
     </button>
   ),
-  // Full Bleed: collapsible right rail (collapsed by default)
-  rightRailDefaultCollapsed: true,
+  // Full Bleed used to collapse the right rail by default; that hid recent
+  // words and frustrated players. Keep the rail expanded — minimal styling
+  // already keeps it quiet.
+  rightRailDefaultCollapsed: false,
   PathRender: 'sharp',
   HeadingFont: '"Inter Tight",sans-serif',
   HeadingTransform: (s) => s,
