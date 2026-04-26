@@ -91,6 +91,9 @@ async function main() {
   const afterEmber = await page.evaluate(
     () => window.LD.Game.getShellState().inputSummary?.typed,
   );
+
+  // Wait for React to flush — the bridge throttles per-frame snapshots to 100ms.
+  await page.waitForTimeout(180);
   record(
     'A2 typed letter reflected in inputSummary.typed within 20ms',
     typeof afterE === 'string' && afterE.toLowerCase().startsWith('e'),
@@ -106,14 +109,17 @@ async function main() {
   // The shell ActionBar renders state.inputSummary.typed. If throttling were swallowing it,
   // the DOM would lag behind LD.Game.getShellState. They should agree.
   const domTyped = await page
-    .locator('.shell-actionbar__word')
+    .locator('[data-testid="action-bar-word"]')
     .first()
     .textContent()
     .catch(() => null);
+  // The Page skin renders the word with middots between letters (E·M·B·E·R).
+  // Strip them before comparing — the DOM is reflecting the same data, just styled.
+  const domTypedNormalized = typeof domTyped === 'string' ? domTyped.replace(/[·\s]/g, '') : '';
   record(
     'A2 React DOM action bar matches inputSummary.typed',
-    typeof domTyped === 'string' && domTyped.trim().toLowerCase() === (afterEmber || '').toLowerCase(),
-    `dom="${domTyped?.trim()}" core="${afterEmber}"`,
+    domTypedNormalized.toLowerCase() === (afterEmber || '').toLowerCase(),
+    `dom="${domTyped?.trim()}" → "${domTypedNormalized}" core="${afterEmber}"`,
   );
 
   // Clear typed word so next assertions don't depend on stale input.
@@ -124,7 +130,7 @@ async function main() {
   async function readSizes() {
     return page.evaluate(() => {
       const canvas = document.getElementById('game');
-      const mount = document.querySelector('.game-canvas-shell__mount');
+      const mount = document.querySelector('[data-testid="canvas-mount"]');
       const mountRect = mount ? mount.getBoundingClientRect() : null;
       return {
         canvas: canvas ? { width: canvas.width, height: canvas.height } : null,
