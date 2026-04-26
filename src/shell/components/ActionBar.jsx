@@ -9,10 +9,18 @@ export default function ActionBar({ skin, state, actions, phone }) {
   const input = state.inputSummary || {};
   const hunt = state.huntSummary || {};
   const word = (input.typed || '').toUpperCase();
+  const ambiguous = !!input.pathAmbiguous;
   const previewTotal = input.scorePreview && typeof input.scorePreview.total === 'number'
     ? `+${input.scorePreview.total}`
     : '';
   const status = !word ? 'empty' : (input.valid && input.hasPath ? 'valid' : 'invalid');
+  const statusText = ambiguous
+    ? (isTerm ? 'MULTIPLE ROUTES' : 'multiple routes')
+    : status === 'valid'
+      ? (isTerm ? 'VALID' : 'valid')
+      : status === 'invalid'
+        ? (isTerm ? 'NOT IN LEXICON' : 'not in the lexicon')
+        : (isTerm ? 'AWAITING INPUT' : 'trace tiles or type');
 
   const submitDisabled = !(input.valid && input.hasPath);
   const undoDisabled = !word;
@@ -84,9 +92,7 @@ export default function ActionBar({ skin, state, actions, phone }) {
                 fontFamily: isTerm ? 'var(--font-mono)' : 'var(--font-body)',
               }}
             >
-              {status === 'valid' && (isTerm ? 'VALID' : 'valid')}
-              {status === 'invalid' && (isTerm ? 'NOT IN LEXICON' : 'not in the lexicon')}
-              {status === 'empty' && (isTerm ? 'AWAITING INPUT' : 'trace tiles or type')}
+              {statusText}
             </span>
           )}
         </div>
@@ -102,7 +108,7 @@ export default function ActionBar({ skin, state, actions, phone }) {
           <skin.ActionBtn label="Undo" kbd="⌫" compact={phone} />
         </BtnWrap>
         <BtnWrap onClick={actions.useClue} disabled={clueDisabled}>
-          <skin.ActionBtn label="Clue" kbd="?" warm compact={phone} />
+          <skin.ActionBtn label="Clue" kbd="c" warm compact={phone} />
         </BtnWrap>
       </div>
     </div>

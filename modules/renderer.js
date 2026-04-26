@@ -447,6 +447,7 @@
     const isFoundPlanted = tile.planted && tile.found;
     // Word Hunt: fully consumed tile (useCount >= 2) — dimmed
     const useCount = tile.useCount || 0;
+    const isWorn = useCount === 1 && !isFoundPlanted;
     const isExhausted = useCount >= 2 && !isFoundPlanted;
 
     const shellMode = isShellMode();
@@ -455,7 +456,8 @@
     let tileFill = shellMode ? 'transparent' : COLORS.tileFill;
     if (isFoundPlanted) tileFill = '#c8a840';
     else if (isExhausted) tileFill = shellMode ? 'rgba(0,0,0,0.18)' : '#6a6050';
-    else if (isMatch)   tileFill = shellMode ? (st.tileOn + '55') : '#e0c880';
+    else if (isWorn) tileFill = shellMode ? 'rgba(0,0,0,0.04)' : '#d8ccb0';
+    else if (isMatch)   tileFill = shellMode ? 'transparent' : 'rgba(224, 200, 128, 0.18)';
 
     // Only fill if not transparent
     if (tileFill !== 'transparent') {
@@ -475,8 +477,14 @@
     } else if (isMatch) {
       ctx.strokeStyle = shellMode ? st.accent : '#c8a050';
       ctx.lineWidth = 2;
-      ctx.strokeRect(x + pad, y + pad, inner, inner);
+      ctx.strokeRect(x + pad + 2, y + pad + 2, inner - 4, inner - 4);
       ctx.lineWidth = 1;
+    } else if (isWorn) {
+      ctx.strokeStyle = shellMode ? st.ink : '#8a7a60';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 2]);
+      ctx.strokeRect(x + pad + 2, y + pad + 2, inner - 4, inner - 4);
+      ctx.setLineDash([]);
     } else if (!shellMode) {
       ctx.strokeStyle = COLORS.tileBorder;
       ctx.strokeRect(x + pad, y + pad, inner, inner);
@@ -522,7 +530,7 @@
     if (tile.letter) {
       let letterColor  = shellMode ? st.ink : COLORS.tileText;
       let embossColor  = shellMode ? null  : COLORS.tileTextEmboss;
-      if (isMatch)          { letterColor = shellMode ? st.accent : '#5a3a10'; embossColor = shellMode ? null : '#f0d890'; }
+      if (isMatch)          { letterColor = shellMode ? st.accent : '#7a5718'; embossColor = shellMode ? null : '#f0d890'; }
       else if (isExhausted) { letterColor = shellMode ? (st.ink + '66') : '#9a8868'; embossColor = null; }
       drawLetter(ctx, tile.letter, x, y, ts, letterColor, embossColor, isExhausted ? 0 : tile.points);
     }

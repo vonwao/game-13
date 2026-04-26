@@ -136,12 +136,12 @@ export default function HelpPanel() {
         <Step n="i." title="Trace a word">
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <MiniBoard cells={[['L', 'A', 'N', 'T'], ['I', 'E', 'R', 'E']]} path={[[0, 0], [1, 0], [1, 1], [0, 2], [1, 2], [1, 3]]} size={26} />
-            <p style={{ margin: 0, fontSize: 11, lineHeight: 1.4 }}>Drag through adjacent letters. <b>Four or more.</b> No reuse.</p>
+            <p style={{ margin: 0, fontSize: 11, lineHeight: 1.4 }}>Drag through adjacent letters. <b>Four or more.</b> No reuse in a single word.</p>
           </div>
         </Step>
         <Step n="ii." title="Scoring">
           <div style={{ fontSize: 11, lineHeight: 1.5 }}>
-            <b>length</b> · <b>shape</b> (straight ×1.5, corner-free ×2) · <b>combo</b> (chain back-to-back) · <b>planted</b> (★ hidden)
+            <b>length</b> · <b>shape</b> (straight ×1.5, corner-free ×2) · <b>combo</b> (chain back-to-back) · <b>planted</b> (★ hidden) · <b>wear</b> (tiles survive two uses)
           </div>
         </Step>
         <Step n="iii." title="Special tiles">
@@ -190,6 +190,8 @@ export default function HelpPanel() {
               <span>chain words back-to-back to multiply</span>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 600 }}>planted</span>
               <span>discover hidden words seeded into the page</span>
+              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 600 }}>wear</span>
+              <span>tiles can be used twice across the page; a third use seals them</span>
             </div>
           </Step>
 
@@ -235,7 +237,7 @@ export default function HelpPanel() {
               <Kbd>type</Kbd><span style={{ color: 'var(--ink-soft)' }}>→</span><span style={{ fontFamily: 'var(--font-body)' }}>build a word from your fingers</span>
               <Kbd>↵</Kbd><span style={{ color: 'var(--ink-soft)' }}>→</span><span style={{ fontFamily: 'var(--font-body)' }}>submit</span>
               <Kbd>esc</Kbd><span style={{ color: 'var(--ink-soft)' }}>→</span><span style={{ fontFamily: 'var(--font-body)' }}>clear the trace</span>
-              <Kbd>?</Kbd><span style={{ color: 'var(--ink-soft)' }}>→</span><span style={{ fontFamily: 'var(--font-body)' }}>spend a clue</span>
+              <Kbd>c</Kbd><span style={{ color: 'var(--ink-soft)' }}>→</span><span style={{ fontFamily: 'var(--font-body)' }}>spend a clue</span>
             </div>
           </Step>
         </div>

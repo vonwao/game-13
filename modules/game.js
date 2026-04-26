@@ -548,6 +548,8 @@
         typed: input.typed || '',
         valid: !!input.valid,
         hasPath: !!input.hasPath,
+        pathAmbiguous: !!input.pathAmbiguous,
+        pathCandidateCount: input.pathCandidateCount || 0,
         scorePreview: cloneScorePreview(input.scorePreview),
       },
       history: {

@@ -48,6 +48,20 @@
     return safeCall(window.LD?.Dict?.score, word, pathTiles) ?? word.length;
   }
 
+  function getExplicitPath() {
+    return Array.isArray(_state.input.explicitPath) ? _state.input.explicitPath : [];
+  }
+
+  function clearExplicitPath() {
+    _state.input.explicitPath = [];
+  }
+
+  function getSubmissionPath() {
+    return Array.isArray(_state.input.resolvedPath)
+      ? _state.input.resolvedPath.slice()
+      : [];
+  }
+
   // ---------------------------------------------------------------------------
   // Input state mutators
   // ---------------------------------------------------------------------------
@@ -57,13 +71,17 @@
     _state.input.path     = [];
     _state.input.valid    = false;
     _state.input.hasPath  = false;
+    _state.input.resolvedPath = [];
+    _state.input.explicitPath = [];
+    _state.input.pathAmbiguous = false;
+    _state.input.pathCandidateCount = 0;
     _state.input.matchingTiles = [];
     _state.input.scorePreview = null;
   }
 
   function setCurrentWordPath(word, path) {
     _state.input.typed = word || '';
-    _state.input.path = Array.isArray(path) ? path.slice() : [];
+    _state.input.explicitPath = Array.isArray(path) ? path.slice() : [];
     refreshInputState();
   }
 
@@ -83,11 +101,16 @@
    */
   function refreshInputState() {
     const typed = _state.input.typed;
+    const pathfinder = window.LD.Pathfinder;
 
     if (typed.length === 0) {
       _state.input.valid        = false;
       _state.input.hasPath      = false;
       _state.input.path         = [];
+      _state.input.resolvedPath = [];
+      _state.input.explicitPath = [];
+      _state.input.pathAmbiguous = false;
+      _state.input.pathCandidateCount = 0;
       _state.input.matchingTiles = [];
       _state.input.scorePreview = null;
       return;
@@ -97,38 +120,65 @@
     const minLen = _state.gameMode === 'wordhunt' ? 4 : 2;
     _state.input.valid = typed.length >= minLen && dictIsValid(typed);
 
-    // 2. Path search (always, so live highlighting stays current)
-    const path = window.LD.Pathfinder
-      ? window.LD.Pathfinder.findPath(_state, typed)
-      : [];
-    _state.input.path    = path;
-    _state.input.hasPath = path.length > 0;
+    // 2. Explicit board-selected paths stay pinned to the user's choice.
+    const explicitPath = getExplicitPath();
+    if (explicitPath.length > 0) {
+      const explicitValid = pathfinder?.isPathViable
+        ? pathfinder.isPathViable(_state, typed, explicitPath)
+        : explicitPath.length > 0;
 
-    // 3. Score preview (Word Hunt — computed even before word is fully valid)
-    if (_state.gameMode === 'wordhunt' && path.length > 0) {
-      _state.input.scorePreview = computeScorePreview(path, typed);
+      _state.input.path = explicitPath.slice();
+      _state.input.resolvedPath = explicitValid ? explicitPath.slice() : [];
+      _state.input.hasPath = explicitValid;
+      _state.input.pathAmbiguous = false;
+      _state.input.pathCandidateCount = explicitValid ? 1 : 0;
+      _state.input.matchingTiles = [];
+      _state.input.scorePreview = (
+        _state.gameMode === 'wordhunt' &&
+        explicitValid &&
+        explicitPath.length > 0
+      )
+        ? computeScorePreview(explicitPath, typed)
+        : null;
+      return;
+    }
+
+    // 3. Auto path search for typed input.
+    let bestPath = [];
+    let resolvedPath = [];
+    let ambiguous = false;
+    let candidateCount = 0;
+
+    if (pathfinder?.findPathDetails) {
+      const details = pathfinder.findPathDetails(_state, typed);
+      bestPath = Array.isArray(details.bestPath) ? details.bestPath.slice() : [];
+      resolvedPath = Array.isArray(details.resolvedPath) ? details.resolvedPath.slice() : [];
+      ambiguous = !!details.ambiguous;
+      candidateCount = details.candidateCount || 0;
+    } else if (pathfinder?.findPath) {
+      bestPath = pathfinder.findPath(_state, typed) || [];
+      resolvedPath = bestPath.slice();
+      candidateCount = bestPath.length > 0 ? 1 : 0;
+    }
+
+    const displayPath = resolvedPath.length > 0 ? resolvedPath.slice() : [];
+    const prefixCells = (displayPath.length === 0 && pathfinder?.findPrefixCells)
+      ? pathfinder.findPrefixCells(_state, typed)
+      : [];
+
+    _state.input.path = displayPath;
+    _state.input.resolvedPath = resolvedPath.length > 0 ? resolvedPath : bestPath.slice();
+    _state.input.hasPath = _state.input.resolvedPath.length > 0;
+    _state.input.pathAmbiguous = ambiguous;
+    _state.input.pathCandidateCount = candidateCount;
+    _state.input.matchingTiles = displayPath.length > 0 ? [] : prefixCells;
+
+    // 4. Score preview (Word Hunt — computed when a concrete path is visible)
+    if (_state.gameMode === 'wordhunt' && displayPath.length > 0) {
+      _state.input.scorePreview = computeScorePreview(displayPath, typed);
     } else {
       _state.input.scorePreview = null;
     }
-
-    // 4. Highlight ALL visible tiles that match any letter in the typed word
-    const vp = _state.viewport;
-    const board = _state.board;
-    const typedLetters = new Set(typed.toUpperCase().split(''));
-    const matching = [];
-    for (let vr = 0; vr < vp.rows; vr++) {
-      for (let vc = 0; vc < vp.cols; vc++) {
-        const gc = vp.col + vc;
-        const gr = vp.row + vr;
-        if (gc >= board.width || gr >= board.height) continue;
-        const tile = board.tiles[gr * board.width + gc];
-        if (tile.corrupted || tile.isSeal) continue;
-        if (tile.letter && typedLetters.has(tile.letter)) {
-          matching.push({ col: gc, row: gr });
-        }
-      }
-    }
-    _state.input.matchingTiles = matching;
   }
 
   // ---------------------------------------------------------------------------
@@ -347,7 +397,7 @@
 
   function submitWordHunt() {
     const typed = _state.input.typed;
-    const path  = _state.input.path.slice();
+    const path  = getSubmissionPath();
     const board = _state.board;
     const config = _state.config || {};
     const hunt  = _state.hunt;
@@ -579,7 +629,7 @@
     }
 
     const typed    = _state.input.typed;
-    const path     = _state.input.path.slice(); // snapshot before clear
+    const path     = getSubmissionPath(); // snapshot before clear
 
     // ── 1. Score ──────────────────────────────────────────────────────────────
     const pathTiles = path.map(({ col, row }) =>
@@ -693,6 +743,7 @@
   // ---------------------------------------------------------------------------
 
   function appendLetter(letter) {
+    clearExplicitPath();
     _state.input.typed += letter.toUpperCase();
     refreshInputState();
 
@@ -703,6 +754,7 @@
 
   function backspaceLetter() {
     if (_state.input.typed.length === 0) return;
+    clearExplicitPath();
     _state.input.typed = _state.input.typed.slice(0, -1);
     refreshInputState();
   }
@@ -872,7 +924,13 @@
     state.input.path    = state.input.path    ?? [];
     state.input.valid   = state.input.valid   ?? false;
     state.input.hasPath = state.input.hasPath ?? false;
+    state.input.resolvedPath = state.input.resolvedPath ?? [];
+    state.input.explicitPath = state.input.explicitPath ?? [];
+    state.input.pathAmbiguous = state.input.pathAmbiguous ?? false;
+    state.input.pathCandidateCount = state.input.pathCandidateCount ?? 0;
     state.input.prefixStarts = state.input.prefixStarts ?? [];
+    state.input.matchingTiles = state.input.matchingTiles ?? [];
+    state.input.scorePreview = state.input.scorePreview ?? null;
     state.input.flashInvalid = state.input.flashInvalid ?? false;
 
     if (!_attached) {
@@ -892,6 +950,17 @@
     // If flashInvalid needs timed reset (renderer doesn't clear it),
     // that can be handled here.
     _state = state; // keep reference current in case state object is replaced
+    if (!_state?.input?.typed) {
+      _state.input.path = [];
+      _state.input.resolvedPath = [];
+      _state.input.explicitPath = [];
+      _state.input.valid = false;
+      _state.input.hasPath = false;
+      _state.input.pathAmbiguous = false;
+      _state.input.pathCandidateCount = 0;
+      _state.input.matchingTiles = [];
+      _state.input.scorePreview = null;
+    }
   }
 
   window.LD.Input = {

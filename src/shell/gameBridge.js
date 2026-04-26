@@ -56,6 +56,8 @@ const fallbackShellState = {
     typed: '',
     valid: false,
     hasPath: false,
+    pathAmbiguous: false,
+    pathCandidateCount: 0,
     scorePreview: null,
   },
   objectives: {

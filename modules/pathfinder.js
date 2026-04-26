@@ -2,7 +2,7 @@
  * LEXICON DEEP — Pathfinder Module
  * window.LD.Pathfinder
  *
- * Handles DFS path-finding on the visible viewport of a 40×40 letter grid.
+ * Handles DFS path-finding on the active search area of the letter grid.
  * Supports 8-directional adjacency, wildcard icon tiles, and prefix highlighting.
  */
 (function () {
@@ -29,22 +29,40 @@
       .filter(([c, r]) => c >= 0 && c < width && r >= 0 && r < height);
   }
 
+  function isShellMode() {
+    return !!window.__LD_SHELL_MODE__;
+  }
+
   /**
-   * Collect the set of tiles visible in the current viewport.
-   * Returns a Set of flat indices for O(1) membership tests.
+   * In shell mode, search the full board. Else search only the current viewport.
    */
-  function getViewportIndexSet(state) {
-    const { col: vpCol, row: vpRow, cols: vpCols, rows: vpRows } = state.viewport;
-    const { width } = state.board;
-    const set = new Set();
-    const endRow = vpRow + vpRows;
-    const endCol = vpCol + vpCols;
-    for (let r = vpRow; r < endRow; r++) {
-      for (let c = vpCol; c < endCol; c++) {
-        set.add(r * width + c);
-      }
+  function getSearchBounds(state) {
+    const { width, height } = state.board;
+    if (isShellMode()) {
+      return {
+        startCol: 0,
+        startRow: 0,
+        endCol: width,
+        endRow: height,
+      };
     }
-    return set;
+
+    const { col, row, cols, rows } = state.viewport;
+    return {
+      startCol: col,
+      startRow: row,
+      endCol: Math.min(width, col + cols),
+      endRow: Math.min(height, row + rows),
+    };
+  }
+
+  function isWithinSearchBounds(bounds, col, row) {
+    return (
+      col >= bounds.startCol &&
+      col < bounds.endCol &&
+      row >= bounds.startRow &&
+      row < bounds.endRow
+    );
   }
 
   /**
@@ -158,8 +176,114 @@
   // Core DFS
   // ---------------------------------------------------------------------------
 
+  function traverseMatchingPaths(state, word, onPath) {
+    if (!word || word.length === 0 || typeof onPath !== 'function') return;
+
+    const upperWord = word.toUpperCase();
+    const wordLen = upperWord.length;
+    const { width, height } = state.board;
+    const bounds = getSearchBounds(state);
+    const visited = new Set();
+    const currentPath = [];
+
+    function dfs(col, row, depth) {
+      if (!isWithinSearchBounds(bounds, col, row)) return;
+
+      const tile = getTile(state, col, row);
+      if (!tile) return;
+
+      const idx = row * width + col;
+      if (visited.has(idx)) return;
+      if (!tileMatchesChar(tile, upperWord[depth])) return;
+
+      visited.add(idx);
+      currentPath.push({ col, row });
+
+      if (depth === wordLen - 1) {
+        onPath(currentPath);
+      } else {
+        const neighbours = getAdjacent(col, row, width, height);
+        for (let i = 0; i < neighbours.length; i++) {
+          dfs(neighbours[i][0], neighbours[i][1], depth + 1);
+        }
+      }
+
+      currentPath.pop();
+      visited.delete(idx);
+    }
+
+    for (let r = bounds.startRow; r < bounds.endRow; r++) {
+      for (let c = bounds.startCol; c < bounds.endCol; c++) {
+        dfs(c, r, 0);
+      }
+    }
+  }
+
   /**
-   * DFS with backtracking over the visible viewport.
+   * Find all path candidates for the current string while also ranking the
+   * best one for auto-resolution/submission.
+   */
+  function findPathDetails(state, word) {
+    if (!word || word.length === 0) {
+      return {
+        bestPath: [],
+        resolvedPath: [],
+        candidateCount: 0,
+        ambiguous: false,
+      };
+    }
+
+    const isWordHunt = state.gameMode === 'wordhunt';
+    const distFn = isWordHunt ? null : buildCorruptionDistanceFn(state);
+
+    let bestPath = [];
+    let bestScore = isWordHunt ? -Infinity : Infinity;
+    let firstPath = null;
+    let candidateCount = 0; // capped at 2; 2 means "2+"
+    let ambiguous = false;
+
+    traverseMatchingPaths(state, word, function(path) {
+      if (!firstPath) {
+        firstPath = path.slice();
+      } else {
+        ambiguous = true;
+      }
+      if (candidateCount < 2) candidateCount++;
+
+      if (isWordHunt) {
+        const rank = wordHuntRank(path, state);
+        if (rank > bestScore) {
+          bestScore = rank;
+          bestPath = path.slice();
+        }
+      } else {
+        const score = pathScore(path, distFn);
+        if (score < bestScore) {
+          bestScore = score;
+          bestPath = path.slice();
+        }
+      }
+    });
+
+    if (!firstPath) {
+      return {
+        bestPath: [],
+        resolvedPath: [],
+        candidateCount: 0,
+        ambiguous: false,
+      };
+    }
+
+    return {
+      bestPath,
+      resolvedPath: ambiguous ? [] : firstPath,
+      candidateCount,
+      ambiguous,
+    };
+  }
+
+  /**
+   * DFS with backtracking over the active search area.
    *
    * Word Hunt: keeps the path with the highest sum(points) × shapeMult.
    * Siege:     keeps the path closest (lowest avg distance) to corruption.
@@ -169,87 +293,7 @@
    * @returns {Array<{col, row}>}  - winning path, or [] if none
    */
   function findPath(state, word) {
-    if (!word || word.length === 0) return [];
-
-    const { width, height } = state.board;
-    const viewportSet = getViewportIndexSet(state);
-    const isWordHunt = state.gameMode === 'wordhunt';
-    const distFn = isWordHunt ? null : buildCorruptionDistanceFn(state);
-    const upperWord = word.toUpperCase();
-    const wordLen = upperWord.length;
-
-    let bestPath = null;
-    // Word Hunt: maximise rank (higher = better). Siege: minimise score (lower = better).
-    let bestScore = isWordHunt ? -Infinity : Infinity;
-
-    // visited: flat index → boolean (reused across DFS branches via add/delete)
-    const visited = new Set();
-
-    // sharedCount: how many already-used tiles are in currentPath so far.
-    // A new word may share at most 1 tile with previously submitted words.
-    function dfs(col, row, depth, currentPath, sharedCount) {
-      const tile = getTile(state, col, row);
-      if (!tile) return;
-
-      const idx = row * width + col;
-
-      // Must be in viewport and not already in this path
-      if (!viewportSet.has(idx)) return;
-      if (visited.has(idx)) return;
-
-      // Check tile availability
-      const useCount = tile.useCount || 0;
-      if (useCount >= 2) return; // fully consumed
-
-      // Enforce: at most 1 shared tile per word (cross-word reuse limit)
-      const isShared = useCount > 0;
-      if (isShared && sharedCount >= 1) return;
-
-      if (!tileMatchesChar(tile, upperWord[depth])) return;
-
-      visited.add(idx);
-      currentPath.push({ col, row });
-      const newSharedCount = sharedCount + (isShared ? 1 : 0);
-
-      if (depth === wordLen - 1) {
-        // Complete path found — rank it
-        if (isWordHunt) {
-          const rank = wordHuntRank(currentPath, state);
-          if (rank > bestScore) {
-            bestScore = rank;
-            bestPath = currentPath.slice();
-          }
-        } else {
-          const score = pathScore(currentPath, distFn);
-          if (score < bestScore) {
-            bestScore = score;
-            bestPath = currentPath.slice();
-          }
-        }
-      } else {
-        // Recurse into all 8 neighbours
-        const neighbours = getAdjacent(col, row, width, height);
-        for (let i = 0; i < neighbours.length; i++) {
-          dfs(neighbours[i][0], neighbours[i][1], depth + 1, currentPath, newSharedCount);
-        }
-      }
-
-      currentPath.pop();
-      visited.delete(idx);
-    }
-
-    // Try every viewport tile as a potential start
-    const { col: vpCol, row: vpRow, cols: vpCols, rows: vpRows } = state.viewport;
-    const endRow = vpRow + vpRows;
-    const endCol = vpCol + vpCols;
-
-    for (let r = vpRow; r < endRow; r++) {
-      for (let c = vpCol; c < endCol; c++) {
-        dfs(c, r, 0, [], 0);
-      }
-    }
-
-    return bestPath || [];
+    return findPathDetails(state, word).bestPath;
   }
 
   // ---------------------------------------------------------------------------
@@ -257,7 +301,7 @@
   // ---------------------------------------------------------------------------
 
   /**
-   * Return all tiles in the viewport that COULD start a word matching the
+   * Return all tiles in the active search area that COULD start a word matching the
    * given prefix — i.e., tiles from which a valid connected prefix-path exists.
    *
    * @param {object} state
@@ -267,51 +311,14 @@
   function findPrefixStarts(state, prefix) {
     if (!prefix || prefix.length === 0) return [];
 
-    const { width, height } = state.board;
-    const viewportSet = getViewportIndexSet(state);
-    const upperPrefix = prefix.toUpperCase();
-    const prefixLen = upperPrefix.length;
+    const { width } = state.board;
+    const startSet = new Set();
 
-    const startSet = new Set(); // flat indices of valid start tiles
-
-    const visited = new Set();
-
-    // Returns true if any prefix-path of `remainingDepth` more steps exists
-    // starting at (col, row) for character index `depth`.
-    function dfsPrefix(col, row, depth) {
-      const tile = getTile(state, col, row);
-      if (!tile) return false;
-      const idx = row * width + col;
-      if (!viewportSet.has(idx)) return false;
-      if (visited.has(idx)) return false;
-      if (!tileMatchesChar(tile, upperPrefix[depth])) return false;
-
-      if (depth === prefixLen - 1) return true; // matched full prefix
-
-      visited.add(idx);
-      const neighbours = getAdjacent(col, row, width, height);
-      let found = false;
-      for (let i = 0; i < neighbours.length && !found; i++) {
-        found = dfsPrefix(neighbours[i][0], neighbours[i][1], depth + 1);
-      }
-      visited.delete(idx);
-      return found;
-    }
-
-    const { col: vpCol, row: vpRow, cols: vpCols, rows: vpRows } = state.viewport;
-    const endRow = vpRow + vpRows;
-    const endCol = vpCol + vpCols;
-
-    for (let r = vpRow; r < endRow; r++) {
-      for (let c = vpCol; c < endCol; c++) {
-        const tile = getTile(state, c, r);
-        if (!tile || tile.corrupted) continue;
-        if (!tileMatchesChar(tile, upperPrefix[0])) continue;
-        if (dfsPrefix(c, r, 0)) {
-          startSet.add(r * width + c);
-        }
-      }
-    }
+    traverseMatchingPaths(state, prefix, function(path) {
+      if (path.length === 0) return;
+      const start = path[0];
+      startSet.add(start.row * width + start.col);
+    });
 
     const results = [];
     startSet.forEach((idx) => {
@@ -322,22 +329,95 @@
     return results;
   }
 
+  /**
+   * Return every cell that participates in at least one viable path matching
+   * the current prefix.
+   */
+  function findPrefixCells(state, prefix) {
+    if (!prefix || prefix.length === 0) return [];
+
+    const { width } = state.board;
+    const cellSet = new Set();
+
+    traverseMatchingPaths(state, prefix, function(path) {
+      for (let i = 0; i < path.length; i++) {
+        cellSet.add(path[i].row * width + path[i].col);
+      }
+    });
+
+    const results = [];
+    cellSet.forEach((idx) => {
+      const col = idx % width;
+      const row = Math.floor(idx / width);
+      results.push({ col, row });
+    });
+    return results;
+  }
+
+  /**
+   * Validate an explicit board-selected path for the given string.
+   */
+  function isPathViable(state, word, path) {
+    if (!word || !Array.isArray(path) || path.length !== word.length) return false;
+
+    const upperWord = word.toUpperCase();
+    const { width, height } = state.board;
+    const visited = new Set();
+
+    for (let i = 0; i < path.length; i++) {
+      const step = path[i];
+      if (!step || typeof step.col !== 'number' || typeof step.row !== 'number') return false;
+      if (step.col < 0 || step.col >= width || step.row < 0 || step.row >= height) return false;
+
+      const idx = step.row * width + step.col;
+      if (visited.has(idx)) return false;
+      visited.add(idx);
+
+      const tile = getTile(state, step.col, step.row);
+      if (!tileMatchesChar(tile, upperWord[i])) return false;
+
+      if (i > 0) {
+        const prev = path[i - 1];
+        if (Math.abs(step.col - prev.col) > 1 || Math.abs(step.row - prev.row) > 1) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
   // ---------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------
 
   window.LD.Pathfinder = {
     /**
-     * Find the best (closest-to-corruption) path spelling `word` in the
-     * current viewport. Returns [] if none exists.
+     * Find the best ranked path spelling `word` in the active search area.
+     * Returns [] if none exists.
      */
     findPath,
 
     /**
-     * Return all viewport tile positions that can start a connected path
+     * Return the best path plus ambiguity metadata for the current string.
+     */
+    findPathDetails,
+
+    /**
+     * Return all search-area tile positions that can start a connected path
      * matching `prefix`.
      */
     findPrefixStarts,
+
+    /**
+     * Return all cells that belong to at least one viable prefix path.
+     */
+    findPrefixCells,
+
+    /**
+     * Validate an explicit board-selected path.
+     */
+    isPathViable,
 
     /**
      * Utility exposed for other modules that need adjacency information.
