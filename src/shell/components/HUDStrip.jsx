@@ -8,7 +8,7 @@ function Stat({ skin, label, value, accent, mono }) {
       <span
         style={{
           ...skin.StatValueStyle,
-          fontSize: 18,
+          fontSize: 22,
           color: accent ? 'var(--accent)' : 'var(--ink)',
           lineHeight: 1,
           textShadow: skin.id === 'terminal' ? '0 0 6px var(--ink)' : 'none',
@@ -60,7 +60,7 @@ export default function HUDStrip({ skin, state, phone }) {
         <div
           style={{
             fontFamily: skin.HeadingFont,
-            fontSize: phone ? 14 : 18,
+            fontSize: phone ? 16 : 22,
             color: skin.id === 'page' ? '#7a4a28' : 'var(--ink)',
             fontWeight: skin.id === 'terminal' ? 500 : 600,
             letterSpacing: skin.id === 'page' ? '0.02em' : (skin.id === 'terminal' ? '0.1em' : '-0.01em'),
@@ -75,11 +75,11 @@ export default function HUDStrip({ skin, state, phone }) {
         {!phone && (
           <div
             style={{
-              fontSize: 11,
+              fontSize: 13,
               color: 'var(--ink-faint)',
               fontStyle: skin.id === 'page' ? 'italic' : 'normal',
               fontFamily: skin.id === 'terminal' ? 'var(--font-mono)' : 'var(--font-body)',
-              marginTop: 2,
+              marginTop: 3,
               letterSpacing: skin.id === 'terminal' ? '0.15em' : 0,
             }}
           >

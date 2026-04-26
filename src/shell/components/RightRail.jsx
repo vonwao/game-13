@@ -23,7 +23,7 @@ export default function RightRail({ skin, state, phone }) {
         <div
           style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: 9,
+            fontSize: 11,
             letterSpacing: '0.2em',
             color: 'var(--ink-faint)',
             textTransform: 'uppercase',
@@ -50,7 +50,7 @@ export default function RightRail({ skin, state, phone }) {
         <div
           style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: 9,
+            fontSize: 11,
             letterSpacing: '0.2em',
             color: 'var(--ink-faint)',
             textTransform: 'uppercase',

@@ -97,7 +97,7 @@ function RailHeading({ skin, children }) {
       <div
         style={{
           fontFamily: 'var(--font-mono)',
-          fontSize: 11,
+          fontSize: 13,
           letterSpacing: '0.2em',
           color: 'var(--ink-soft)',
           textTransform: 'uppercase',
@@ -113,7 +113,7 @@ function RailHeading({ skin, children }) {
     <div
       style={{
         fontFamily: 'var(--font-mono)',
-        fontSize: 10,
+        fontSize: 12,
         letterSpacing: '0.2em',
         color: 'var(--ink-faint)',
         textTransform: 'uppercase',
@@ -143,7 +143,7 @@ function SheetHeading({ skin, children, meta }) {
         <div
           style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: 10,
+            fontSize: 12,
             color: 'var(--ink-faint)',
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
@@ -382,7 +382,7 @@ function SummaryCard({ skin, label, value, detail }) {
       <div
         style={{
           fontFamily: 'var(--font-mono)',
-          fontSize: 10,
+          fontSize: 12,
           letterSpacing: '0.18em',
           textTransform: 'uppercase',
           color: 'var(--ink-faint)',

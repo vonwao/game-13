@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { SKINS } from './index.jsx';
 
 const STORAGE_KEY = 'lexicon:skin';
-const DEFAULT_SKIN_ID = 'page';
+const DEFAULT_SKIN_ID = 'fullbleed';
 
 const SkinContext = createContext(null);
 

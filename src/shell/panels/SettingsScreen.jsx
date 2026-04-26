@@ -23,7 +23,7 @@ const SettingRow = ({ label, value, desc, stackValue = false }) => (
   }}>
     <div style={{ flex: 1 }}>
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 500 }}>{label}</div>
-      {desc && <div style={{ fontStyle: 'italic', fontSize: 11, color: 'var(--ink-soft)', marginTop: 2, lineHeight: 1.4 }}>{desc}</div>}
+      {desc && <div style={{ fontStyle: 'italic', fontSize: 13, color: 'var(--ink-soft)', marginTop: 2, lineHeight: 1.4 }}>{desc}</div>}
     </div>
     <div style={stackValue ? { width: '100%', paddingTop: 2 } : { flexShrink: 0, paddingTop: 2 }}>{value}</div>
   </div>
@@ -102,7 +102,7 @@ const MiniTile = ({ ch, onPath, skinVars }) => (
     border: '1px solid var(--tile-border)',
     color: onPath ? 'var(--tile-on-color)' : 'var(--ink)',
     fontFamily: 'var(--font-display)',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: onPath ? 700 : 400,
     boxSizing: 'border-box',
   }}>
@@ -165,7 +165,7 @@ const SkinThumb = ({ skin, selected, onClick }) => {
             {skin.name}
           </div>
           <div style={{
-            fontSize: 10,
+            fontSize: 12,
             color: skin.id === 'page' ? '#5a4030' : (skin.id === 'terminal' ? 'rgba(127,219,106,.55)' : 'rgba(241,236,226,.55)'),
             fontStyle: skin.id === 'page' ? 'italic' : 'normal',
             marginTop: 2,
@@ -210,7 +210,7 @@ const SkinThumbCompact = ({ skin, selected, onClick }) => (
         color: skin.id === 'page' ? '#2a1a10' : (skin.id === 'terminal' ? '#7fdb6a' : '#f1ece2'),
       }}>{skin.name}</div>
       <div style={{
-        fontSize: 10,
+        fontSize: 12,
         color: skin.id === 'page' ? '#5a4030' : (skin.id === 'terminal' ? 'rgba(127,219,106,.55)' : 'rgba(241,236,226,.55)'),
         fontStyle: skin.id === 'page' ? 'italic' : 'normal',
       }}>{skin.blurb}</div>
@@ -452,7 +452,7 @@ export function SettingsView({ state, actions, onClose }) {
             />
           </div>
 
-          <div style={{ borderTop: '1px solid var(--rule-faint)', paddingTop: 12, marginTop: 16, fontSize: 11, color: 'var(--ink-faint)', fontStyle: 'italic' }}>
+          <div style={{ borderTop: '1px solid var(--rule-faint)', paddingTop: 12, marginTop: 16, fontSize: 13, color: 'var(--ink-faint)', fontStyle: 'italic' }}>
             Lexicon Deep · skin persists on this device; board settings apply on the next fresh page.
           </div>
         </div>
@@ -594,7 +594,7 @@ export function SettingsView({ state, actions, onClose }) {
         </div>
 
         {/* Footer */}
-        <div style={{ borderTop: '1px solid var(--rule-faint)', paddingTop: 12, marginTop: 16, display: 'flex', gap: 10, fontSize: 11, color: 'var(--ink-faint)', fontStyle: 'italic' }}>
+        <div style={{ borderTop: '1px solid var(--rule-faint)', paddingTop: 12, marginTop: 16, display: 'flex', gap: 10, fontSize: 13, color: 'var(--ink-faint)', fontStyle: 'italic' }}>
           <span>Lexicon Deep · skin persists on this device; board settings apply on the next fresh page.</span>
         </div>
       </div>

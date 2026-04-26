@@ -86,7 +86,7 @@ export default function ActionBar({ skin, state, actions, phone }) {
           {!phone && (
             <span
               style={{
-                fontSize: 11,
+                fontSize: 13,
                 color: 'var(--ink-faint)',
                 fontStyle: isPage ? 'italic' : 'normal',
                 fontFamily: isTerm ? 'var(--font-mono)' : 'var(--font-body)',

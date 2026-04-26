@@ -182,7 +182,7 @@ export const SKIN_PAGE = {
   PathRender: 'ink',
   HeadingFont: '"Tangerine","Italianno",cursive',
   HeadingTransform: (s) => s,
-  StatLabelStyle: { fontStyle: 'italic', fontFamily: '"EB Garamond",serif', textTransform: 'lowercase', letterSpacing: 'normal', fontSize: 12 },
+  StatLabelStyle: { fontStyle: 'italic', fontFamily: '"EB Garamond",serif', textTransform: 'lowercase', letterSpacing: 'normal', fontSize: 14 },
   StatValueStyle: { fontFamily: '"EB Garamond",serif', fontVariantNumeric: 'oldstyle-nums', fontWeight: 600 },
 };
 
@@ -290,7 +290,7 @@ export const SKIN_TERMINAL = {
   PathRender: 'sharp',
   HeadingFont: '"IBM Plex Mono",monospace',
   HeadingTransform: (s) => s.toUpperCase(),
-  StatLabelStyle: { fontFamily: '"IBM Plex Mono",monospace', textTransform: 'uppercase', letterSpacing: '0.18em', fontSize: 10, color: 'rgba(127,219,106,.55)' },
+  StatLabelStyle: { fontFamily: '"IBM Plex Mono",monospace', textTransform: 'uppercase', letterSpacing: '0.18em', fontSize: 12, color: 'rgba(127,219,106,.7)' },
   StatValueStyle: { fontFamily: '"IBM Plex Mono",monospace', fontVariantNumeric: 'tabular-nums', fontWeight: 600 },
 };
 
@@ -382,7 +382,7 @@ export const SKIN_FULLBLEED = {
   PathRender: 'sharp',
   HeadingFont: '"Inter Tight",sans-serif',
   HeadingTransform: (s) => s,
-  StatLabelStyle: { fontFamily: '"IBM Plex Mono",monospace', textTransform: 'uppercase', letterSpacing: '0.16em', fontSize: 10, color: 'rgba(241,236,226,.4)' },
+  StatLabelStyle: { fontFamily: '"IBM Plex Mono",monospace', textTransform: 'uppercase', letterSpacing: '0.16em', fontSize: 12, color: 'rgba(241,236,226,.55)' },
   StatValueStyle: { fontFamily: '"Inter Tight",sans-serif', fontVariantNumeric: 'tabular-nums', fontWeight: 700, letterSpacing: '-0.01em' },
 };
 

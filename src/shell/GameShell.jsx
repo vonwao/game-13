@@ -174,8 +174,10 @@ export default function GameShell() {
             inset: 0,
             zIndex: 20,
             background: 'var(--bg)',
+            overflow: 'hidden',
           }}
         >
+          <skin.Background />
           <div style={{ position: 'absolute', inset: 0, overflow: 'auto' }}>
             <HelpPanel />
           </div>
@@ -189,7 +191,7 @@ export default function GameShell() {
               color: 'var(--ink-soft)',
               fontFamily: 'var(--font-body)',
               fontStyle: 'italic',
-              fontSize: 13,
+              fontSize: 14,
               zIndex: 10,
             }}
           >
@@ -206,8 +208,10 @@ export default function GameShell() {
             inset: 0,
             zIndex: 21,
             background: 'var(--bg)',
+            overflow: 'hidden',
           }}
         >
+          <skin.Background />
           <SettingsScreen state={state} actions={actions} onClose={() => setShowSettings(false)} />
         </div>
       )}
