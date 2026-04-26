@@ -58,6 +58,51 @@ async function main() {
     pageErrors.length ? pageErrors.join(' | ') : '',
   );
 
+  // ---- A1b: pre-start shell overlays are usable ----
+  await page.locator('button:has-text("How")').first().click();
+  await page.waitForSelector('[data-testid="help-overlay"]', { timeout: 3000 });
+  record(
+    'A1 pre-start Help opens the help overlay',
+    await page.locator('[data-testid="help-overlay"]').count() > 0,
+    'help overlay visible',
+  );
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="help-overlay"]'),
+    { timeout: 3000 },
+  );
+  record(
+    'A1 pre-start Escape closes the help overlay',
+    await page.locator('[data-testid="help-overlay"]').count() === 0,
+    'help overlay closed',
+  );
+
+  await page.locator('button:has-text("Settings")').first().click();
+  await page.waitForSelector('[data-testid="settings-overlay"]', { timeout: 3000 });
+  record(
+    'A1 pre-start Settings opens the settings overlay',
+    await page.locator('[data-testid="settings-overlay"]').count() > 0,
+    'settings overlay visible',
+  );
+  await page.locator('[data-testid="settings-overlay"] button:has-text("Large")').first().click();
+  await page.waitForTimeout(50);
+  const boardSizeAfterSettings = await page.evaluate(() => window.LD.Game.getShellState().settings?.boardSize);
+  record(
+    'A1 board size setting writes through the shell bridge',
+    boardSizeAfterSettings === 'large',
+    `boardSize=${boardSizeAfterSettings}`,
+  );
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="settings-overlay"]'),
+    { timeout: 3000 },
+  );
+  record(
+    'A1 settings overlay closes on Escape',
+    await page.locator('[data-testid="settings-overlay"]').count() === 0,
+    'settings overlay closed',
+  );
+
   // ---- Click Start Game (the CTA inside the canvas placeholder) ----
   // There are two Start Game buttons: the placeholder one and the title-panel one.
   // Clicking either should transition to phase=playing.
@@ -190,6 +235,27 @@ async function main() {
       !(sizes390.canvas.width === sizes390.window.width &&
         sizes390.canvas.height === sizes390.window.height),
     `canvas=${sizes390.canvas?.width}×${sizes390.canvas?.height} window=${sizes390.window.width}×${sizes390.window.height}`,
+  );
+
+  // ---- A4: phone objectives sheet opens and closes cleanly ----
+  await page.locator('[data-testid="phone-objectives-tab"]').click();
+  await page.waitForSelector('[data-testid="phone-objectives-sheet"]', { timeout: 3000 });
+  record(
+    'A4 phone objectives tab opens the bottom sheet',
+    await page.locator('[data-testid="phone-objectives-sheet"]').count() > 0,
+    'sheet visible',
+  );
+  await page.locator('[data-testid="phone-objectives-backdrop"]').click({
+    position: { x: 20, y: 20 },
+  });
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="phone-objectives-sheet"]'),
+    { timeout: 3000 },
+  );
+  record(
+    'A4 backdrop tap closes the phone objectives sheet',
+    await page.locator('[data-testid="phone-objectives-sheet"]').count() === 0,
+    'sheet closed',
   );
 
   // ---- summary ----

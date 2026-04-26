@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import GameCanvas from './GameCanvas.jsx';
 import ShellLayout from './layout/ShellLayout.jsx';
 import HUDStrip from './components/HUDStrip.jsx';
@@ -75,45 +75,59 @@ export default function GameShell() {
   const { state, actions } = useGameShellState();
   const { skin } = useSkin();
   const phone = useMediaQuery('(max-width: 720px)');
-  const [overlay, setOverlay] = useState(null); // 'settings' | 'help' | null
+  const [showSettings, setShowSettings] = useState(false);
 
   const isPlaying =
     state.phase === 'playing' ||
     state.phase === 'victory' ||
     state.phase === 'gameover';
+  const showHelp = !!state.ui?.showHelp;
 
-  if (overlay === 'settings') {
-    return (
-      <ShellLayout>
-        <SettingsScreen onClose={() => setOverlay(null)} />
-      </ShellLayout>
-    );
-  }
-  if (overlay === 'help') {
-    return (
-      <ShellLayout>
-        <div style={{ position: 'absolute', inset: 0, overflow: 'auto' }}>
-          <HelpPanel help={state.help} actions={actions} gameMode={state.gameMode} />
-        </div>
-        <div
-          onClick={() => setOverlay(null)}
-          style={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            cursor: 'pointer',
-            color: 'var(--ink-soft)',
-            fontFamily: 'var(--font-body)',
-            fontStyle: 'italic',
-            fontSize: 13,
-            zIndex: 10,
-          }}
-        >
-          ‹ back
-        </div>
-      </ShellLayout>
-    );
-  }
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+      if (showSettings && event.key === 'Escape') {
+        event.preventDefault();
+        setShowSettings(false);
+        return;
+      }
+
+      if (showHelp && event.key === 'Escape') {
+        event.preventDefault();
+        actions.setUIState({ showHelp: false });
+        return;
+      }
+
+      if (isPlaying || showSettings || showHelp) return;
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        actions.startGame();
+        return;
+      }
+
+      if (event.key === 'm' || event.key === 'M') {
+        event.preventDefault();
+        actions.setGameMode(state.gameMode === 'wordhunt' ? 'siege' : 'wordhunt');
+        return;
+      }
+
+      if (event.key === 's' || event.key === 'S') {
+        event.preventDefault();
+        setShowSettings(true);
+        return;
+      }
+
+      if (event.key === '?') {
+        event.preventDefault();
+        actions.setUIState({ showHelp: true });
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [actions, isPlaying, showHelp, showSettings, state.gameMode]);
 
   return (
     <ShellLayout>
@@ -135,8 +149,11 @@ export default function GameShell() {
               skin={skin}
               actions={actions}
               gameMode={state.gameMode}
-              onSettings={() => setOverlay('settings')}
-              onHelp={() => setOverlay('help')}
+              onSettings={() => {
+                actions.setUIState({ showHelp: false });
+                setShowSettings(true);
+              }}
+              onHelp={() => actions.setUIState({ showHelp: true })}
             />
           )}
         </div>
@@ -145,9 +162,55 @@ export default function GameShell() {
         )}
       </div>
       {phone && isPlaying && (
-        <PhoneObjTab skin={skin} objectives={state.objectives} />
+        <PhoneObjTab skin={skin} state={state} />
       )}
       <ActionBar skin={skin} state={state} actions={actions} phone={phone} />
+
+      {showHelp && (
+        <div
+          data-testid="help-overlay"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 20,
+            background: 'var(--bg)',
+          }}
+        >
+          <div style={{ position: 'absolute', inset: 0, overflow: 'auto' }}>
+            <HelpPanel />
+          </div>
+          <div
+            onClick={() => actions.setUIState({ showHelp: false })}
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              cursor: 'pointer',
+              color: 'var(--ink-soft)',
+              fontFamily: 'var(--font-body)',
+              fontStyle: 'italic',
+              fontSize: 13,
+              zIndex: 10,
+            }}
+          >
+            ‹ back
+          </div>
+        </div>
+      )}
+
+      {showSettings && (
+        <div
+          data-testid="settings-overlay"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 21,
+            background: 'var(--bg)',
+          }}
+        >
+          <SettingsScreen state={state} actions={actions} onClose={() => setShowSettings(false)} />
+        </div>
+      )}
     </ShellLayout>
   );
 }

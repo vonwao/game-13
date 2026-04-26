@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
 import { useSkin } from '../skins/SkinContext.jsx';
 import { SKINS } from '../skins/index.jsx';
 import useGameShellState from '../useGameShellState.js';
+import useMediaQuery from '../useMediaQuery.js';
 
 // ─── Design-faithful helper components ────────────────────
 
@@ -11,48 +11,83 @@ const SectionLabel = ({ children }) => (
   </div>
 );
 
-const SettingRow = ({ label, value, desc }) => (
-  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, padding: '12px 0', borderBottom: '0.5px dotted var(--rule-faint)' }}>
+const SettingRow = ({ label, value, desc, stackValue = false }) => (
+  <div style={{
+    display: 'flex',
+    flexDirection: stackValue ? 'column' : 'row',
+    alignItems: stackValue ? 'stretch' : 'flex-start',
+    justifyContent: 'space-between',
+    gap: stackValue ? 8 : 14,
+    padding: '12px 0',
+    borderBottom: '0.5px dotted var(--rule-faint)',
+  }}>
     <div style={{ flex: 1 }}>
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 500 }}>{label}</div>
       {desc && <div style={{ fontStyle: 'italic', fontSize: 11, color: 'var(--ink-soft)', marginTop: 2, lineHeight: 1.4 }}>{desc}</div>}
     </div>
-    <div style={{ flexShrink: 0, paddingTop: 2 }}>{value}</div>
+    <div style={stackValue ? { width: '100%', paddingTop: 2 } : { flexShrink: 0, paddingTop: 2 }}>{value}</div>
   </div>
 );
 
-const Toggle = ({ on, onClick }) => (
-  <div
-    onClick={onClick}
+const Toggle = ({ on, onClick, disabled = false }) => (
+  <button
+    type="button"
+    onClick={disabled ? undefined : onClick}
+    disabled={disabled}
+    aria-pressed={on}
     style={{
+      appearance: 'none',
+      padding: 0,
       width: 40, height: 22, borderRadius: 11, position: 'relative',
       background: on ? 'var(--accent)' : 'var(--rule-faint)',
       border: '1px solid var(--rule-faint)',
-      cursor: 'pointer',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.5 : 1,
+      display: 'block',
     }}
   >
     <div style={{
       position: 'absolute', top: 2, left: on ? 20 : 2, width: 16, height: 16, borderRadius: '50%',
       background: 'var(--surface)', transition: 'left .15s',
     }} />
-  </div>
+  </button>
 );
 
-const Segmented = ({ options, selected, onSelect }) => (
-  <div style={{ display: 'flex', border: '1px solid var(--rule-faint)' }}>
-    {options.map(o => (
-      <div
+const Segmented = ({ options, selected, onSelect, disabled = false, fullWidth = false, compact = false }) => (
+  <div
+    style={{
+      display: fullWidth ? 'grid' : 'flex',
+      gridTemplateColumns: fullWidth ? `repeat(${options.length}, minmax(0, 1fr))` : undefined,
+      border: '1px solid var(--rule-faint)',
+      opacity: disabled ? 0.5 : 1,
+      width: fullWidth ? '100%' : 'auto',
+    }}
+  >
+    {options.map((o, index) => (
+      <button
+        type="button"
         key={o.value ?? o}
-        onClick={() => onSelect && onSelect(o.value ?? o)}
+        onClick={disabled ? undefined : () => onSelect && onSelect(o.value ?? o)}
+        disabled={disabled}
         style={{
-          padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+          appearance: 'none',
+          border: 0,
+          borderRight: index === options.length - 1 ? 0 : '1px solid var(--rule-faint)',
+          padding: compact ? '5px 8px' : '4px 10px',
+          fontSize: compact ? 11 : 12,
+          cursor: disabled ? 'not-allowed' : 'pointer',
           background: (o.value ?? o) === selected ? 'var(--accent)' : 'transparent',
           color: (o.value ?? o) === selected ? 'var(--surface)' : 'var(--ink-soft)',
           fontFamily: 'var(--font-display)', fontWeight: (o.value ?? o) === selected ? 600 : 400,
+          minWidth: 0,
+          textAlign: 'center',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         }}
       >
         {o.label ?? o}
-      </div>
+      </button>
     ))}
   </div>
 );
@@ -190,23 +225,39 @@ const SkinThumbCompact = ({ skin, selected, onClick }) => (
   </div>
 );
 
-// ─── useMediaQuery hook ────────────────────────────────────
-function useMediaQuery(query) {
-  const [matches, setMatches] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia(query).matches : false
-  );
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mq = window.matchMedia(query);
-    setMatches(mq.matches);
-    const handler = (e) => setMatches(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, [query]);
-  return matches;
-}
+// ─── Settings constants ────────────────────────────────────
+const CORE_DEFAULT_SETTINGS = {
+  difficulty: 'easy',
+  boardSize: 'small',
+  soundEnabled: true,
+  particlesEnabled: true,
+  specialTiles: false,
+  endCondition: 'challenges',
+};
 
-// ─── Board size options ────────────────────────────────────
+const DIFFICULTY_DESCRIPTIONS = {
+  wordhunt: {
+    easy: 'More hidden words, shorter paths, and extra fragments.',
+    medium: 'Balanced mix with some diagonal and reversed finds.',
+    hard: 'Fewer hidden words, longer paths, and fewer fragments.',
+  },
+  siege: {
+    easy: '4 seals, slower corruption spread, generous loss threshold.',
+    medium: '6 seals with the standard corruption pressure.',
+    hard: '8 seals, faster corruption, and harsher board decay.',
+  },
+};
+
+const DIFFICULTY_OPTIONS_DESKTOP = [
+  { label: 'Easy', value: 'easy' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'Hard', value: 'hard' },
+];
+const DIFFICULTY_OPTIONS_PHONE = [
+  { label: 'Easy', value: 'easy' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'Hard', value: 'hard' },
+];
 const BOARD_SIZE_OPTIONS_DESKTOP = [
   { label: 'Small', value: 'small' },
   { label: 'Medium', value: 'medium' },
@@ -217,64 +268,76 @@ const BOARD_SIZE_OPTIONS_PHONE = [
   { label: 'M', value: 'medium' },
   { label: 'L', value: 'large' },
 ];
+const END_CONDITION_OPTIONS_DESKTOP = [
+  { label: 'Objectives', value: 'challenges' },
+  { label: 'Zen', value: 'zen' },
+  { label: 'Timed', value: 'timed' },
+  { label: 'Turns', value: 'turns' },
+];
+const END_CONDITION_OPTIONS_PHONE = [
+  { label: 'Obj', value: 'challenges' },
+  { label: 'Zen', value: 'zen' },
+  { label: 'Timed', value: 'timed' },
+  { label: 'Turns', value: 'turns' },
+];
+const PATH_COLOR_OPTIONS_DESKTOP = [
+  { label: 'Default', value: 'default' },
+  { label: 'Cyan', value: 'cyan' },
+  { label: 'Yellow', value: 'yellow' },
+];
+const PATH_COLOR_OPTIONS_PHONE = [
+  { label: 'Def', value: 'default' },
+  { label: 'Cyan', value: 'cyan' },
+  { label: 'Yellow', value: 'yellow' },
+];
+const DICTIONARY_OPTIONS_DESKTOP = [
+  { label: 'SOWPODS', value: 'sowpods' },
+  { label: 'TWL', value: 'twl' },
+  { label: 'OSPD', value: 'ospd' },
+];
+const DICTIONARY_OPTIONS_PHONE = [
+  { label: 'SOW', value: 'sowpods' },
+  { label: 'TWL', value: 'twl' },
+  { label: 'OSPD', value: 'ospd' },
+];
 
-// NOTE: These new settings (reduceMotion, colorBlindPath, dictionary, showKeyboardHints)
-// are stored via setSettings but are silently dropped by gameBridge.js — it only
-// forwards known keys (difficulty, boardSize, soundEnabled, particlesEnabled,
-// specialTiles, endCondition). They persist in shell state only, ready to be
-// wired through when the game core consumes them.
-const NOOP_SETTINGS_WARN = (key) => {
-  if (import.meta.env.DEV) {
-    console.info(`[SettingsScreen] "${key}" stored in shell state but not yet consumed by game core.`);
-  }
-};
+function getDifficultyDescription(gameMode, difficulty) {
+  return (DIFFICULTY_DESCRIPTIONS[gameMode] || DIFFICULTY_DESCRIPTIONS.wordhunt)[difficulty] || '';
+}
 
 // ─── Main Settings View ─────────────────────────────────────
-export function SettingsView({ state, actions }) {
+export function SettingsView({ state, actions, onClose }) {
   const { skin, skinId, setSkin } = useSkin();
   const isPhone = useMediaQuery('(max-width: 720px)');
 
   const settings = state?.settings ?? {};
   const setSettings = actions?.setSettings ?? (() => {});
-  const goBack = actions?.returnToSettings ?? actions?.startGame ?? (() => {});
+  const goBack = onClose ?? actions?.returnToSettings ?? actions?.startGame ?? (() => {});
+  const gameMode = state?.gameMode ?? 'wordhunt';
 
-  // Local state for new settings not (yet) wired to game core
-  const [reduceMotion, setReduceMotion] = useState(settings.reduceMotion ?? false);
-  const [colorBlindPath, setColorBlindPath] = useState(settings.colorBlindPath ?? 'default');
-  const [dictionary, setDictionary] = useState(settings.dictionary ?? 'sowpods');
-  const [showKeyboardHints, setShowKeyboardHints] = useState(settings.showKeyboardHints ?? true);
-
-  const handleReduceMotion = (val) => {
-    setReduceMotion(val);
-    NOOP_SETTINGS_WARN('reduceMotion');
-    setSettings({ reduceMotion: val });
-  };
-  const handleColorBlindPath = (val) => {
-    setColorBlindPath(val);
-    NOOP_SETTINGS_WARN('colorBlindPath');
-    setSettings({ colorBlindPath: val });
-  };
-  const handleDictionary = (val) => {
-    setDictionary(val);
-    NOOP_SETTINGS_WARN('dictionary');
-    setSettings({ dictionary: val });
-  };
-  const handleShowKeyboardHints = (val) => {
-    setShowKeyboardHints(val);
-    NOOP_SETTINGS_WARN('showKeyboardHints');
-    setSettings({ showKeyboardHints: val });
-  };
-
-  const boardSize = settings.boardSize ?? 'medium';
-  const soundEnabled = settings.soundEnabled ?? true;
+  const difficulty = settings.difficulty ?? CORE_DEFAULT_SETTINGS.difficulty;
+  const boardSize = settings.boardSize ?? CORE_DEFAULT_SETTINGS.boardSize;
+  const soundEnabled = settings.soundEnabled ?? CORE_DEFAULT_SETTINGS.soundEnabled;
+  const particlesEnabled = settings.particlesEnabled ?? CORE_DEFAULT_SETTINGS.particlesEnabled;
+  const specialTiles = settings.specialTiles ?? CORE_DEFAULT_SETTINGS.specialTiles;
+  const endCondition = settings.endCondition ?? CORE_DEFAULT_SETTINGS.endCondition;
+  const goalDisabled = gameMode !== 'wordhunt';
+  const difficultyDescription = getDifficultyDescription(gameMode, difficulty);
 
   if (isPhone) {
     return (
       <div style={{ ...skin.vars, position: 'relative', width: '100%', height: '100%', overflow: 'auto', background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--font-body)' }}>
         <skin.Background />
         <div style={{ position: 'relative', zIndex: 1, padding: 16, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ paddingBottom: 8, borderBottom: '1px solid var(--rule-faint)', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, paddingBottom: 8, borderBottom: '1px solid var(--rule-faint)', marginBottom: 12 }}>
             <div style={{ fontFamily: 'var(--font-script)', fontSize: 32, color: 'var(--accent-2)', lineHeight: 1 }}>Settings</div>
+            <div style={{ flex: 1 }} />
+            <div
+              onClick={goBack}
+              style={{ fontStyle: 'italic', fontSize: 12, color: 'var(--ink-faint)', cursor: 'pointer' }}
+            >
+              ‹ back
+            </div>
           </div>
 
           {/* Skin picker — compact rows */}
@@ -291,47 +354,106 @@ export function SettingsView({ state, actions }) {
           <div>
             <SectionLabel>Game</SectionLabel>
             <SettingRow
+              label="Difficulty"
+              desc={difficultyDescription}
+              stackValue
+              value={
+                <Segmented
+                  options={DIFFICULTY_OPTIONS_PHONE}
+                  selected={difficulty}
+                  onSelect={(value) => setSettings({ difficulty: value })}
+                  fullWidth
+                  compact
+                />
+              }
+            />
+            <SettingRow
               label="Board size"
+              stackValue
               value={
                 <Segmented
                   options={BOARD_SIZE_OPTIONS_PHONE}
                   selected={boardSize}
                   onSelect={(v) => setSettings({ boardSize: v })}
+                  fullWidth
+                  compact
                 />
               }
+            />
+            <SettingRow
+              label="Goal"
+              desc={goalDisabled ? 'Word Hunt only. Siege ignores this setting.' : 'How a Word Hunt round ends.'}
+              stackValue
+              value={
+                <Segmented
+                  options={END_CONDITION_OPTIONS_PHONE}
+                  selected={endCondition}
+                  onSelect={(value) => setSettings({ endCondition: value })}
+                  disabled={goalDisabled}
+                  fullWidth
+                  compact
+                />
+              }
+            />
+            <SettingRow
+              label="Special tiles"
+              desc="Turns on crystal, void, ember, and other special tile types."
+              value={<Toggle on={specialTiles} onClick={() => setSettings({ specialTiles: !specialTiles })} />}
             />
             <SettingRow
               label="Sound"
               value={<Toggle on={soundEnabled} onClick={() => setSettings({ soundEnabled: !soundEnabled })} />}
             />
             <SettingRow
+              label="Particles"
+              desc="Board bursts and tile effect particles."
+              value={<Toggle on={particlesEnabled} onClick={() => setSettings({ particlesEnabled: !particlesEnabled })} />}
+            />
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <SectionLabel>Coming soon</SectionLabel>
+            <SettingRow
               label="Reduce motion"
-              value={<Toggle on={reduceMotion} onClick={() => handleReduceMotion(!reduceMotion)} />}
+              desc="Planned shell control. Motion is still fixed by the core."
+              value={<Toggle on={false} disabled />}
             />
             <SettingRow
-              label="Color-blind path"
+              label="Path colors"
+              desc="Planned shell control. The renderer still uses the active skin colors."
+              stackValue
               value={
                 <Segmented
-                  options={[{ label: 'def', value: 'default' }, { label: 'cy', value: 'cyan' }, { label: 'y', value: 'yellow' }]}
-                  selected={colorBlindPath}
-                  onSelect={handleColorBlindPath}
+                  options={PATH_COLOR_OPTIONS_PHONE}
+                  selected="default"
+                  disabled
+                  fullWidth
+                  compact
                 />
               }
             />
             <SettingRow
               label="Dictionary"
+              desc="Planned shell control. Word validation still uses the bundled list instead."
+              stackValue
               value={
                 <Segmented
-                  options={[{ label: 'SOW', value: 'sowpods' }, { label: 'TWL', value: 'twl' }, { label: 'OSPD', value: 'ospd' }]}
-                  selected={dictionary}
-                  onSelect={handleDictionary}
+                  options={DICTIONARY_OPTIONS_PHONE}
+                  disabled
+                  fullWidth
+                  compact
                 />
               }
+            />
+            <SettingRow
+              label="Keyboard hints"
+              desc="Planned shell control. Action-bar key hints stay visible today."
+              value={<Toggle on disabled />}
             />
           </div>
 
           <div style={{ borderTop: '1px solid var(--rule-faint)', paddingTop: 12, marginTop: 16, fontSize: 11, color: 'var(--ink-faint)', fontStyle: 'italic' }}>
-            Lexicon Deep · v0.1 — settings persist on this device only.
+            Lexicon Deep · skin persists on this device; board settings apply on the next fresh page.
           </div>
         </div>
       </div>
@@ -368,13 +490,25 @@ export function SettingsView({ state, actions }) {
         </div>
 
         {/* Two-column settings */}
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, minHeight: 0, overflow: 'auto' }}>
+        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, minHeight: 0, overflow: 'auto', alignContent: 'start' }}>
 
-          {/* Left: Board */}
+          {/* Left: gameplay */}
           <div>
-            <SectionLabel>Board</SectionLabel>
+            <SectionLabel>Game</SectionLabel>
+            <SettingRow
+              label="Difficulty"
+              desc={difficultyDescription}
+              value={
+                <Segmented
+                  options={DIFFICULTY_OPTIONS_DESKTOP}
+                  selected={difficulty}
+                  onSelect={(value) => setSettings({ difficulty: value })}
+                />
+              }
+            />
             <SettingRow
               label="Board size"
+              desc="Changes the board dimensions for the next run."
               value={
                 <Segmented
                   options={BOARD_SIZE_OPTIONS_DESKTOP}
@@ -384,53 +518,84 @@ export function SettingsView({ state, actions }) {
               }
             />
             <SettingRow
-              label="Reduce motion"
-              desc="Tone down the path trail and round transitions."
-              value={<Toggle on={reduceMotion} onClick={() => handleReduceMotion(!reduceMotion)} />}
-            />
-            <SettingRow
-              label="Color-blind path"
-              desc="Path-trace color, for tiles that are easier to tell apart."
+              label="Goal"
+              desc={goalDisabled ? 'Word Hunt only. Siege ignores this setting.' : 'How a Word Hunt round ends.'}
               value={
                 <Segmented
-                  options={[{ label: 'Default', value: 'default' }, { label: 'Cyan', value: 'cyan' }, { label: 'Yellow', value: 'yellow' }]}
-                  selected={colorBlindPath}
-                  onSelect={handleColorBlindPath}
+                  options={END_CONDITION_OPTIONS_DESKTOP}
+                  selected={endCondition}
+                  onSelect={(value) => setSettings({ endCondition: value })}
+                  disabled={goalDisabled}
                 />
               }
+            />
+            <SettingRow
+              label="Special tiles"
+              desc="Turns on crystal, void, ember, and other special tile types."
+              value={<Toggle on={specialTiles} onClick={() => setSettings({ specialTiles: !specialTiles })} />}
             />
           </div>
 
-          {/* Right: Sound & lexicon */}
+          {/* Right: options */}
           <div>
-            <SectionLabel>Sound &amp; lexicon</SectionLabel>
+            <SectionLabel>Options</SectionLabel>
             <SettingRow
               label="Sound"
-              desc="Pen-scratch on submit, soft chime on planted words."
+              desc="Submit, discovery, and interface sound effects."
               value={<Toggle on={soundEnabled} onClick={() => setSettings({ soundEnabled: !soundEnabled })} />}
             />
             <SettingRow
-              label="Dictionary"
-              desc="Which lexicon counts as a valid word."
-              value={
-                <Segmented
-                  options={[{ label: 'SOWPODS', value: 'sowpods' }, { label: 'TWL', value: 'twl' }, { label: 'OSPD', value: 'ospd' }]}
-                  selected={dictionary}
-                  onSelect={handleDictionary}
+              label="Particles"
+              desc="Board bursts and tile effect particles."
+              value={<Toggle on={particlesEnabled} onClick={() => setSettings({ particlesEnabled: !particlesEnabled })} />}
+            />
+          </div>
+
+          <div style={{ gridColumn: '1 / -1' }}>
+            <SectionLabel>Coming soon</SectionLabel>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 12 }}>
+              <div>
+                <SettingRow
+                  label="Reduce motion"
+                  desc="Planned shell control. Motion is still fixed by the core."
+                  value={<Toggle on={false} disabled />}
                 />
-              }
-            />
-            <SettingRow
-              label="Show keyboard hints"
-              desc="Display [S] [C] [U] [?] in the action bar."
-              value={<Toggle on={showKeyboardHints} onClick={() => handleShowKeyboardHints(!showKeyboardHints)} />}
-            />
+                <SettingRow
+                  label="Path colors"
+                  desc="Planned shell control. The renderer still uses the active skin colors."
+                  value={
+                    <Segmented
+                      options={PATH_COLOR_OPTIONS_DESKTOP}
+                      selected="default"
+                      disabled
+                    />
+                  }
+                />
+              </div>
+              <div>
+                <SettingRow
+                  label="Dictionary"
+                  desc="Planned shell control. Word validation still uses the bundled list instead."
+                  value={
+                    <Segmented
+                      options={DICTIONARY_OPTIONS_DESKTOP}
+                      disabled
+                    />
+                  }
+                />
+                <SettingRow
+                  label="Keyboard hints"
+                  desc="Planned shell control. Action-bar key hints stay visible today."
+                  value={<Toggle on disabled />}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Footer */}
         <div style={{ borderTop: '1px solid var(--rule-faint)', paddingTop: 12, marginTop: 16, display: 'flex', gap: 10, fontSize: 11, color: 'var(--ink-faint)', fontStyle: 'italic' }}>
-          <span>Lexicon Deep · v0.1 — settings persist on this device only.</span>
+          <span>Lexicon Deep · skin persists on this device; board settings apply on the next fresh page.</span>
         </div>
       </div>
     </div>
@@ -438,6 +603,7 @@ export function SettingsView({ state, actions }) {
 }
 
 // ─── Legacy panel wrapper (used by existing GameShell phase==='settings') ──
-export default function SettingsScreen({ state, actions }) {
-  return <SettingsView state={state} actions={actions} />;
+export default function SettingsScreen({ state, actions, onClose }) {
+  const shell = useGameShellState();
+  return <SettingsView state={state ?? shell.state} actions={actions ?? shell.actions} onClose={onClose} />;
 }
