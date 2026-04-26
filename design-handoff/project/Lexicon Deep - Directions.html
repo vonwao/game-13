@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Lexicon Deep — Visual Directions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Tangerine:wght@400;700&family=Italianno&family=Inter+Tight:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@300;400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet"/>
+  <style>
+    body { margin: 0; padding: 0; background: #f0eee9; }
+    @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="shared.jsx"></script>
+  <script type="text/babel" src="direction-a-page.jsx"></script>
+  <script type="text/babel" src="direction-b-fullbleed.jsx"></script>
+  <script type="text/babel" src="direction-c-terminal.jsx"></script>
+  <script type="text/babel" src="direction-d-specimen.jsx"></script>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    // Rationale notes for each direction (post-it style)
+    const NOTES = {
+      A: {
+        rationale: "Leans hardest into the brief's tone. Every game element is reframed as a thing on a page: the round is a wax seal, the score is a fountain-pen tally, action verbs are stamped seals, side surfaces are marginalia in a chancery hand. No card frames anywhere — boundaries are gilt rules and ribbons. High-character but the most opinionated; the player must accept the conceit.",
+        feel: "First five seconds: the player feels like they cracked open something. Candle warmth in the corner, dust suspended in the lamplight, ink still drying on the page. The grid reads as letters set on paper, not buttons in a UI. Quiet, slightly secret.",
+      },
+      B: {
+        rationale: "The board IS the UI. Strips out chrome to a flat dark plane, one thin top strip, one floating glass-blur action pill, edge tabs that summon translucent overlays only when wanted. One muted-gold accent does all the signalling. Modernist, the brief's vocabulary survives only in the round name and round label — the rest is contemporary product design.",
+        feel: "First five seconds: confidence. Nothing in the way. The path-trace lands like a single decisive mark on a clean surface. Reads as 'a serious word game,' not a themed one. Familiar and immediate to anyone who has used a 2024-era app.",
+      },
+      C: {
+        rationale: "Lexicon Deep as a thing you query, not a thing you read. Pure mono. Tiles inherit the terminal grid; objectives become checklist items in an ASCII pane; score history is a scrollback buffer. Action bar replaces buttons with [S] [C] [U] [?] hints — the keyboard is the primary input, mouse and touch are alternates. Phosphor green glows; combo and time threats render in signal red.",
+        feel: "First five seconds: the player feels expert before earning it. The interface assumes you know what you're doing. Slightly paranoid, slightly retro — like the archive is being indexed by something old that still works. Scanlines and blink-cursor do most of the atmospheric work.",
+      },
+      D: {
+        rationale: "Quieter cousin of A. Where A is a personal journal, D is a published specimen book — copperplate engravings, double-rule frames, printer's flowers, oldstyle figures. Tiles look pressed from a tray, with letterpress ink unevenness. Botanical illustrations are the marginalia, varying per round. Indigo and madder do the work that oxblood does in A; warm spot for the Clue.",
+        feel: "First five seconds: museum quiet. The player feels they're handling something printed in small editions, on rag paper, under archival glass. More restrained than A — fewer flourishes per square inch — and consequently easier to live in for a long session.",
+      },
+    };
+
+    function Note({ children }) {
+      return (
+        <div style={{
+          width: 320,
+          background:'#fef4a8',
+          padding:'14px 16px',
+          fontFamily:'"Comic Sans MS","Marker Felt","Segoe Print",cursive',
+          fontSize: 13, lineHeight: 1.45, color:'#5a4a2a',
+          boxShadow:'0 2px 8px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.08)',
+          flexShrink: 0,
+        }}>{children}</div>
+      );
+    }
+
+    function NotesPair({ rationale, feel }) {
+      return (
+        <div style={{display:'flex', gap: 16, marginTop: 24}}>
+          <Note><div style={{fontWeight: 700, marginBottom: 6, transform:'rotate(-1deg)', display:'inline-block'}}>Rationale</div><div>{rationale}</div></Note>
+          <Note><div style={{fontWeight: 700, marginBottom: 6, transform:'rotate(1deg)', display:'inline-block'}}>First 5 seconds</div><div>{feel}</div></Note>
+        </div>
+      );
+    }
+
+    function App() {
+      return (
+        <DesignCanvas>
+          <DCSection id="intro" title="Lexicon Deep — four directions" subtitle="Same content, four visual languages. Compare side-by-side. Drag to reorder, click any artboard to focus.">
+            <DCArtboard id="overview" label="The brief" width={520} height={420}>
+              <div style={{padding:'32px 32px', fontFamily:'"EB Garamond",Georgia,serif', color:'#2a1a10', height:'100%', boxSizing:'border-box'}}>
+                <div style={{fontStyle:'italic', fontSize: 14, color:'#7a5a40', letterSpacing:'0.1em', textTransform:'uppercase', marginBottom: 8}}>Visual exploration</div>
+                <h1 style={{fontSize: 32, fontWeight: 600, margin: 0, lineHeight: 1.1, letterSpacing:'-0.01em'}}>Four directions for an in-browser word puzzle in the archive.</h1>
+                <div style={{height: 1, background:'#c89848', margin:'18px 0', opacity:.6}}/>
+                <p style={{fontSize: 14, lineHeight: 1.55, margin: 0}}>
+                  Each direction is shown in <b>desktop (1440×900)</b> and <b>phone (390×844)</b> at full fidelity, with the same board, same path traced through E·M·B·E·R, same HUD readings, same objectives, same recent words. Read the post-it notes for rationale and the first-five-seconds feel.
+                </p>
+                <div style={{marginTop: 14, fontSize: 13, lineHeight: 1.6, color:'#5a4030'}}>
+                  <div><b>A.</b> The Page — archive/journal</div>
+                  <div><b>B.</b> Full Bleed — modern minimal</div>
+                  <div><b>C.</b> Terminal — brutalist CRT</div>
+                  <div><b>D.</b> Specimen Book — naturalist's notebook</div>
+                </div>
+              </div>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="a" title="A · The Page" subtitle="Aged paper, wax seals, marginalia. No card frames.">
+            <DCArtboard id="a-desktop" label="Desktop · 1440 × 900" width={1440} height={900}>
+              <PageDesktop/>
+            </DCArtboard>
+            <DCArtboard id="a-phone" label="Phone · 390 × 844" width={390} height={844}>
+              <PagePhone/>
+            </DCArtboard>
+            <DCArtboard id="a-notes" label="Notes" width={720} height={300} style={{background:'transparent', boxShadow:'none'}}>
+              <NotesPair rationale={NOTES.A.rationale} feel={NOTES.A.feel}/>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="b" title="B · Full Bleed" subtitle="Solid dark, board edge-to-edge, glass-blur pill, edge tabs.">
+            <DCArtboard id="b-desktop" label="Desktop · 1440 × 900" width={1440} height={900}>
+              <FullbleedDesktop/>
+            </DCArtboard>
+            <DCArtboard id="b-phone" label="Phone · 390 × 844" width={390} height={844}>
+              <FullbleedPhone/>
+            </DCArtboard>
+            <DCArtboard id="b-notes" label="Notes" width={720} height={300} style={{background:'transparent', boxShadow:'none'}}>
+              <NotesPair rationale={NOTES.B.rationale} feel={NOTES.B.feel}/>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="c" title="C · Terminal" subtitle="Phosphor on near-black, ASCII panes, keystroke action bar.">
+            <DCArtboard id="c-desktop" label="Desktop · 1440 × 900" width={1440} height={900}>
+              <TerminalDesktop/>
+            </DCArtboard>
+            <DCArtboard id="c-phone" label="Phone · 390 × 844" width={390} height={844}>
+              <TerminalPhone/>
+            </DCArtboard>
+            <DCArtboard id="c-notes" label="Notes" width={720} height={300} style={{background:'transparent', boxShadow:'none'}}>
+              <NotesPair rationale={NOTES.C.rationale} feel={NOTES.C.feel}/>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="d" title="D · Specimen Book" subtitle="Cream paper, copperplate engravings, pressed letters, botanicals.">
+            <DCArtboard id="d-desktop" label="Desktop · 1440 × 900" width={1440} height={900}>
+              <SpecimenDesktop/>
+            </DCArtboard>
+            <DCArtboard id="d-phone" label="Phone · 390 × 844" width={390} height={844}>
+              <SpecimenPhone/>
+            </DCArtboard>
+            <DCArtboard id="d-notes" label="Notes" width={720} height={300} style={{background:'transparent', boxShadow:'none'}}>
+              <NotesPair rationale={NOTES.D.rationale} feel={NOTES.D.feel}/>
+            </DCArtboard>
+          </DCSection>
+
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Lexicon Deep — Layout & Skins</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Tangerine:wght@400;700&family=Italianno&family=Inter+Tight:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html,body { margin: 0; padding: 0; background: #1a1410; color: #f1ece2; font-family: "Inter Tight", system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  @keyframes shake { 0%,100% { transform: translateX(0) } 20% { transform: translateX(-3px) } 40% { transform: translateX(3px) } 60% { transform: translateX(-2px) } 80% { transform: translateX(2px) } }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.55 } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="shared.jsx"></script>
+<script type="text/babel" src="skins.jsx"></script>
+<script type="text/babel" src="layout.jsx"></script>
+<script type="text/babel" src="screens.jsx"></script>
+
+<script type="text/babel">
+function App() {
+  return (
+    <DesignCanvas title="Lexicon Deep" subtitle="canonical layout · three skins · key surfaces">
+
+      {/* ─── Layout × skins ─── */}
+      <DCSection id="layout" title="Canonical Layout — three skins">
+        <DCArtboard id="page-d" label="Page · Desktop · 1440×900" width={1440} height={900}>
+          <GameLayoutDesktop skin={SKIN_PAGE}/>
+        </DCArtboard>
+        <DCArtboard id="terminal-d" label="Terminal · Desktop · 1440×900" width={1440} height={900}>
+          <GameLayoutDesktop skin={SKIN_TERMINAL}/>
+        </DCArtboard>
+        <DCArtboard id="fullbleed-d" label="Full Bleed · Desktop · 1440×900" width={1440} height={900}>
+          <GameLayoutDesktop skin={SKIN_FULLBLEED}/>
+        </DCArtboard>
+        <DCArtboard id="page-p" label="Page · Phone · 390×844" width={390} height={844}>
+          <GameLayoutPhone skin={SKIN_PAGE}/>
+        </DCArtboard>
+        <DCArtboard id="terminal-p" label="Terminal · Phone · 390×844" width={390} height={844}>
+          <GameLayoutPhone skin={SKIN_TERMINAL}/>
+        </DCArtboard>
+        <DCArtboard id="fullbleed-p" label="Full Bleed · Phone · 390×844" width={390} height={844}>
+          <GameLayoutPhone skin={SKIN_FULLBLEED}/>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ─── How to play ─── */}
+      <DCSection id="howto" title="How to Play (Page skin)">
+        <DCArtboard id="howto-d" label="Desktop · 1440×900" width={1440} height={900}>
+          <HowToPlayDesktop/>
+        </DCArtboard>
+        <DCArtboard id="howto-p" label="Phone · 390×844" width={390} height={844}>
+          <HowToPlayPhone/>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ─── Settings ─── */}
+      <DCSection id="settings" title="Settings (skin picker is the headline)">
+        <DCArtboard id="settings-d" label="Desktop · 1440×900" width={1440} height={900}>
+          <SettingsDesktop currentSkin="page"/>
+        </DCArtboard>
+        <DCArtboard id="settings-p" label="Phone · 390×844" width={390} height={844}>
+          <SettingsPhone currentSkin="page"/>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ─── Game-state moments ─── */}
+      <DCSection id="states" title="Game-state moments — six small frames">
+        <DCArtboard id="states" label="Six frames · Page skin · 1488×680" width={1488} height={680}>
+          <GameStates/>
+        </DCArtboard>
+      </DCSection>
+
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
