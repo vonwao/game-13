@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { setShellLayout, startGame } from './gameBridge.js';
+import { setShellLayout } from './gameBridge.js';
 
 export default function GameCanvas({ state }) {
   const canvasRef = useRef(null);
@@ -58,31 +58,31 @@ export default function GameCanvas({ state }) {
     state.phase === 'gameover';
 
   return (
-    <section className="game-canvas-shell" aria-label="Game canvas mount area">
-      <div ref={mountRef} className="game-canvas-shell__mount">
-        <canvas
-          id="game"
-          ref={canvasRef}
-          className={`game-canvas-shell__canvas${showCanvas ? '' : ' game-canvas-shell__canvas--hidden'}`}
-          aria-hidden={!showCanvas}
-        />
-        {!showCanvas ? (
-          <div className="game-canvas-shell__placeholder">
-            <h2>Ready when you are</h2>
-            <p>
-              Mode: <strong>{state.gameMode}</strong>. Tweak setup on the left, then start.
-            </p>
-            <button
-              type="button"
-              className="shell-button shell-button--accent"
-              style={{ marginTop: '1rem' }}
-              onClick={startGame}
-            >
-              Start Game
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </section>
+    <div
+      ref={mountRef}
+      data-testid="canvas-mount"
+      style={{
+        position: 'relative',
+        flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+        display: 'block',
+      }}
+    >
+      <canvas
+        id="game"
+        ref={canvasRef}
+        style={{
+          display: 'block',
+          width: '100%',
+          height: '100%',
+          background: 'transparent',
+          opacity: showCanvas ? 1 : 0,
+          pointerEvents: showCanvas ? 'auto' : 'none',
+          imageRendering: 'pixelated',
+        }}
+        aria-hidden={!showCanvas}
+      />
+    </div>
   );
 }

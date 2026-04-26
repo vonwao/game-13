@@ -1,22 +1,31 @@
-export default function ShellLayout({ state, children }) {
+// Canonical layout container. Renders the active skin's Background,
+// fills the viewport, owns no chrome of its own.
+import { useSkin } from '../skins/SkinContext.jsx';
+
+export default function ShellLayout({ children }) {
+  const { skin } = useSkin();
   return (
-    <div className="app-shell">
-      <div className="shell-layout">
-        <header className="shell-layout__header">
-          <div className="shell-brand">
-            <p className="shell-brand__eyebrow">Lexicon Deep</p>
-            <h1 className="shell-brand__title">Lexicon Deep</h1>
-          </div>
-
-          <div className="shell-chips" aria-label="Shell summary">
-            <span className="shell-chip">Phase: {state.phase}</span>
-            <span className="shell-chip">Mode: {state.gameMode}</span>
-            <span className="shell-chip">Score: {state.run.score}</span>
-            <span className="shell-chip">Round: {state.huntSummary.round}/{state.huntSummary.maxRounds}</span>
-          </div>
-        </header>
-
-        <main className="shell-layout__main">{children}</main>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'var(--bg)',
+        color: 'var(--ink)',
+        fontFamily: 'var(--font-body)',
+        overflow: 'hidden',
+      }}
+    >
+      <skin.Background />
+      <div
+        style={{
+          position: 'absolute',
+          inset: skin.id === 'page' ? 20 : 0,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+        }}
+      >
+        {children}
       </div>
     </div>
   );

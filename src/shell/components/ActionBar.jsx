@@ -1,73 +1,128 @@
-export default function ActionBar({ state, actions }) {
-  const phase = state.phase;
-  if (phase !== 'playing' && phase !== 'victory' && phase !== 'gameover') {
-    return null;
-  }
+// ActionBar — typed-word preview, status note, four action buttons.
+// Ported from /tmp/lexicon-design/lexicon-deep/project/layout.jsx (lines 303-351).
 
-  const isWordHunt = state.gameMode === 'wordhunt';
+export default function ActionBar({ skin, state, actions, phone }) {
+  const isPage = skin.id === 'page';
+  const isTerm = skin.id === 'terminal';
+  const isFB = skin.id === 'fullbleed';
+
   const input = state.inputSummary || {};
   const hunt = state.huntSummary || {};
-  const typed = input.typed || '';
-  const canSubmit = !!(input.valid && input.hasPath);
-  const previewTotal = input.scorePreview && input.scorePreview.total
-    ? input.scorePreview.total
-    : 0;
-  const showPreview = canSubmit && previewTotal > 0;
-  const cluesRemaining = hunt.cluesRemaining || 0;
-  const canUseClue = cluesRemaining > 0;
+  const word = (input.typed || '').toUpperCase();
+  const previewTotal = input.scorePreview && typeof input.scorePreview.total === 'number'
+    ? `+${input.scorePreview.total}`
+    : '';
+  const status = !word ? 'empty' : (input.valid && input.hasPath ? 'valid' : 'invalid');
+
+  const submitDisabled = !(input.valid && input.hasPath);
+  const undoDisabled = !word;
+  const clearDisabled = !word;
+  const clueDisabled = (hunt.cluesRemaining || 0) <= 0;
 
   return (
-    <footer className="shell-actionbar" aria-label="Word actions">
-      <div className="shell-actionbar__preview">
-        {typed ? (
-          <>
-            <span className="shell-actionbar__word">{typed}</span>
-            {showPreview ? (
-              <span className="shell-actionbar__score">+{previewTotal}</span>
-            ) : null}
-          </>
-        ) : (
-          <span className="shell-actionbar__hint is-muted">
-            Tap tiles or type to spell
-          </span>
-        )}
-      </div>
-      <div className="shell-actionbar__buttons">
-        <button
-          type="button"
-          className="shell-button"
-          onClick={actions.clearCurrentWord}
-          disabled={!typed}
+    <div
+      style={{
+        padding: phone ? '12px 14px 14px' : '16px 28px 18px',
+        borderTop: '1px solid var(--rule-faint)',
+        background: isTerm ? 'var(--surface-deep)' : 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        gap: phone ? 8 : 18,
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: phone ? 9 : 10,
+            letterSpacing: '0.2em',
+            color: 'var(--ink-faint)',
+            textTransform: 'uppercase',
+            marginBottom: 2,
+          }}
         >
-          Clear
-        </button>
-        <button
-          type="button"
-          className="shell-button"
-          onClick={actions.undoTileSelection}
-          disabled={!typed}
-        >
-          Undo
-        </button>
-        {isWordHunt ? (
-          <button
-            type="button"
-            className="shell-button"
-            onClick={actions.useClue}
-            disabled={!canUseClue}
+          {isPage ? 'Inscribed' : 'Tracing'}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: phone ? 8 : 14 }}>
+          {isTerm && <span style={{ color: 'var(--ink-soft)' }}>&gt;</span>}
+          <span
+            data-testid="action-bar-word"
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: phone ? 22 : (isFB ? 32 : 28),
+              fontWeight: 700,
+              letterSpacing: isPage ? '0.18em' : '0.14em',
+              color: status === 'invalid' ? 'var(--ink-faint)' : (isFB ? 'var(--ink)' : 'var(--accent)'),
+              lineHeight: 1,
+              textShadow: isTerm && status === 'valid' ? '0 0 8px var(--ink)' : 'none',
+              transition: 'color .15s',
+              animation: status === 'invalid' ? 'shake .35s' : 'none',
+            }}
           >
-            Clue ({cluesRemaining})
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className="shell-button shell-button--accent"
-          onClick={actions.submitCurrentWord}
-          disabled={!canSubmit}
-        >
-          Submit
-        </button>
+            {word
+              ? (isPage ? word.split('').join('·') : word)
+              : <span style={{ color: 'var(--ink-faint)', fontWeight: 400, fontSize: phone ? 16 : 18, letterSpacing: 0 }}>{isTerm ? '_' : '—'}</span>}
+          </span>
+          {previewTotal && (
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: phone ? 14 : 18,
+                color: status === 'invalid' ? 'var(--ink-faint)' : 'var(--accent)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {status === 'invalid' ? '·' : previewTotal}
+            </span>
+          )}
+          {!phone && (
+            <span
+              style={{
+                fontSize: 11,
+                color: 'var(--ink-faint)',
+                fontStyle: isPage ? 'italic' : 'normal',
+                fontFamily: isTerm ? 'var(--font-mono)' : 'var(--font-body)',
+              }}
+            >
+              {status === 'valid' && (isTerm ? 'VALID' : 'valid')}
+              {status === 'invalid' && (isTerm ? 'NOT IN LEXICON' : 'not in the lexicon')}
+              {status === 'empty' && (isTerm ? 'AWAITING INPUT' : 'trace tiles or type')}
+            </span>
+          )}
+        </div>
       </div>
-    </footer>
+      <div style={{ display: 'flex', gap: phone ? 6 : 10, flexShrink: 0 }}>
+        <BtnWrap onClick={actions.submitCurrentWord} disabled={submitDisabled}>
+          <skin.ActionBtn label="Submit" kbd="↵" primary compact={phone} />
+        </BtnWrap>
+        <BtnWrap onClick={actions.clearCurrentWord} disabled={clearDisabled}>
+          <skin.ActionBtn label="Clear" kbd="esc" compact={phone} />
+        </BtnWrap>
+        <BtnWrap onClick={actions.undoTileSelection} disabled={undoDisabled}>
+          <skin.ActionBtn label="Undo" kbd="⌫" compact={phone} />
+        </BtnWrap>
+        <BtnWrap onClick={actions.useClue} disabled={clueDisabled}>
+          <skin.ActionBtn label="Clue" kbd="?" warm compact={phone} />
+        </BtnWrap>
+      </div>
+    </div>
+  );
+}
+
+// Wrap the skin's ActionBtn (itself a <button>) to attach onClick + disabled
+// without each skin needing to know about wiring.
+function BtnWrap({ children, onClick, disabled }) {
+  return (
+    <span
+      onClick={disabled ? undefined : onClick}
+      style={{
+        display: 'inline-flex',
+        opacity: disabled ? 0.4 : 1,
+        pointerEvents: disabled ? 'none' : 'auto',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+    >
+      {children}
+    </span>
   );
 }
