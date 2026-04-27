@@ -97,6 +97,7 @@
   let resizeBound = false;
   let loopStarted = false;
   let booted = false;
+  let gameplayActionsGuarded = false;
 
   function isShellMode() {
     return !!window.__LD_SHELL_MODE__;
@@ -235,6 +236,18 @@
       height: typeof layout.height === 'number' ? layout.height : null,
       aspect: typeof layout.aspect === 'number' ? layout.aspect : layout.aspect || null,
     };
+  }
+
+  function isPausedPhase() {
+    return STATE.phase === 'paused';
+  }
+
+  function canPauseGame() {
+    return STATE.phase === 'playing';
+  }
+
+  function canResumeGame() {
+    return isPausedPhase();
   }
 
   function getHelpState() {
@@ -449,6 +462,20 @@
     notifyShellState(true);
   }
 
+  function pauseGame() {
+    if (!canPauseGame()) return false;
+    STATE.phase = 'paused';
+    notifyShellState(true);
+    return true;
+  }
+
+  function resumeGame() {
+    if (!canResumeGame()) return false;
+    STATE.phase = 'playing';
+    notifyShellState(true);
+    return true;
+  }
+
   function setGameMode(mode) {
     if (mode !== 'wordhunt' && mode !== 'siege') return;
     STATE.gameMode = mode;
@@ -493,6 +520,8 @@
     const history = (STATE.wordHistory || []).map(normalizeHistoryEntry);
     return {
       phase: STATE.phase,
+      displayPhase: isPausedPhase() ? 'playing' : STATE.phase,
+      isPaused: isPausedPhase(),
       shellMode: isShellMode(),
       gameMode: STATE.gameMode,
       shellLayout: cloneShellLayout(STATE.shellLayout),
@@ -639,10 +668,45 @@
     notifyShellState(true);
   }
 
+  function installPhaseAwareActionGuards() {
+    if (gameplayActionsGuarded) return;
+    if (!window.LD || !window.LD.Actions) return;
+
+    var actions = window.LD.Actions;
+    var guardedActions = [
+      'startPath',
+      'extendPath',
+      'trimPathTo',
+      'restartPath',
+      'tapTile',
+      'undoTileSelection',
+      'clearCurrentWord',
+      'submitCurrentWord',
+      'rejectCurrentWord',
+      'useClue',
+      'appendLetter',
+      'backspaceLetter',
+      'scrollBoard',
+    ];
+
+    guardedActions.forEach(function(name) {
+      if (typeof actions[name] !== 'function') return;
+      var original = actions[name];
+      actions[name] = function guardedGameplayAction() {
+        if (isPausedPhase()) return false;
+        return original.apply(this, arguments);
+      };
+    });
+
+    gameplayActionsGuarded = true;
+  }
+
   // Public shell/game bridge
   window.LD.Game = {
     startGame: startGame,
     advanceRound: advanceRound,
+    pauseGame: pauseGame,
+    resumeGame: resumeGame,
     setGameMode: setGameMode,
     setShellLayout: setShellLayout,
     returnToSettings: returnToSettings,
@@ -738,22 +802,24 @@
 
   function gameLoop(timestamp) {
     const dt = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.1) : 0.016;
+    const paused = isPausedPhase();
+    const activeDt = paused ? 0 : dt;
     lastTime = timestamp;
 
-    STATE.time += dt;
-    STATE.dt = dt;
+    STATE.time += activeDt;
+    STATE.dt = activeDt;
 
     // Update systems
-    if (LD.Particles) LD.Particles.update(dt);
+    if (!paused && LD.Particles) LD.Particles.update(activeDt);
     const gameplayAdapter = STATE.inputAdapter || getGameplayAdapter();
-    if (gameplayAdapter && gameplayAdapter.update) {
+    if (!paused && gameplayAdapter && gameplayAdapter.update) {
       gameplayAdapter.update(STATE);
     }
 
     // Word Hunt timed mode countdown
-    if (STATE.phase === 'playing' && STATE.gameMode === 'wordhunt' &&
+    if (!paused && STATE.phase === 'playing' && STATE.gameMode === 'wordhunt' &&
         STATE.settings.endCondition === 'timed' && STATE.hunt) {
-      STATE.hunt.timeRemaining = Math.max(0, (STATE.hunt.timeRemaining || 0) - dt);
+      STATE.hunt.timeRemaining = Math.max(0, (STATE.hunt.timeRemaining || 0) - activeDt);
       if (STATE.hunt.timeRemaining <= 0) {
         STATE.phase = 'gameover';
       }
@@ -761,15 +827,15 @@
 
     notifyShellState(false);
 
-    if (STATE.phase === 'playing' && STATE.gameMode === 'wordhunt' && STATE.hunt) {
-      STATE.hunt.clueTimer = Math.max(0, (STATE.hunt.clueTimer || 0) - dt);
+    if (!paused && STATE.phase === 'playing' && STATE.gameMode === 'wordhunt' && STATE.hunt) {
+      STATE.hunt.clueTimer = Math.max(0, (STATE.hunt.clueTimer || 0) - activeDt);
       if (STATE.hunt.clueTimer <= 0) {
         STATE.hunt.clueTiles = [];
       }
     }
 
     if (LD.Renderer) {
-      LD.Renderer.updateScroll(dt, STATE);
+      LD.Renderer.updateScroll(activeDt, STATE);
       LD.Renderer.render(ctx, STATE);
     }
 
@@ -803,6 +869,8 @@
 
     initCanvas(explicitCanvas);
     booted = true;
+
+    installPhaseAwareActionGuards();
 
     // Initialize Settings module (before Input so settings screen can respond to clicks)
     if (LD.Settings && !isShellMode()) LD.Settings.init(canvas, STATE);

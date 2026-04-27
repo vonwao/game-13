@@ -1,5 +1,7 @@
 const fallbackShellState = {
   phase: 'settings',
+  displayPhase: 'settings',
+  isPaused: false,
   gameMode: 'wordhunt',
   settings: {
     difficulty: 'easy',
@@ -227,6 +229,8 @@ export function startGame() {
 
   patchLocalSnapshot({
     phase: 'playing',
+    displayPhase: 'playing',
+    isPaused: false,
     ui: {
       ...currentSnapshot.ui,
       showHelp: false,
@@ -254,11 +258,49 @@ export function advanceRound() {
 
   patchLocalSnapshot({
     phase: 'playing',
+    displayPhase: 'playing',
+    isPaused: false,
     huntSummary: {
       ...currentSnapshot.huntSummary,
       round: nextRound,
       advanceAvailable: nextRound < (currentSnapshot.huntSummary.maxRounds || 3),
     },
+  });
+}
+
+export function pauseGame() {
+  if (attachToCore()) {
+    const game = getGameApi();
+    if (game && typeof game.pauseGame === 'function') {
+      game.pauseGame();
+      return;
+    }
+  }
+
+  if (currentSnapshot.phase !== 'playing') return;
+
+  patchLocalSnapshot({
+    phase: 'paused',
+    displayPhase: 'playing',
+    isPaused: true,
+  });
+}
+
+export function resumeGame() {
+  if (attachToCore()) {
+    const game = getGameApi();
+    if (game && typeof game.resumeGame === 'function') {
+      game.resumeGame();
+      return;
+    }
+  }
+
+  if (currentSnapshot.phase !== 'paused') return;
+
+  patchLocalSnapshot({
+    phase: 'playing',
+    displayPhase: 'playing',
+    isPaused: false,
   });
 }
 
@@ -287,6 +329,8 @@ export function returnToSettings() {
 
   patchLocalSnapshot({
     phase: 'settings',
+    displayPhase: 'settings',
+    isPaused: false,
   });
 }
 
@@ -297,7 +341,12 @@ function getActionsApi() {
   return window.LD.Actions;
 }
 
+function gameplayBlocked() {
+  return currentSnapshot.phase === 'paused' || !!currentSnapshot.isPaused;
+}
+
 export function clearCurrentWord() {
+  if (gameplayBlocked()) return;
   const api = getActionsApi();
   if (api && typeof api.clearCurrentWord === 'function') {
     api.clearCurrentWord();
@@ -305,6 +354,7 @@ export function clearCurrentWord() {
 }
 
 export function submitCurrentWord() {
+  if (gameplayBlocked()) return;
   const api = getActionsApi();
   if (api && typeof api.submitCurrentWord === 'function') {
     api.submitCurrentWord();
@@ -312,6 +362,7 @@ export function submitCurrentWord() {
 }
 
 export function undoTileSelection() {
+  if (gameplayBlocked()) return;
   const api = getActionsApi();
   if (api && typeof api.undoTileSelection === 'function') {
     api.undoTileSelection();
@@ -319,6 +370,7 @@ export function undoTileSelection() {
 }
 
 export function useClue() {
+  if (gameplayBlocked()) return;
   const api = getActionsApi();
   if (api && typeof api.useClue === 'function') {
     api.useClue();

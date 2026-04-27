@@ -1,5 +1,7 @@
 // HUDStrip — top bar, identical structure across skins.
-// Ported from /tmp/lexicon-design/lexicon-deep/project/layout.jsx (lines 119-157).
+// Updated to the unified pause-card nav pattern from LexDeep-handoff.
+
+import { MenuButton } from './NavOverlay.jsx';
 
 function Stat({ skin, label, value, accent, mono }) {
   return (
@@ -27,7 +29,7 @@ function formatTime(secs) {
   return `${mm}:${ss}`;
 }
 
-export default function HUDStrip({ skin, state, phone, onHelp, onSettings }) {
+export default function HUDStrip({ skin, state, phone, onMenu, menuOpen = false }) {
   const hunt = state.huntSummary || {};
   const run = state.run || {};
   const settings = state.settings || {};
@@ -37,7 +39,6 @@ export default function HUDStrip({ skin, state, phone, onHelp, onSettings }) {
     round: hunt.round || 1,
     roundName: hunt.roundTitle || 'The First Page',
     score: (run.score || 0).toLocaleString(),
-    combo: hunt.combo || 0,
     wordsSpelled: run.wordsSpelled || 0,
     clues: hunt.cluesRemaining || 0,
     time: endCondition === 'timed' ? formatTime(hunt.timeRemaining) : (endCondition === 'turns' ? `${hunt.turnsRemaining || 0}` : '∞'),
@@ -89,50 +90,15 @@ export default function HUDStrip({ skin, state, phone, onHelp, onSettings }) {
       </div>
       <div style={{ flex: phone ? 'unset' : 1 }} />
       <Stat skin={skin} label="Score" value={String(hud.score)} />
-      <Stat skin={skin} label="Combo" value={`×${hud.combo}`} accent />
       {!phone && <Stat skin={skin} label="Words" value={String(hud.wordsSpelled).padStart(2, '0')} />}
       <Stat skin={skin} label="Clues" value={String(hud.clues)} />
       <Stat skin={skin} label="Time" value={hud.time} mono accent={hud.timeWarning} />
-      {(onHelp || onSettings) && (
-        <div style={{ display: 'flex', gap: 6, marginLeft: 6, flexShrink: 0 }}>
-          {onHelp && (
-            <IconBtn skin={skin} title="How to play (?)" onClick={onHelp}>?</IconBtn>
-          )}
-          {onSettings && (
-            <IconBtn skin={skin} title="Settings (s)" onClick={onSettings}>⚙</IconBtn>
-          )}
+      {onMenu ? (
+        <div style={{ marginLeft: 6, flexShrink: 0 }}>
+          <MenuButton skin={skin} open={menuOpen} onClick={onMenu} />
         </div>
-      )}
+      ) : null}
     </div>
-  );
-}
-
-function IconBtn({ skin, title, onClick, children }) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      style={{
-        appearance: 'none',
-        width: 32,
-        height: 32,
-        padding: 0,
-        border: '1px solid var(--rule-faint)',
-        borderRadius: skin.id === 'terminal' ? 0 : 999,
-        background: 'transparent',
-        color: 'var(--ink-soft)',
-        fontFamily: skin.id === 'terminal' ? 'var(--font-mono)' : 'var(--font-body)',
-        fontSize: 16,
-        lineHeight: 1,
-        cursor: 'pointer',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      {children}
-    </button>
   );
 }
 

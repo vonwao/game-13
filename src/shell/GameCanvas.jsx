@@ -54,6 +54,7 @@ export default function GameCanvas({ state }) {
 
   const showCanvas =
     state.phase === 'playing' ||
+    state.phase === 'paused' ||
     state.phase === 'victory' ||
     state.phase === 'gameover';
 

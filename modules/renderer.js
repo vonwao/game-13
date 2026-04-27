@@ -198,6 +198,7 @@
 
   function render(ctx, state) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const isPaused = state.phase === 'paused';
 
     // Background — in shell mode leave canvas transparent so the skin's
     // HTML Background shows through. In standalone mode fill as before.
@@ -231,8 +232,10 @@
       return;
     }
 
-    // Playing phase
-    const shake = (LD.Particles && LD.Particles.getShakeOffset) ? LD.Particles.getShakeOffset() : {x:0,y:0};
+    // Playing / paused phase
+    const shake = (!isPaused && LD.Particles && LD.Particles.getShakeOffset)
+      ? LD.Particles.getShakeOffset()
+      : {x:0,y:0};
     ctx.save();
     ctx.translate(shake.x, shake.y);
 

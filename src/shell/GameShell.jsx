@@ -5,13 +5,19 @@ import HUDStrip from './components/HUDStrip.jsx';
 import RightRail from './components/RightRail.jsx';
 import ActionBar from './components/ActionBar.jsx';
 import PhoneObjTab from './components/PhoneObjTab.jsx';
+import {
+  PauseMenuOverlay,
+  RoundCompleteOverlay,
+  RunCompleteOverlay,
+} from './components/NavOverlay.jsx';
 import SettingsScreen from './panels/SettingsScreen.jsx';
 import HelpPanel from './panels/HelpPanel.jsx';
 import useGameShellState from './useGameShellState.js';
 import useMediaQuery from './useMediaQuery.js';
 import { useSkin } from './skins/SkinContext.jsx';
+import { legacyModesEnabled } from './legacyModes.js';
 
-function StartOverlay({ skin, actions, gameMode, onSettings, onHelp }) {
+function StartOverlay({ skin, actions, gameMode, legacyModes, onSettings, onHelp }) {
   return (
     <div
       style={{
@@ -53,12 +59,14 @@ function StartOverlay({ skin, actions, gameMode, onSettings, onHelp }) {
           <span onClick={actions.startGame} style={{ display: 'inline-flex', cursor: 'pointer' }}>
             <skin.ActionBtn label="Start Game" kbd="↵" primary />
           </span>
-          <span
-            onClick={() => actions.setGameMode(gameMode === 'wordhunt' ? 'siege' : 'wordhunt')}
-            style={{ display: 'inline-flex', cursor: 'pointer' }}
-          >
-            <skin.ActionBtn label={gameMode === 'wordhunt' ? 'Word Hunt' : 'Siege'} kbd="m" />
-          </span>
+          {legacyModes ? (
+            <span
+              onClick={() => actions.setGameMode(gameMode === 'wordhunt' ? 'siege' : 'wordhunt')}
+              style={{ display: 'inline-flex', cursor: 'pointer' }}
+            >
+              <skin.ActionBtn label={gameMode === 'wordhunt' ? 'Legacy Siege' : 'Word Hunt'} kbd="m" />
+            </span>
+          ) : null}
           <span onClick={onHelp} style={{ display: 'inline-flex', cursor: 'pointer' }}>
             <skin.ActionBtn label="How" kbd="?" warm />
           </span>
@@ -75,13 +83,79 @@ export default function GameShell() {
   const { state, actions } = useGameShellState();
   const { skin } = useSkin();
   const phone = useMediaQuery('(max-width: 720px)');
-  const [showSettings, setShowSettings] = useState(false);
-
-  const isPlaying =
-    state.phase === 'playing' ||
-    state.phase === 'victory' ||
-    state.phase === 'gameover';
+  const legacyModes = legacyModesEnabled();
+  const [panel, setPanel] = useState(null);
+  const phase = state.phase;
+  const rawPhase = state.rawPhase || phase;
+  const isPaused = !!state.isPaused || rawPhase === 'paused';
+  const showSettings = panel === 'settings';
+  const showMenu = panel === 'menu';
   const showHelp = !!state.ui?.showHelp;
+  const isRunActive = rawPhase === 'playing' || isPaused;
+  const showStartOverlay = rawPhase === 'settings' && !showSettings && !showHelp;
+  const isRoundComplete = rawPhase === 'victory' && !!state.huntSummary?.advanceAvailable;
+  const isRunComplete = rawPhase === 'gameover' || (rawPhase === 'victory' && !state.huntSummary?.advanceAvailable);
+
+  function openMenu() {
+    if (!isRunActive) return;
+    actions.setUIState({ showHelp: false });
+    if (rawPhase === 'playing' && typeof actions.pauseGame === 'function') {
+      actions.pauseGame();
+    }
+    setPanel('menu');
+  }
+
+  function closeMenu() {
+    setPanel(null);
+    if (isPaused && typeof actions.resumeGame === 'function') {
+      actions.resumeGame();
+    }
+  }
+
+  function openSettings() {
+    actions.setUIState({ showHelp: false });
+    if (rawPhase === 'playing' && typeof actions.pauseGame === 'function') {
+      actions.pauseGame();
+    }
+    setPanel('settings');
+  }
+
+  function closeSettings() {
+    setPanel(isPaused ? 'menu' : null);
+  }
+
+  function openHelp() {
+    if (rawPhase === 'playing' && typeof actions.pauseGame === 'function') {
+      actions.pauseGame();
+    }
+    setPanel(null);
+    actions.setUIState({ showHelp: true });
+  }
+
+  function closeHelp() {
+    actions.setUIState({ showHelp: false });
+    if (isPaused) {
+      setPanel('menu');
+    }
+  }
+
+  function restartRun() {
+    actions.setUIState({ showHelp: false });
+    setPanel(null);
+    actions.startGame();
+  }
+
+  function quitToStart() {
+    actions.setUIState({ showHelp: false });
+    setPanel(null);
+    actions.returnToSettings();
+  }
+
+  useEffect(() => {
+    if (!legacyModes && state.gameMode !== 'wordhunt') {
+      actions.setGameMode('wordhunt');
+    }
+  }, [actions, legacyModes, state.gameMode]);
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -89,17 +163,65 @@ export default function GameShell() {
 
       if (showSettings && event.key === 'Escape') {
         event.preventDefault();
-        setShowSettings(false);
+        closeSettings();
         return;
       }
 
       if (showHelp && event.key === 'Escape') {
         event.preventDefault();
-        actions.setUIState({ showHelp: false });
+        closeHelp();
         return;
       }
 
-      if (isPlaying || showSettings || showHelp) return;
+      if (showMenu) {
+        const key = event.key.toLowerCase();
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeMenu();
+          return;
+        }
+        if (key === 's') {
+          event.preventDefault();
+          setPanel('settings');
+          return;
+        }
+        if (key === 'h' || event.key === '?') {
+          event.preventDefault();
+          openHelp();
+          return;
+        }
+        if (key === 'r') {
+          event.preventDefault();
+          restartRun();
+          return;
+        }
+        if (key === 'q') {
+          event.preventDefault();
+          quitToStart();
+          return;
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          closeMenu();
+        }
+        return;
+      }
+
+      if (rawPhase === 'playing') {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          openMenu();
+        }
+        return;
+      }
+
+      if (isPaused) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          openMenu();
+        }
+        return;
+      }
 
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -107,7 +229,7 @@ export default function GameShell() {
         return;
       }
 
-      if (event.key === 'm' || event.key === 'M') {
+      if (legacyModes && (event.key === 'm' || event.key === 'M')) {
         event.preventDefault();
         actions.setGameMode(state.gameMode === 'wordhunt' ? 'siege' : 'wordhunt');
         return;
@@ -115,19 +237,19 @@ export default function GameShell() {
 
       if (event.key === 's' || event.key === 'S') {
         event.preventDefault();
-        setShowSettings(true);
+        openSettings();
         return;
       }
 
       if (event.key === '?') {
         event.preventDefault();
-        actions.setUIState({ showHelp: true });
+        openHelp();
       }
     }
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [actions, isPlaying, showHelp, showSettings, state.gameMode]);
+  }, [actions, isPaused, legacyModes, openHelp, openMenu, quitToStart, rawPhase, restartRun, showHelp, showMenu, showSettings, state.gameMode]);
 
   return (
     <ShellLayout>
@@ -135,11 +257,8 @@ export default function GameShell() {
         skin={skin}
         state={state}
         phone={phone}
-        onHelp={() => actions.setUIState({ showHelp: true })}
-        onSettings={() => {
-          actions.setUIState({ showHelp: false });
-          setShowSettings(true);
-        }}
+        onMenu={isRunActive ? (showMenu ? closeMenu : openMenu) : undefined}
+        menuOpen={showMenu}
       />
       <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
         <div
@@ -153,27 +272,60 @@ export default function GameShell() {
           }}
         >
           <GameCanvas state={state} />
-          {!isPlaying && (
+          {showStartOverlay && (
             <StartOverlay
               skin={skin}
               actions={actions}
               gameMode={state.gameMode}
-              onSettings={() => {
-                actions.setUIState({ showHelp: false });
-                setShowSettings(true);
-              }}
-              onHelp={() => actions.setUIState({ showHelp: true })}
+              legacyModes={legacyModes}
+              onSettings={openSettings}
+              onHelp={openHelp}
             />
           )}
         </div>
-        {!phone && (
-          <RightRail skin={skin} state={state} phone={phone} />
-        )}
+        {!phone && <RightRail skin={skin} state={state} phone={phone} />}
       </div>
-      {phone && isPlaying && (
+      {phone && isRunActive && (
         <PhoneObjTab skin={skin} state={state} />
       )}
       <ActionBar skin={skin} state={state} actions={actions} phone={phone} />
+
+      {showMenu && (
+        <PauseMenuOverlay
+          skin={skin}
+          phone={phone}
+          state={state}
+          onDismiss={closeMenu}
+          onResume={closeMenu}
+          onSettings={() => setPanel('settings')}
+          onHelp={openHelp}
+          onRestart={restartRun}
+          onQuit={quitToStart}
+        />
+      )}
+
+      {!showMenu && !showSettings && !showHelp && isRoundComplete && (
+        <RoundCompleteOverlay
+          skin={skin}
+          phone={phone}
+          state={state}
+          onContinue={() => {
+            setPanel(null);
+            actions.advanceRound();
+          }}
+          onSettings={() => setPanel('settings')}
+        />
+      )}
+
+      {!showMenu && !showSettings && !showHelp && isRunComplete && (
+        <RunCompleteOverlay
+          skin={skin}
+          phone={phone}
+          state={state}
+          onNewRun={restartRun}
+          onQuit={quitToStart}
+        />
+      )}
 
       {showHelp && (
         <div
@@ -191,7 +343,7 @@ export default function GameShell() {
             <HelpPanel />
           </div>
           <div
-            onClick={() => actions.setUIState({ showHelp: false })}
+            onClick={closeHelp}
             style={{
               position: 'absolute',
               top: 16,
@@ -221,7 +373,7 @@ export default function GameShell() {
           }}
         >
           <skin.Background />
-          <SettingsScreen state={state} actions={actions} onClose={() => setShowSettings(false)} />
+          <SettingsScreen state={state} actions={actions} onClose={closeSettings} />
         </div>
       )}
     </ShellLayout>
