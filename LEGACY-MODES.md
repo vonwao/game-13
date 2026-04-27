@@ -1,0 +1,48 @@
+# Legacy Modes
+
+`Siege` is no longer part of the public Lexicon Deep product surface.
+
+The live shell is now intentionally simplified around **Word Hunt**:
+
+- the start screen no longer exposes a mode switch
+- help and settings assume Word Hunt by default
+- pause / completion flows return to the single start surface
+
+The old mode is still kept in the codebase so it can be revived later without rebuilding it from scratch.
+
+## Current status
+
+- **Public product mode:** `wordhunt`
+- **Deprecated legacy mode:** `siege`
+- **Core code retained:** yes
+- **Public UI entry points:** removed
+
+## How to re-enable legacy modes locally
+
+Two non-public switches are supported by the shell:
+
+1. Open the app with `?legacyModes=1`
+2. Or set local storage key `lexdeep:legacyModes=1`
+
+When legacy modes are enabled:
+
+- the start screen shows the hidden mode toggle again
+- `m` toggles between `wordhunt` and `siege`
+- help and settings restore the old mode-aware copy
+
+## Where Siege still lives
+
+- Core state / phase plumbing: `modules/game.js`
+- Gameplay rules and submission flow: `modules/input.js`
+- Board generation and seal/corruption logic: `modules/board.js`
+- Legacy config tuning: `modules/constants.js`
+
+## Intent
+
+This is deprecation, not deletion.
+
+If Siege comes back later, it should return as a deliberate product decision with:
+
+- a fresh start-screen position
+- updated help/settings copy
+- a re-evaluated scoring/special-tile model

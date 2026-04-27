@@ -2,6 +2,7 @@ import { useSkin } from '../skins/SkinContext.jsx';
 import { SKINS } from '../skins/index.jsx';
 import useGameShellState from '../useGameShellState.js';
 import useMediaQuery from '../useMediaQuery.js';
+import { legacyModesEnabled } from '../legacyModes.js';
 
 // ─── Design-faithful helper components ────────────────────
 
@@ -300,20 +301,40 @@ const DICTIONARY_OPTIONS_PHONE = [
   { label: 'TWL', value: 'twl' },
   { label: 'OSPD', value: 'ospd' },
 ];
+const FOOTER_NOTE = 'Lexicon Deep · skin persists on this device only; gameplay settings apply on the next run and reset on reload.';
+const SOUND_CONTROL_NOTE = 'Visible in the handoff, but the current build still uses the core audio mix.';
+const PARTICLES_CONTROL_NOTE = 'Visible in the handoff, but the current build still uses the core effect pass.';
+const REDUCE_MOTION_NOTE = 'Visible in the handoff, but motion still comes straight from the core.';
+const PATH_COLORS_NOTE = 'Visible in the handoff, but the renderer still uses the active skin colors.';
+const DICTIONARY_NOTE = 'Visible in the handoff, but word validation still uses the bundled list.';
+const KEYBOARD_HINTS_NOTE = 'Visible in the handoff, but the action-bar hints still stay on.';
 
 function getDifficultyDescription(gameMode, difficulty) {
   return (DIFFICULTY_DESCRIPTIONS[gameMode] || DIFFICULTY_DESCRIPTIONS.wordhunt)[difficulty] || '';
+}
+
+function getGoalDescription(gameMode) {
+  return gameMode !== 'wordhunt'
+    ? 'Word Hunt only. Siege still ends on seals or corruption.'
+    : 'Choose how a Word Hunt page ends.';
+}
+
+function getSpecialTilesDescription(gameMode) {
+  return gameMode === 'siege'
+    ? 'Adds Ember, Crystal, the Wildcard tile, and bomb tiles to the board.'
+    : 'Adds Ember, Crystal, and the Wildcard tile to the page.';
 }
 
 // ─── Main Settings View ─────────────────────────────────────
 export function SettingsView({ state, actions, onClose }) {
   const { skin, skinId, setSkin } = useSkin();
   const isPhone = useMediaQuery('(max-width: 720px)');
+  const legacyModes = legacyModesEnabled();
 
   const settings = state?.settings ?? {};
   const setSettings = actions?.setSettings ?? (() => {});
   const goBack = onClose ?? actions?.returnToSettings ?? actions?.startGame ?? (() => {});
-  const gameMode = state?.gameMode ?? 'wordhunt';
+  const gameMode = legacyModes ? (state?.gameMode ?? 'wordhunt') : 'wordhunt';
 
   const difficulty = settings.difficulty ?? CORE_DEFAULT_SETTINGS.difficulty;
   const boardSize = settings.boardSize ?? CORE_DEFAULT_SETTINGS.boardSize;
@@ -323,6 +344,10 @@ export function SettingsView({ state, actions, onClose }) {
   const endCondition = settings.endCondition ?? CORE_DEFAULT_SETTINGS.endCondition;
   const goalDisabled = gameMode !== 'wordhunt';
   const difficultyDescription = getDifficultyDescription(gameMode, difficulty);
+  const goalDescription = getGoalDescription(gameMode);
+  const specialTilesDescription = getSpecialTilesDescription(gameMode);
+  const soundDisabled = true;
+  const particlesDisabled = true;
 
   if (isPhone) {
     return (
@@ -382,7 +407,7 @@ export function SettingsView({ state, actions, onClose }) {
             />
             <SettingRow
               label="Goal"
-              desc={goalDisabled ? 'Word Hunt only. Siege ignores this setting.' : 'How a Word Hunt round ends.'}
+              desc={goalDescription}
               stackValue
               value={
                 <Segmented
@@ -397,17 +422,18 @@ export function SettingsView({ state, actions, onClose }) {
             />
             <SettingRow
               label="Special tiles"
-              desc="Turns on crystal, void, ember, and other special tile types."
+              desc={specialTilesDescription}
               value={<Toggle on={specialTiles} onClick={() => setSettings({ specialTiles: !specialTiles })} />}
             />
             <SettingRow
               label="Sound"
-              value={<Toggle on={soundEnabled} onClick={() => setSettings({ soundEnabled: !soundEnabled })} />}
+              desc={SOUND_CONTROL_NOTE}
+              value={<Toggle on={soundEnabled} disabled={soundDisabled} />}
             />
             <SettingRow
               label="Particles"
-              desc="Board bursts and tile effect particles."
-              value={<Toggle on={particlesEnabled} onClick={() => setSettings({ particlesEnabled: !particlesEnabled })} />}
+              desc={PARTICLES_CONTROL_NOTE}
+              value={<Toggle on={particlesEnabled} disabled={particlesDisabled} />}
             />
           </div>
 
@@ -415,12 +441,12 @@ export function SettingsView({ state, actions, onClose }) {
             <SectionLabel>Coming soon</SectionLabel>
             <SettingRow
               label="Reduce motion"
-              desc="Planned shell control. Motion is still fixed by the core."
+              desc={REDUCE_MOTION_NOTE}
               value={<Toggle on={false} disabled />}
             />
             <SettingRow
               label="Path colors"
-              desc="Planned shell control. The renderer still uses the active skin colors."
+              desc={PATH_COLORS_NOTE}
               stackValue
               value={
                 <Segmented
@@ -434,7 +460,7 @@ export function SettingsView({ state, actions, onClose }) {
             />
             <SettingRow
               label="Dictionary"
-              desc="Planned shell control. Word validation still uses the bundled list instead."
+              desc={DICTIONARY_NOTE}
               stackValue
               value={
                 <Segmented
@@ -447,13 +473,13 @@ export function SettingsView({ state, actions, onClose }) {
             />
             <SettingRow
               label="Keyboard hints"
-              desc="Planned shell control. Action-bar key hints stay visible today."
+              desc={KEYBOARD_HINTS_NOTE}
               value={<Toggle on disabled />}
             />
           </div>
 
           <div style={{ borderTop: '1px solid var(--rule-faint)', paddingTop: 12, marginTop: 16, fontSize: 13, color: 'var(--ink-faint)', fontStyle: 'italic' }}>
-            Lexicon Deep · skin persists on this device; board settings apply on the next fresh page.
+            {FOOTER_NOTE}
           </div>
         </div>
       </div>
@@ -519,7 +545,7 @@ export function SettingsView({ state, actions, onClose }) {
             />
             <SettingRow
               label="Goal"
-              desc={goalDisabled ? 'Word Hunt only. Siege ignores this setting.' : 'How a Word Hunt round ends.'}
+              desc={goalDescription}
               value={
                 <Segmented
                   options={END_CONDITION_OPTIONS_DESKTOP}
@@ -531,7 +557,7 @@ export function SettingsView({ state, actions, onClose }) {
             />
             <SettingRow
               label="Special tiles"
-              desc="Turns on crystal, void, ember, and other special tile types."
+              desc={specialTilesDescription}
               value={<Toggle on={specialTiles} onClick={() => setSettings({ specialTiles: !specialTiles })} />}
             />
           </div>
@@ -541,13 +567,13 @@ export function SettingsView({ state, actions, onClose }) {
             <SectionLabel>Options</SectionLabel>
             <SettingRow
               label="Sound"
-              desc="Submit, discovery, and interface sound effects."
-              value={<Toggle on={soundEnabled} onClick={() => setSettings({ soundEnabled: !soundEnabled })} />}
+              desc={SOUND_CONTROL_NOTE}
+              value={<Toggle on={soundEnabled} disabled={soundDisabled} />}
             />
             <SettingRow
               label="Particles"
-              desc="Board bursts and tile effect particles."
-              value={<Toggle on={particlesEnabled} onClick={() => setSettings({ particlesEnabled: !particlesEnabled })} />}
+              desc={PARTICLES_CONTROL_NOTE}
+              value={<Toggle on={particlesEnabled} disabled={particlesDisabled} />}
             />
           </div>
 
@@ -557,12 +583,12 @@ export function SettingsView({ state, actions, onClose }) {
               <div>
                 <SettingRow
                   label="Reduce motion"
-                  desc="Planned shell control. Motion is still fixed by the core."
+                  desc={REDUCE_MOTION_NOTE}
                   value={<Toggle on={false} disabled />}
                 />
                 <SettingRow
                   label="Path colors"
-                  desc="Planned shell control. The renderer still uses the active skin colors."
+                  desc={PATH_COLORS_NOTE}
                   value={
                     <Segmented
                       options={PATH_COLOR_OPTIONS_DESKTOP}
@@ -575,7 +601,7 @@ export function SettingsView({ state, actions, onClose }) {
               <div>
                 <SettingRow
                   label="Dictionary"
-                  desc="Planned shell control. Word validation still uses the bundled list instead."
+                  desc={DICTIONARY_NOTE}
                   value={
                     <Segmented
                       options={DICTIONARY_OPTIONS_DESKTOP}
@@ -585,7 +611,7 @@ export function SettingsView({ state, actions, onClose }) {
                 />
                 <SettingRow
                   label="Keyboard hints"
-                  desc="Planned shell control. Action-bar key hints stay visible today."
+                  desc={KEYBOARD_HINTS_NOTE}
                   value={<Toggle on disabled />}
                 />
               </div>
@@ -595,7 +621,7 @@ export function SettingsView({ state, actions, onClose }) {
 
         {/* Footer */}
         <div style={{ borderTop: '1px solid var(--rule-faint)', paddingTop: 12, marginTop: 16, display: 'flex', gap: 10, fontSize: 13, color: 'var(--ink-faint)', fontStyle: 'italic' }}>
-          <span>Lexicon Deep · skin persists on this device; board settings apply on the next fresh page.</span>
+          <span>{FOOTER_NOTE}</span>
         </div>
       </div>
     </div>

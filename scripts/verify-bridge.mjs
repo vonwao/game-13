@@ -50,6 +50,11 @@ async function main() {
     typeof preStartState.huntSummary?.roundTitle === 'string',
     `roundTitle=${preStartState.huntSummary?.roundTitle}`,
   );
+  record(
+    'A1 pre-start hides legacy mode controls by default',
+    await page.locator('button:has-text("Legacy Siege"), button:has-text("Siege")').count() === 0,
+    'no public Siege toggle on the home screen',
+  );
 
   // No page errors during boot.
   record(
@@ -168,8 +173,60 @@ async function main() {
   );
 
   // Clear typed word so next assertions don't depend on stale input.
-  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    if (window.LD && window.LD.Actions && typeof window.LD.Actions.clearCurrentWord === 'function') {
+      window.LD.Actions.clearCurrentWord();
+    }
+  });
   await page.waitForTimeout(30);
+
+  // ---- A2b: HUD menu opens a real pause surface and blocks gameplay ----
+  await page.locator('[data-testid="hud-menu-button"]').click();
+  await page.waitForSelector('[data-testid="pause-card"]', { timeout: 3000 });
+  const pausedState = await page.evaluate(() => window.LD.Game.getShellState());
+  record(
+    'A2b HUD menu opens the pause card',
+    await page.locator('[data-testid="pause-card"]').count() > 0,
+    'pause card visible',
+  );
+  record(
+    'A2b opening the menu pauses the core state',
+    pausedState.phase === 'paused' || pausedState.isPaused === true,
+    `phase=${pausedState.phase} isPaused=${pausedState.isPaused}`,
+  );
+  await page.keyboard.press('a');
+  await page.waitForTimeout(40);
+  const typedWhilePaused = await page.evaluate(() => window.LD.Game.getShellState().inputSummary?.typed || '');
+  record(
+    'A2b typing is blocked while paused',
+    typedWhilePaused === '',
+    `typed="${typedWhilePaused}"`,
+  );
+  await page.locator('[data-testid="pause-card"] button:has-text("Settings")').click();
+  await page.waitForSelector('[data-testid="settings-overlay"]', { timeout: 3000 });
+  record(
+    'A2b pause card Settings opens the settings overlay',
+    await page.locator('[data-testid="settings-overlay"]').count() > 0,
+    'settings overlay visible',
+  );
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-testid="pause-card"]', { timeout: 3000 });
+  record(
+    'A2b closing settings while paused returns to the pause card',
+    await page.locator('[data-testid="pause-card"]').count() > 0,
+    'pause card restored',
+  );
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="pause-card"]'),
+    { timeout: 3000 },
+  );
+  const resumedState = await page.evaluate(() => window.LD.Game.getShellState());
+  record(
+    'A2b Escape closes the pause card and resumes play',
+    resumedState.phase === 'playing' && !resumedState.isPaused,
+    `phase=${resumedState.phase} isPaused=${resumedState.isPaused}`,
+  );
 
   // ---- A3: canvas pixel buffer matches mount rect, not window size ----
   async function readSizes() {
