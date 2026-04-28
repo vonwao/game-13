@@ -24,7 +24,8 @@ This directory is the canonical home for sprint planning and planning history.
 ## Current files
 
 - [SPRINT-000-shipped-foundation.md](./SPRINT-000-shipped-foundation.md): concise history of the work already shipped
-- [SPRINT-001-single-front-door.md](./SPRINT-001-single-front-door.md): current sprint and live todo list
+- [SPRINT-001-single-front-door.md](./SPRINT-001-single-front-door.md): completed sprint that established the single public Word Hunt shell
+- [SPRINT-002-solver-and-simulation.md](./SPRINT-002-solver-and-simulation.md): current active sprint for solver-backed gameplay redesign
 - [archive/README.md](./archive/README.md): index of archived execution plans and status snapshots
 
 ## Active root docs

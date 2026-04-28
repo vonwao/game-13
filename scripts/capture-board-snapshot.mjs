@@ -60,6 +60,8 @@ const outFile = readArg('--out', null);
 const timeoutMs = parsePositiveInt(readArg('--timeout', '8000'), 8000);
 const settleMs = parsePositiveInt(readArg('--settle', '120'), 120);
 const viewport = parseViewport(readArg('--viewport', '1440x900'));
+const solverMinLength = parsePositiveInt(readArg('--solver-min-length', '5'), 5);
+const solverLimit = parsePositiveInt(readArg('--solver-limit', '25'), 25);
 
 const settingsPatch = {};
 const boardSize = pickAllowed(readArg('--board-size', ''), ['small', 'medium', 'large']);
@@ -73,9 +75,10 @@ if (endCondition) settingsPatch.endCondition = endCondition;
 if (specialTiles !== null) settingsPatch.specialTiles = specialTiles;
 
 async function captureSnapshot(page) {
-  return page.evaluate(() => {
+  return page.evaluate(({ solverMinLength, solverLimit }) => {
     const game = window.LD && window.LD.Game;
     const state = window.LD && window.LD.STATE;
+    const solver = window.LD && window.LD.Solver;
     if (!game || typeof game.getShellState !== 'function' || !state) {
       throw new Error('Lexicon Deep runtime is not ready');
     }
@@ -128,6 +131,16 @@ async function captureSnapshot(page) {
     const hunt = state.hunt || {};
     const plantedWords = Array.isArray(hunt.plantedWords) ? hunt.plantedWords : [];
     const discoveredWords = Array.isArray(hunt.discoveredWords) ? hunt.discoveredWords : [];
+    const solverOptions = {
+      minLength: solverMinLength,
+      dedupeBy: 'word',
+    };
+    const solverSolutions = solver && typeof solver.solveBoard === 'function'
+      ? solver.solveBoard(state, solverOptions)
+      : [];
+    const solverSummary = solver && typeof solver.summarizeBoard === 'function'
+      ? solver.summarizeBoard(state, solverOptions)
+      : null;
 
     return {
       meta: {
@@ -179,9 +192,26 @@ async function captureSnapshot(page) {
             found: entry && typeof entry === 'object' ? entry.found !== false : true,
           })),
         },
+        solver: {
+          options: solverOptions,
+          summary: solverSummary,
+          topSolutions: solverSolutions.slice(0, solverLimit).map((entry) => ({
+            word: entry.word,
+            score: entry.score,
+            length: entry.length,
+            playable: !!entry.playable,
+            planted: !!entry.planted,
+            organic: !!entry.organic,
+            corners: entry.corners || 0,
+            wildcardCount: entry.wildcardCount || 0,
+            pathCount: entry.pathCount || 0,
+            playablePathCount: entry.playablePathCount || 0,
+            blockedPathCount: entry.blockedPathCount || 0,
+          })),
+        },
       },
     };
-  });
+  }, { solverMinLength, solverLimit });
 }
 
 async function main() {

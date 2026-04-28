@@ -35,6 +35,73 @@
     WEIGHT_TABLE.push([letter, total]);
   }
   const WEIGHT_TOTAL = total;
+  let WORD_LIST = null;
+  let TRIE_ROOT = null;
+  let TRIE_META = null;
+
+  function getWords() {
+    if (!WORD_LIST) WORD_LIST = Array.from(DICT);
+    return WORD_LIST;
+  }
+
+  function createTrieNode() {
+    return {
+      children: Object.create(null),
+      keys: [],
+      terminal: false,
+    };
+  }
+
+  function buildTrie() {
+    if (TRIE_ROOT) return TRIE_ROOT;
+
+    const root = createTrieNode();
+    let minLength = Infinity;
+    let maxLength = 0;
+    let count = 0;
+    const words = getWords();
+
+    for (let i = 0; i < words.length; i++) {
+      const word = String(words[i] || '').toUpperCase();
+      if (!word) continue;
+
+      let node = root;
+      for (let j = 0; j < word.length; j++) {
+        const ch = word[j];
+        if (!node.children[ch]) {
+          node.children[ch] = createTrieNode();
+          node.keys.push(ch);
+        }
+        node = node.children[ch];
+      }
+
+      node.terminal = true;
+      count++;
+      if (word.length < minLength) minLength = word.length;
+      if (word.length > maxLength) maxLength = word.length;
+    }
+
+    TRIE_ROOT = root;
+    TRIE_META = {
+      count,
+      minLength: minLength === Infinity ? 0 : minLength,
+      maxLength,
+    };
+    return TRIE_ROOT;
+  }
+
+  function getTrieRoot() {
+    return buildTrie();
+  }
+
+  function getLexiconMeta() {
+    buildTrie();
+    return {
+      count: TRIE_META.count,
+      minLength: TRIE_META.minLength,
+      maxLength: TRIE_META.maxLength,
+    };
+  }
 
   /**
    * Check if a word is valid (case-insensitive).
@@ -88,5 +155,13 @@
     return 'E'; // fallback
   }
 
-  window.LD.Dict = { isValid, score, getLetterPoints, getRandomLetter };
+  window.LD.Dict = {
+    isValid,
+    score,
+    getLetterPoints,
+    getRandomLetter,
+    getWords,
+    getTrieRoot,
+    getLexiconMeta,
+  };
 })();
