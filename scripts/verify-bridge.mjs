@@ -315,6 +315,61 @@ async function main() {
     'sheet closed',
   );
 
+  // ---- A5: scoring config — combo bonuses are off, wildcard mult exists ----
+  // Reset to a desktop viewport for the scoring checks.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(80);
+  const scoringConfig = await page.evaluate(() => {
+    const s = window.LD?.STATE;
+    return {
+      comboBonuses: !!s?.config?.comboBonuses,
+      gameMode: s?.gameMode,
+    };
+  });
+  record(
+    'A5 word hunt config has combo bonuses disabled',
+    scoringConfig.gameMode === 'wordhunt' && scoringConfig.comboBonuses === false,
+    `gameMode=${scoringConfig.gameMode} comboBonuses=${scoringConfig.comboBonuses}`,
+  );
+
+  // The breakdown function should produce a wildcardMult field; calling it
+  // here would require a real path. Instead, search the bundled module text
+  // for the wildcard halving rule so a future regression is caught.
+  const wildcardWired = await page.evaluate(async () => {
+    try {
+      const r = await fetch('/modules/input.js');
+      const txt = await r.text();
+      return /hasWildcard/.test(txt) && /wildcardMult\s*=\s*hasWildcard\s*\?\s*0\.5/.test(txt);
+    } catch {
+      return false;
+    }
+  });
+  record(
+    'A5 wildcard ×0.5 penalty is wired in input.js',
+    wildcardWired,
+    wildcardWired ? 'hasWildcard + wildcardMult = 0.5 present' : 'wildcard math missing',
+  );
+
+  // ---- A6: paused phase blocks gameplay keystrokes ----
+  // Open the pause menu (Esc), type letters, confirm typed buffer is unchanged.
+  const typedBefore = await page.evaluate(() => window.LD.Game.getShellState().inputSummary?.typed || '');
+  await page.keyboard.press('Escape');
+  // Wait for pause card; the menu button toggles to ✕.
+  await page.waitForFunction(
+    () => window.LD.STATE?.phase === 'paused' || window.LD.Game.getShellState().phase === 'paused',
+    { timeout: 3000 },
+  ).catch(() => {});
+  await page.keyboard.press('a');
+  await page.keyboard.press('b');
+  await page.keyboard.press('c');
+  await page.waitForTimeout(80);
+  const typedAfter = await page.evaluate(() => window.LD.Game.getShellState().inputSummary?.typed || '');
+  record(
+    'A6 paused phase blocks gameplay keystrokes',
+    typedAfter === typedBefore,
+    `before="${typedBefore}" after="${typedAfter}"`,
+  );
+
   // ---- summary ----
   await browser.close();
   const passed = results.filter((r) => r.pass).length;

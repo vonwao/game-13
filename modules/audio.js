@@ -74,6 +74,7 @@
   }
 
   function playLetterTick(letterIndex) {
+    if (!isSoundEnabled()) return;
     if (!ensureCtx()) return;
     const freq = TICK_FREQS[letterIndex % TICK_FREQS.length];
     const now = ctx.currentTime;
@@ -242,7 +243,14 @@
     },
   };
 
+  function isSoundEnabled() {
+    return !window.LD || !window.LD.STATE || !window.LD.STATE.settings
+      ? true
+      : !!window.LD.STATE.settings.soundEnabled;
+  }
+
   function play(name, opts) {
+    if (!isSoundEnabled()) return;
     if (!ensureCtx()) return;
     opts = opts || {};
     const fn = sounds[name];

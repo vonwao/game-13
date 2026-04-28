@@ -126,9 +126,11 @@
         // Discovery / progression
         clueCount:   { easy: 3, medium: 2, hard: 1 }[diff],
         roundsToWin: 3,
-        // Scoring
+        // Scoring — combo bonuses removed (April 2026): chains rewarded
+        // streaks, not decisions, and the multiplier was hidden in the HUD
+        // anyway. See PR notes / commit history.
         pathBonuses:  true,
-        comboBonuses: true,
+        comboBonuses: false,
         // Timing
         timeLimit:  { easy: 420, medium: 300, hard: 180 }[diff],
         turnLimit:  { easy: 60,  medium: 50,  hard: 35  }[diff],

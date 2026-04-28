@@ -289,11 +289,13 @@
     let basePts = 0;
     let emberCount = 0;
     let hasCrystal = false;
+    let hasWildcard = false;
     for (let i = 0; i < path.length; i++) {
       const t = board.tiles[path[i].row * board.width + path[i].col];
       basePts += t ? (t.points || 1) : 1;
       if (t && t.icon === 'ember') emberCount++;
       if (t && t.icon === 'crystal') hasCrystal = true;
+      if (t && t.icon === 'void') hasWildcard = true;
     }
 
     const lenMult = lengthMultiplier(word.length);
@@ -318,8 +320,11 @@
     }
 
     const crystalMult = hasCrystal ? 2.0 : 1.0;
+    // Wildcard penalty: paths through ✦ tiles score at half. Single penalty
+    // regardless of how many wildcards the path uses — keeps the rule legible.
+    const wildcardMult = hasWildcard ? 0.5 : 1.0;
     const emberBonus = emberCount * 20;
-    const multiplied = Math.round(basePts * lenMult * shapeMult * comboMult * crystalMult);
+    const multiplied = Math.round(basePts * lenMult * shapeMult * comboMult * crystalMult * wildcardMult);
     const total = multiplied + emberBonus;
 
     return {
@@ -332,6 +337,8 @@
       comboMult,
       crystalMult,
       hasCrystal,
+      wildcardMult,
+      hasWildcard,
       emberCount,
       emberBonus,
       multiplied,
@@ -862,6 +869,7 @@
     }
 
     if (isGameOver) return; // no word input after game ends
+    if (phase === 'paused') return; // pause card is open — block gameplay keys
 
     // ── C — spend a clue in Word Hunt ──────────────────────────────────────
     if ((key === 'c' || key === 'C') && _state.gameMode === 'wordhunt') {

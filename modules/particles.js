@@ -168,9 +168,18 @@
 
   // ── Public API ───────────────────────────────────────────────────────────────
 
+  function effectsEnabled() {
+    return !window.LD || !window.LD.STATE || !window.LD.STATE.settings
+      ? true
+      : !!window.LD.STATE.settings.particlesEnabled;
+  }
+
   const Particles = {
     // ── Core spawn ─────────────────────────────────────────────────────────────
     spawn(type, x, y, opts) {
+      // Floating text popups (score reveals, etc.) ignore the toggle —
+      // they're feedback, not decoration. All other types respect it.
+      if (type !== 'text' && !effectsEnabled()) return null;
       if (!canSpawn(type)) return null;
       const p = createParticle(type, x, y, opts);
       particles.push(p);
@@ -179,6 +188,7 @@
 
     // ── Radial burst shorthand ──────────────────────────────────────────────────
     burst(x, y, color, count) {
+      if (!effectsEnabled()) return;
       count = count || 12;
       for (let i = 0; i < count; i++) {
         if (!canSpawn('burst')) break;
