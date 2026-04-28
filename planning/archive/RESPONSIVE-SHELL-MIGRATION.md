@@ -1,5 +1,7 @@
 # LEXICON DEEP — Responsive Shell Migration Plan
 
+Archived historical migration plan. Preserved for context; the shell work described here has already shipped.
+
 This document defines the next major architectural move for Lexicon Deep:
 
 - keep the board and core gameplay rendering in canvas
@@ -9,7 +11,7 @@ This document defines the next major architectural move for Lexicon Deep:
 This is a concrete execution plan.
 It is intentionally incremental.
 
-If this file, [ROADMAP.md](/Users/vonwao/dev/micro-projects/game-13/ROADMAP.md), and [NEXT-SPRINT-PLAN.md](/Users/vonwao/dev/micro-projects/game-13/NEXT-SPRINT-PLAN.md) ever disagree:
+If this file, [ROADMAP.md](../../ROADMAP.md), and [NEXT-SPRINT-PLAN.md](./NEXT-SPRINT-PLAN.md) ever disagree:
 
 - `ROADMAP.md` sets overall priority
 - `NEXT-SPRINT-PLAN.md` covers the current low-level architecture sprint

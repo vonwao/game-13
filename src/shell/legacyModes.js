@@ -1,5 +1,6 @@
-const LEGACY_MODES_QUERY = 'legacyModes';
-const LEGACY_MODES_STORAGE_KEY = 'lexdeep:legacyModes';
+// Non-public shell switch for local QA of deprecated modes.
+export const LEGACY_MODES_QUERY = 'legacyModes';
+export const LEGACY_MODES_STORAGE_KEY = 'lexdeep:legacyModes';
 
 function readFromLocation() {
   if (typeof window === 'undefined' || !window.location) return null;
@@ -32,7 +33,11 @@ export function legacyModesEnabled() {
 export function persistLegacyModesPreference(enabled) {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
-    window.localStorage.setItem(LEGACY_MODES_STORAGE_KEY, enabled ? '1' : '0');
+    if (enabled) {
+      window.localStorage.setItem(LEGACY_MODES_STORAGE_KEY, '1');
+    } else {
+      window.localStorage.removeItem(LEGACY_MODES_STORAGE_KEY);
+    }
   } catch {
     // localStorage can be unavailable; ignore.
   }

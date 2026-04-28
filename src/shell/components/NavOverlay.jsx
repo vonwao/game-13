@@ -437,6 +437,23 @@ function formatScore(score) {
   return Number(score || 0).toLocaleString();
 }
 
+function getEndConditionLabel(endCondition) {
+  return ({
+    challenges: 'Objectives',
+    zen: 'Zen',
+    timed: 'Timed',
+    turns: 'Turns',
+  })[endCondition || 'challenges'] || 'Objectives';
+}
+
+function getRoundTitle(round) {
+  return ({
+    1: 'The First Page',
+    2: 'Dust and Echoes',
+    3: 'The Black Index',
+  })[round] || `Round ${round}`;
+}
+
 function getBestWord(historyItems) {
   if (!historyItems.length) return null;
   return historyItems.reduce((best, entry) => {
@@ -521,12 +538,37 @@ export function PauseMenuOverlay({
 }) {
   const hunt = state.huntSummary || {};
   const run = state.run || {};
+  const settings = state.settings || {};
   const subtitle = `Round ${hunt.round || 1} · ${hunt.roundTitle || 'The First Page'}`;
+  const endCondition = settings.endCondition || 'challenges';
+  const paceValue = endCondition === 'timed'
+    ? `${Math.max(0, Math.ceil(hunt.timeRemaining || 0))}s left`
+    : endCondition === 'turns'
+      ? `${hunt.turnsRemaining || 0} turns left`
+      : 'no hard clock';
+  const currentRows = [
+    { label: 'Goal', meta: getEndConditionLabel(endCondition), detail: 'applies to the active page' },
+    { label: 'Clues', meta: String(hunt.cluesRemaining || 0), detail: 'still available' },
+    { label: 'Pace', meta: paceValue, detail: endCondition === 'challenges' ? 'advance by clearing objectives' : 'the page is still live when you return' },
+  ];
 
   return (
     <OverlayScrim skin={skin} onDismiss={onDismiss} dataTestId="nav-overlay">
       <FlowCard skin={skin} phone={phone} width={phone ? 288 : 328} dataTestId="pause-card">
         <FlowHeader skin={skin} title="Paused" subtitle={subtitle} divider />
+        <div
+          style={{
+            fontFamily: 'var(--font-body)',
+            fontSize: 12,
+            color: 'var(--ink-soft)',
+            lineHeight: 1.45,
+            marginBottom: 14,
+            fontStyle: isPageSkin(skin) ? 'italic' : 'normal',
+          }}
+        >
+          Step away without losing the page. The board, timer, and current pressure will resume exactly where you left them.
+        </div>
+        <SummaryList skin={skin} label="Current Page" rows={currentRows} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: isTerminalSkin(skin) ? 0 : 2 }}>
           <ActionChip skin={skin} label="Resume" icon="▶" kbd="Esc" primary onClick={onResume} />
           <ActionChip skin={skin} label="Settings" icon="⚙" kbd="S" onClick={onSettings} />
@@ -562,9 +604,18 @@ export function PauseMenuOverlay({
 export function RoundCompleteOverlay({ skin, phone, state, onContinue, onSettings }) {
   const hunt = state.huntSummary || {};
   const run = state.run || {};
+  const settings = state.settings || {};
   const history = state.history?.items || [];
   const bestWord = getBestWord(history);
   const title = `${hunt.roundTitle || 'The First Page'} is set.`;
+  const nextRound = Math.min((hunt.round || 1) + 1, hunt.maxRounds || 3);
+  const nextRoundTitle = getRoundTitle(nextRound);
+  const endCondition = settings.endCondition || 'challenges';
+  const recapRows = [
+    { label: 'Page goal', meta: getEndConditionLabel(endCondition), detail: 'cleared for this round' },
+    { label: 'Clues carried', meta: String(hunt.cluesRemaining || 0), detail: 'ready for the next page' },
+    { label: 'Next page', meta: nextRoundTitle, detail: nextRound > (hunt.round || 1) ? `round ${nextRound} of ${hunt.maxRounds || 3}` : 'final page already reached' },
+  ];
 
   return (
     <OverlayScrim skin={skin} dataTestId="round-complete-overlay">
@@ -579,6 +630,19 @@ export function RoundCompleteOverlay({ skin, phone, state, onContinue, onSetting
             ['Best', bestWord ? `${bestWord.word} +${bestWord.score || 0}` : '—'],
           ]}
         />
+        <div
+          style={{
+            fontFamily: 'var(--font-body)',
+            fontSize: 12,
+            color: 'var(--ink-soft)',
+            lineHeight: 1.45,
+            marginBottom: 14,
+            fontStyle: isPageSkin(skin) ? 'italic' : 'normal',
+          }}
+        >
+          The page is sealed. Carry what remains into the next folio, or step into Settings before you open it.
+        </div>
+        <SummaryList skin={skin} label="Carry Forward" rows={recapRows} />
         <ObjectiveList skin={skin} items={(state.objectives?.items || []).slice(0, 3)} />
         <div style={{ height: 1, background: getDividerColor(skin), margin: '14px 0' }} />
         <ActionRow>
@@ -600,6 +664,7 @@ export function RunCompleteOverlay({ skin, phone, state, onNewRun, onQuit }) {
   const bestWord = getBestWord(history);
   const phase = state.phase;
   const success = phase === 'victory';
+  const settings = state.settings || {};
   const rows = (state.history?.recent || [])
     .slice(0, phone ? 3 : 6)
     .map((entry) => ({
@@ -607,6 +672,11 @@ export function RunCompleteOverlay({ skin, phone, state, onNewRun, onQuit }) {
       meta: `+${entry.score || 0}`,
       detail: entry.shapeLabel || `${entry.pathLength || 0} letters`,
     }));
+  const archiveRows = [
+    { label: 'Goal shape', meta: getEndConditionLabel(settings.endCondition), detail: 'used for this run' },
+    { label: 'Board size', meta: settings.boardSize || 'small', detail: 'next run can change this' },
+    { label: 'Wildcard rule', meta: settings.specialTiles ? 'enabled' : 'off', detail: settings.specialTiles ? 'paths through wildcards score at half' : 'letters only' },
+  ];
 
   return (
     <OverlayScrim skin={skin} dataTestId="run-complete-overlay">
@@ -625,6 +695,21 @@ export function RunCompleteOverlay({ skin, phone, state, onNewRun, onQuit }) {
             ['Best Word', bestWord ? bestWord.word : '—'],
           ]}
         />
+        <div
+          style={{
+            fontFamily: 'var(--font-body)',
+            fontSize: 12,
+            color: 'var(--ink-soft)',
+            lineHeight: 1.45,
+            marginBottom: 14,
+            fontStyle: isPageSkin(skin) ? 'italic' : 'normal',
+          }}
+        >
+          {success
+            ? 'The full volume is closed. Start another run with the same setup, or return to the front door and reset the page.'
+            : 'This run is over, but the archive is ready for another attempt whenever you are.'}
+        </div>
+        <SummaryList skin={skin} label="Run Shape" rows={archiveRows} />
         {!phone ? <SummaryList skin={skin} label="Recent Words" rows={rows} /> : null}
         <div style={{ height: 1, background: getDividerColor(skin), margin: '14px 0' }} />
         <ActionRow>

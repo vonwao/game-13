@@ -1108,7 +1108,7 @@
       ctx.font = '11px "Courier New", monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Type, click, or drag tiles · Enter submit · C clue · ` debug · ? help', 20, barY + 41);
+      ctx.fillText('Type, click, or drag tiles · Enter submit · clue button · ` debug · ? help', 20, barY + 41);
     }
   }
 
@@ -1300,7 +1300,7 @@
     ctx.fillStyle = '#7a6a50';
     if (recent.length === 0) {
       ctx.fillText('No hidden words found yet.', panelX + 8, panelY + 28);
-      ctx.fillText('Use C or the clue button when stuck.', panelX + 8, panelY + 44);
+      ctx.fillText('Use the clue button when stuck.', panelX + 8, panelY + 44);
       return;
     }
 
@@ -1568,7 +1568,7 @@
         'Enter: submit',
         'Backspace / Escape: edit or clear',
         'Arrow keys: scroll the board',
-        'C: spend a clue in Word Hunt',
+        'Clue button: reveal part of an unfound planted word',
         '` : toggle debug overlay',
         '?: open or close help',
       ].forEach(function (line) {

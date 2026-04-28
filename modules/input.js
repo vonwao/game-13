@@ -871,14 +871,6 @@
     if (isGameOver) return; // no word input after game ends
     if (phase === 'paused') return; // pause card is open — block gameplay keys
 
-    // ── C — spend a clue in Word Hunt ──────────────────────────────────────
-    if ((key === 'c' || key === 'C') && _state.gameMode === 'wordhunt') {
-      e.preventDefault();
-      if (window.LD.Actions) window.LD.Actions.useClue();
-      else useClue();
-      return;
-    }
-
     // ── Escape — clear input ──────────────────────────────────────────────────
     if (key === 'Escape') {
       e.preventDefault();

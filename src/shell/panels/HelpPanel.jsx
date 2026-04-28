@@ -359,7 +359,6 @@ export default function HelpPanel() {
               <Kbd>type</Kbd><span style={{ color: 'var(--ink-soft)' }}>→</span><span style={{ fontFamily: 'var(--font-body)' }}>build a word from your fingers</span>
               <Kbd>↵</Kbd><span style={{ color: 'var(--ink-soft)' }}>→</span><span style={{ fontFamily: 'var(--font-body)' }}>submit</span>
               <Kbd>esc</Kbd><span style={{ color: 'var(--ink-soft)' }}>→</span><span style={{ fontFamily: 'var(--font-body)' }}>clear the trace</span>
-              <Kbd>c</Kbd><span style={{ color: 'var(--ink-soft)' }}>→</span><span style={{ fontFamily: 'var(--font-body)' }}>spend a clue</span>
             </div>
           </Step>
         </div>

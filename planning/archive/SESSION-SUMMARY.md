@@ -1,5 +1,7 @@
 # Session Summary
 
+Archived historical status snapshot. Preserved for context from before the skin system and nav simplification shipped.
+
 Date: 2026-04-20
 
 ## Current State
@@ -100,9 +102,9 @@ We spent real time aligning architecture and execution plans, not just coding bl
 
 Created and tightened:
 
-- [NEXT-SPRINT-PLAN.md](/Users/vonwao/dev/micro-projects/game-13/NEXT-SPRINT-PLAN.md)
-- [ROADMAP.md](/Users/vonwao/dev/micro-projects/game-13/ROADMAP.md)
-- [RESPONSIVE-SHELL-MIGRATION.md](/Users/vonwao/dev/micro-projects/game-13/RESPONSIVE-SHELL-MIGRATION.md)
+- [NEXT-SPRINT-PLAN.md](./NEXT-SPRINT-PLAN.md)
+- [ROADMAP.md](../../ROADMAP.md)
+- [RESPONSIVE-SHELL-MIGRATION.md](./RESPONSIVE-SHELL-MIGRATION.md)
 
 And refined them based on feedback:
 

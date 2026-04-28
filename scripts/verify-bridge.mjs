@@ -108,10 +108,11 @@ async function main() {
     'settings overlay closed',
   );
 
-  // ---- Click Start Game (the CTA inside the canvas placeholder) ----
-  // There are two Start Game buttons: the placeholder one and the title-panel one.
+  // ---- Click Start Run (the CTA inside the front-door overlay) ----
+  // Older builds used "Start Game"; accept either so the smoke test stays useful
+  // across copy tweaks.
   // Clicking either should transition to phase=playing.
-  const startBtn = await page.locator('button:has-text("Start Game")').first();
+  const startBtn = await page.locator('button:has-text("Start Run"), button:has-text("Start Game")').first();
   await startBtn.click();
   await page.waitForFunction(() => window.LD.Game.getShellState().phase === 'playing', {
     timeout: 5000,

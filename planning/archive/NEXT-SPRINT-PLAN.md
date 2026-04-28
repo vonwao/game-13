@@ -1,12 +1,14 @@
 # LEXICON DEEP — Next Sprint Plan
 
+Archived historical sprint plan. Preserved for context; superseded by the active sprint docs under `planning/`.
+
 ## Purpose
 
 This sprint is about making the codebase more trustworthy and the game feel more tactile on desktop and touch, without overhauling the full stack.
 
 This document is the current execution plan.
-If [ROADMAP.md](/Users/vonwao/dev/micro-projects/game-13/ROADMAP.md) and this file ever feel out of sync, the roadmap sets overall priority and this file should be updated to match it.
-The next major UI/platform step after this sprint is documented in [RESPONSIVE-SHELL-MIGRATION.md](/Users/vonwao/dev/micro-projects/game-13/RESPONSIVE-SHELL-MIGRATION.md).
+If [ROADMAP.md](../../ROADMAP.md) and this file ever feel out of sync, the roadmap sets overall priority and this file should be updated to match it.
+The next major UI/platform step after this sprint is documented in [RESPONSIVE-SHELL-MIGRATION.md](./RESPONSIVE-SHELL-MIGRATION.md).
 
 The immediate focus is:
 

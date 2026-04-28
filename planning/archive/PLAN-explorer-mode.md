@@ -1,5 +1,7 @@
 # LEXICON DEEP — Word Hunt Mode + Touch Support Implementation Plan
 
+Archived implementation specification. Preserved for context from the original Word Hunt plus Siege split.
+
 ## Overview
 
 Add a new primary game mode called **"Word Hunt"** alongside the existing corruption/seals mode (renamed to **"Siege"**). Word Hunt strips away corruption mechanics and replaces them with score-maximization, pre-planted hidden words, and a scavenger hunt challenge system. Also add a well-designed Settings screen, a **simple player-facing settings model backed by constants**, and **full touch/mobile support** (tap-to-spell).

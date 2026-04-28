@@ -1,8 +1,8 @@
 # LEXICON DEEP — Ranked Roadmap
 
-This roadmap complements [NEXT-SPRINT-PLAN.md](/Users/vonwao/dev/micro-projects/game-13/NEXT-SPRINT-PLAN.md).
+This roadmap complements the active sprint doc in [planning/SPRINT-001-single-front-door.md](./planning/SPRINT-001-single-front-door.md).
 
-The sprint plan is about immediate execution.
+The sprint doc is about immediate execution.
 This roadmap is about priority order across:
 
 - code architecture
@@ -17,8 +17,8 @@ The current conclusion is:
 - the main risk is technical muddle slowing down design momentum
 
 The roadmap sets overall priority.
-The sprint plan is the current execution slice derived from it.
-The responsive shell migration plan lives in [RESPONSIVE-SHELL-MIGRATION.md](/Users/vonwao/dev/micro-projects/game-13/RESPONSIVE-SHELL-MIGRATION.md).
+The active sprint doc is the current execution slice derived from it.
+The historical responsive shell migration plan now lives in [planning/archive/RESPONSIVE-SHELL-MIGRATION.md](./planning/archive/RESPONSIVE-SHELL-MIGRATION.md).
 
 ---
 

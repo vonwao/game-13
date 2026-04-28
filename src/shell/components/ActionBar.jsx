@@ -108,7 +108,7 @@ export default function ActionBar({ skin, state, actions, phone }) {
           <skin.ActionBtn label="Undo" kbd="⌫" compact={phone} />
         </BtnWrap>
         <BtnWrap onClick={actions.useClue} disabled={clueDisabled}>
-          <skin.ActionBtn label="Clue" kbd="c" warm compact={phone} />
+          <skin.ActionBtn label="Clue" warm compact={phone} />
         </BtnWrap>
       </div>
     </div>

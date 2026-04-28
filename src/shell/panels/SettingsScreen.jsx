@@ -30,6 +30,25 @@ const SettingRow = ({ label, value, desc, stackValue = false }) => (
   </div>
 );
 
+const LegacyNotice = ({ compact = false }) => (
+  <div
+    style={{
+      padding: compact ? '10px 12px' : '12px 14px',
+      border: '1px solid var(--rule-faint)',
+      background: 'var(--surface)',
+      display: 'grid',
+      gap: 4,
+    }}
+  >
+    <div style={{ fontFamily: 'var(--font-display)', fontSize: compact ? 13 : 14, fontWeight: 600 }}>
+      Legacy testing enabled
+    </div>
+    <div style={{ fontSize: compact ? 12 : 13, color: 'var(--ink-soft)', lineHeight: 1.45 }}>
+      Word Hunt is the public product. Siege copy and mode-aware settings are shown here only for local testing.
+    </div>
+  </div>
+);
+
 const Toggle = ({ on, onClick, disabled = false }) => (
   <button
     type="button"
@@ -301,13 +320,13 @@ const DICTIONARY_OPTIONS_PHONE = [
   { label: 'TWL', value: 'twl' },
   { label: 'OSPD', value: 'ospd' },
 ];
-const FOOTER_NOTE = 'Lexicon Deep · skin persists on this device only; gameplay settings apply on the next run and reset on reload.';
-const SOUND_CONTROL_NOTE = 'Visible in the handoff, but the current build still uses the core audio mix.';
-const PARTICLES_CONTROL_NOTE = 'Visible in the handoff, but the current build still uses the core effect pass.';
-const REDUCE_MOTION_NOTE = 'Visible in the handoff, but motion still comes straight from the core.';
-const PATH_COLORS_NOTE = 'Visible in the handoff, but the renderer still uses the active skin colors.';
-const DICTIONARY_NOTE = 'Visible in the handoff, but word validation still uses the bundled list.';
-const KEYBOARD_HINTS_NOTE = 'Visible in the handoff, but the action-bar hints still stay on.';
+const FOOTER_NOTE = 'Skin applies immediately and persists on this device. Board and run settings apply when you start a new run. Disabled controls are parked until the shell owns them.';
+const SOUND_CONTROL_NOTE = 'Unavailable in this build. Audio still follows the legacy mixer.';
+const PARTICLES_CONTROL_NOTE = 'Unavailable in this build. Effects still follow the legacy renderer.';
+const REDUCE_MOTION_NOTE = 'Unavailable in this build. Motion still comes from the legacy renderer.';
+const PATH_COLORS_NOTE = 'Unavailable in this build. Path color still comes from the active skin.';
+const DICTIONARY_NOTE = 'Unavailable in this build. Word validation still uses the bundled dictionary list.';
+const KEYBOARD_HINTS_NOTE = 'Unavailable in this build. Shortcut hints stay visible for now.';
 
 function getDifficultyDescription(gameMode, difficulty) {
   return (DIFFICULTY_DESCRIPTIONS[gameMode] || DIFFICULTY_DESCRIPTIONS.wordhunt)[difficulty] || '';
@@ -315,7 +334,7 @@ function getDifficultyDescription(gameMode, difficulty) {
 
 function getGoalDescription(gameMode) {
   return gameMode !== 'wordhunt'
-    ? 'Word Hunt only. Siege still ends on seals or corruption.'
+    ? 'Word Hunt uses end conditions. Siege still ends on seals or corruption.'
     : 'Choose how a Word Hunt page ends.';
 }
 
@@ -364,6 +383,12 @@ export function SettingsView({ state, actions, onClose }) {
               ‹ back
             </div>
           </div>
+
+          {legacyModes ? (
+            <div style={{ marginBottom: 16 }}>
+              <LegacyNotice compact />
+            </div>
+          ) : null}
 
           {/* Skin picker — compact rows */}
           <div style={{ marginBottom: 16 }}>
@@ -501,9 +526,15 @@ export function SettingsView({ state, actions, onClose }) {
             onClick={goBack}
             style={{ fontStyle: 'italic', fontSize: 12, color: 'var(--ink-faint)', cursor: 'pointer' }}
           >
-            ‹ back to the archive
+            ‹ back
           </div>
         </div>
+
+        {legacyModes ? (
+          <div style={{ marginBottom: 18 }}>
+            <LegacyNotice />
+          </div>
+        ) : null}
 
         {/* Skin picker — 3-up grid */}
         <div style={{ marginBottom: 22 }}>

@@ -1,6 +1,8 @@
 # Sonnet Handoff
 
-Use this file as the short execution brief. The full specification lives in [PLAN-explorer-mode.md](/Users/vonwao/dev/micro-projects/game-13/PLAN-explorer-mode.md).
+Archived implementation brief. Preserved for context from the original Word Hunt plus Siege split.
+
+Use this file as the short execution brief. The full specification lives in [PLAN-explorer-mode.md](./PLAN-explorer-mode.md).
 
 ## Mission
 
