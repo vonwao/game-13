@@ -52,6 +52,81 @@ This sprint is about building the measurement tools first, then using them to ch
 4. Scoring redesign decision
 - Move toward length-first scoring with smaller secondary modifiers.
 
+## Initial findings
+
+These are early baseline measurements from the current generator, before the
+coverage-first refactor lands.
+
+### Small board, no special tiles, solver min length `5`
+
+Two-run averages:
+
+1. `easy`
+- planted coverage: `35.31%`
+- total solutions: `5363`
+- organic solutions: `5343`
+- planted solutions: `20`
+
+2. `medium`
+- planted coverage: `28.13%`
+- total solutions: `5156`
+- organic solutions: `5141`
+- planted solutions: `15`
+
+3. `hard`
+- planted coverage: `19.54%`
+- total solutions: `4436`
+- organic solutions: `4426`
+- planted solutions: `10`
+
+### What this means
+
+1. The current board is already far more organic than intuition suggests.
+2. Lower planted coverage reduces solution yield, but not by nearly as much as
+   expected.
+3. The real driver is not just planted-word count. It is the coherent letter
+   network created by planted words, fragments, and overlap.
+4. This validates the need to tune against solver metrics instead of guessing.
+
+## First recommended sweep
+
+Until the generator is refactored around native coverage targets, use runtime
+config overrides as the tuning surface.
+
+### Small board target bands
+
+1. Landscape `20x16`
+- floor: `20-24%`
+- likely sweet spot: `24-28%`
+- avoid `>30%`
+
+2. Portrait `13x18`
+- floor: `18-22%`
+- likely sweet spot: `22-26%`
+- avoid `>28%`
+
+### First six configs
+
+Hold diagonal / reverse rates fixed and use `plantedWordMinLen=5`,
+`plantedWordMaxLen=7`.
+
+1. Landscape: `10 words + 4 fragments`
+2. Landscape: `11 words + 6 fragments`
+3. Landscape: `12 words + 8 fragments`
+4. Portrait: `8 words + 4 fragments`
+5. Portrait: `9 words + 6 fragments`
+6. Portrait: `10 words + 8 fragments`
+
+### Tooling note
+
+`scripts/capture-board-snapshot.mjs`, `scripts/simulate-board-yield.mjs`, and
+`scripts/sweep-wordhunt-space.mjs` now support repeated:
+
+- `--config-override plantedWordCount=10`
+- `--config-override fragmentCount=4`
+
+This lets us test coverage proxies without editing `modules/constants.js`.
+
 ## Parameter inventory
 
 These are the knobs we should treat as tunable during Sprint 002.

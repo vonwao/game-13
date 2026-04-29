@@ -24,6 +24,14 @@ function readArg(flag, fallback = null) {
   return args[index + 1];
 }
 
+function readArgs(flag) {
+  const values = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === flag && i + 1 < args.length) values.push(args[i + 1]);
+  }
+  return values;
+}
+
 function parseViewport(value) {
   const match = /^(\d+)x(\d+)$/i.exec(String(value || ''));
   if (!match) return { width: 1440, height: 900 };
@@ -46,8 +54,38 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseNonNegativeInt(value, fallback) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'all') return -1;
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function pickAllowed(value, allowed) {
   return allowed.includes(value) ? value : null;
+}
+
+function parseOverrideValue(raw) {
+  const trimmed = String(raw ?? '').trim();
+  if (trimmed === '') return '';
+  if (trimmed === 'true') return true;
+  if (trimmed === 'false') return false;
+  if (trimmed === 'null') return null;
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  return trimmed;
+}
+
+function parseConfigOverrides(values) {
+  const overrides = {};
+  for (const value of values) {
+    const eq = String(value).indexOf('=');
+    if (eq <= 0) continue;
+    const key = String(value).slice(0, eq).trim();
+    const raw = String(value).slice(eq + 1);
+    if (!key) continue;
+    overrides[key] = parseOverrideValue(raw);
+  }
+  return overrides;
 }
 
 function clonePlain(value) {
@@ -62,6 +100,8 @@ const settleMs = parsePositiveInt(readArg('--settle', '120'), 120);
 const viewport = parseViewport(readArg('--viewport', '1440x900'));
 const solverMinLength = parsePositiveInt(readArg('--solver-min-length', '5'), 5);
 const solverLimit = parsePositiveInt(readArg('--solver-limit', '25'), 25);
+const solverEntryLimit = parseNonNegativeInt(readArg('--solver-entry-limit', '0'), 0);
+const configOverrides = parseConfigOverrides(readArgs('--config-override'));
 
 const settingsPatch = {};
 const boardSize = pickAllowed(readArg('--board-size', ''), ['small', 'medium', 'large']);
@@ -75,7 +115,7 @@ if (endCondition) settingsPatch.endCondition = endCondition;
 if (specialTiles !== null) settingsPatch.specialTiles = specialTiles;
 
 async function captureSnapshot(page) {
-  return page.evaluate(({ solverMinLength, solverLimit }) => {
+  return page.evaluate(({ solverMinLength, solverLimit, solverEntryLimit }) => {
     const game = window.LD && window.LD.Game;
     const state = window.LD && window.LD.STATE;
     const solver = window.LD && window.LD.Solver;
@@ -141,6 +181,38 @@ async function captureSnapshot(page) {
     const solverSummary = solver && typeof solver.summarizeBoard === 'function'
       ? solver.summarizeBoard(state, solverOptions)
       : null;
+    const detailedEntries = solverEntryLimit !== 0
+      ? (solverSolutions.slice(
+          0,
+          solverEntryLimit < 0 ? undefined : solverEntryLimit,
+        ).map((entry) => ({
+          word: entry.word,
+          score: entry.score,
+          length: entry.length,
+          playable: !!entry.playable,
+          planted: !!entry.planted,
+          organic: !!entry.organic,
+          corners: entry.corners || 0,
+          isStraight: !!entry.isStraight,
+          isHorizontal: !!entry.isHorizontal,
+          isVertical: !!entry.isVertical,
+          isDiagonal: !!entry.isDiagonal,
+          shapeMult: entry.shapeMult || 1,
+          tilePoints: entry.tilePoints || 0,
+          liveBasePoints: entry.liveBasePoints || 0,
+          wildcardCount: entry.wildcardCount || 0,
+          wildcardMult: entry.wildcardMult || 1,
+          crystalCount: entry.crystalCount || 0,
+          crystalMult: entry.crystalMult || 1,
+          emberCount: entry.emberCount || 0,
+          emberBonus: entry.emberBonus || 0,
+          spentTileCount: entry.spentTileCount || 0,
+          wornTileCount: entry.wornTileCount || 0,
+          pathCount: entry.pathCount || 0,
+          playablePathCount: entry.playablePathCount || 0,
+          blockedPathCount: entry.blockedPathCount || 0,
+        })))
+      : [];
 
     return {
       meta: {
@@ -208,10 +280,12 @@ async function captureSnapshot(page) {
             playablePathCount: entry.playablePathCount || 0,
             blockedPathCount: entry.blockedPathCount || 0,
           })),
+          entryLimit: solverEntryLimit,
+          entries: detailedEntries,
         },
       },
     };
-  }, { solverMinLength, solverLimit });
+  }, { solverMinLength, solverLimit, solverEntryLimit });
 }
 
 async function main() {
@@ -241,6 +315,23 @@ async function main() {
     await page.evaluate((patch) => {
       window.LD.Game.setSettings(patch);
     }, settingsPatch);
+  }
+
+  if (Object.keys(configOverrides).length > 0) {
+    await page.evaluate((overrides) => {
+      if (!window.LD || !window.LD.Constants || typeof window.LD.Constants.resolve !== 'function') {
+        throw new Error('LD.Constants.resolve is not available for config overrides');
+      }
+      if (window.__LD_CAPTURE_RESOLVE_PATCHED__) return;
+
+      const originalResolve = window.LD.Constants.resolve.bind(window.LD.Constants);
+      window.LD.Constants.resolve = function patchedResolve(gameMode, settings, layout) {
+        const resolved = originalResolve(gameMode, settings, layout);
+        if (gameMode !== 'wordhunt') return resolved;
+        return { ...resolved, ...overrides };
+      };
+      window.__LD_CAPTURE_RESOLVE_PATCHED__ = true;
+    }, configOverrides);
   }
 
   await page.evaluate(() => {
@@ -278,6 +369,7 @@ async function main() {
     url: URL,
     viewport,
     requestedSettings: clonePlain(settingsPatch),
+    requestedConfigOverrides: clonePlain(configOverrides),
     consoleTail: consoleMessages.slice(-20),
     pageErrors,
   };

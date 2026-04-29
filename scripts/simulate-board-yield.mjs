@@ -16,6 +16,14 @@ function readArg(flag, fallback = null) {
   return args[index + 1];
 }
 
+function readArgs(flag) {
+  const values = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === flag && i + 1 < args.length) values.push(args[i + 1]);
+  }
+  return values;
+}
+
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(String(value || ''), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -23,6 +31,7 @@ function parsePositiveInt(value, fallback) {
 
 const runs = parsePositiveInt(readArg('--runs', '5'), 5);
 const solverMinLength = parsePositiveInt(readArg('--solver-min-length', '5'), 5);
+const configOverrides = readArgs('--config-override');
 const snapshotArgs = [];
 const passthroughFlags = [
   '--url',
@@ -43,6 +52,9 @@ for (const flag of passthroughFlags) {
 snapshotArgs.push('--solver-min-length', String(solverMinLength));
 snapshotArgs.push('--solver-limit', '10');
 if (hasFlag('--headed')) snapshotArgs.push('--headed');
+for (const override of configOverrides) {
+  snapshotArgs.push('--config-override', override);
+}
 
 function round(value) {
   return Number(value.toFixed(2));
