@@ -23,6 +23,14 @@ function readArg(flag, fallback = null) {
   return args[index + 1];
 }
 
+function readArgs(flag) {
+  const values = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === flag && i + 1 < args.length) values.push(args[i + 1]);
+  }
+  return values;
+}
+
 function parsePositiveInt(value, fallback, max = Infinity) {
   const parsed = Number.parseInt(String(value || ''), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -45,6 +53,15 @@ function lengthMultiplier(len) {
   if (len === 6) return 3.0;
   if (len === 7) return 5.0;
   return 8.0;
+}
+
+function lengthBasePoints(len) {
+  if (len <= 3) return 12;
+  if (len === 4) return 30;
+  if (len === 5) return 55;
+  if (len === 6) return 85;
+  if (len === 7) return 120;
+  return 160;
 }
 
 function sortRankedEntries(a, b) {
@@ -79,6 +96,7 @@ function buildUsage() {
     '',
     'Live capture passthrough:',
     '  --url --board-size --difficulty --end-condition --special-tiles --viewport --timeout --settle',
+    '  --config-override key=value, repeatable',
   ].join('\n');
 }
 
@@ -103,6 +121,10 @@ async function captureSnapshotLive(minLength) {
   for (const flag of passthroughFlags) {
     const value = readArg(flag, null);
     if (value !== null) captureArgs.push(flag, value);
+  }
+
+  for (const override of readArgs('--config-override')) {
+    captureArgs.push('--config-override', override);
   }
 
   captureArgs.push('--solver-min-length', String(minLength));
@@ -160,17 +182,17 @@ function scoreClassic(entry) {
 }
 
 function scoreLengthFirst(entry) {
-  const lengthBase = (entry.length || 0) * 100;
-  const tileBonus = (entry.tilePoints || 0) * 6;
+  const lengthBase = lengthBasePoints(entry.length || 0);
+  const tileBonus = Math.min(30, (entry.tilePoints || 0) * 2);
   const shapeBonus = entry.isHorizontal || entry.isVertical
-    ? 24
+    ? 12
     : entry.isDiagonal
-      ? 12
-      : -((entry.corners || 0) * 8);
-  const crystalBonus = (entry.crystalCount || 0) * 24;
-  const emberBonus = entry.emberBonus || 0;
-  const wildcardPenalty = (entry.wildcardCount || 0) * 18;
-  return lengthBase + tileBonus + shapeBonus + crystalBonus + emberBonus - wildcardPenalty;
+      ? 6
+      : -(Math.min(6, entry.corners || 0) * 4);
+  const crystalBonus = (entry.crystalCount || 0) * 12;
+  const emberBonus = (entry.emberCount || 0) * 10;
+  const wildcardPenalty = (entry.wildcardCount || 0) * 10;
+  return Math.max(1, lengthBase + tileBonus + shapeBonus + crystalBonus + emberBonus - wildcardPenalty);
 }
 
 function describeTopEntry(entry, rank, currentRankByWord = null) {
@@ -395,7 +417,7 @@ async function main() {
     {
       id: 'lengthFirst',
       label: 'Length-first, lighter modifiers',
-      formula: 'length*100 + tile*6 + shape +/- specials',
+      formula: 'length table + capped tile bonus + small shape/special modifiers',
       score: scoreLengthFirst,
     },
   ];

@@ -93,6 +93,94 @@
     'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'ANCE'
   ];
 
+  var WORD_HUNT_AUTHORING_DEFAULTS = {
+    easy: {
+      plantedWordCount: 20,
+      plantedWordMinLen: 4,
+      plantedWordMaxLen: 6,
+      plantedDiagonalPct: 0,
+      plantedReversePct: 0,
+      commonWordRankLimit: 1800,
+      fragmentCount: 18,
+    },
+    medium: {
+      plantedWordCount: 15,
+      plantedWordMinLen: 5,
+      plantedWordMaxLen: 7,
+      plantedDiagonalPct: 0.2,
+      plantedReversePct: 0.15,
+      commonWordRankLimit: 2600,
+      fragmentCount: 12,
+    },
+    hard: {
+      plantedWordCount: 10,
+      plantedWordMinLen: 6,
+      plantedWordMaxLen: 8,
+      plantedDiagonalPct: 0.5,
+      plantedReversePct: 0.4,
+      commonWordRankLimit: 3400,
+      fragmentCount: 6,
+    },
+  };
+
+  var SMALL_WORD_HUNT_AUTHORING = {
+    landscape: {
+      easy: {
+        plantedWordCount: 14,
+        plantedWordMinLen: 5,
+        plantedWordMaxLen: 7,
+        fragmentCount: 12,
+      },
+      hard: {
+        plantedWordCount: 11,
+      },
+    },
+    portrait: {
+      easy: {
+        plantedWordCount: 10,
+        plantedWordMinLen: 5,
+        plantedWordMaxLen: 7,
+        fragmentCount: 6,
+      },
+      medium: {
+        plantedWordCount: 10,
+        fragmentCount: 6,
+      },
+      hard: {
+        plantedWordCount: 9,
+      },
+    },
+  };
+
+  function cloneWordHuntAuthoring(profile) {
+    return {
+      plantedWordCount: profile.plantedWordCount,
+      plantedWordMinLen: profile.plantedWordMinLen,
+      plantedWordMaxLen: profile.plantedWordMaxLen,
+      plantedDiagonalPct: profile.plantedDiagonalPct,
+      plantedReversePct: profile.plantedReversePct,
+      commonWordRankLimit: profile.commonWordRankLimit,
+      fragmentCount: profile.fragmentCount,
+    };
+  }
+
+  function resolveWordHuntAuthoring(diff, profile) {
+    var base = cloneWordHuntAuthoring(
+      WORD_HUNT_AUTHORING_DEFAULTS[diff] || WORD_HUNT_AUTHORING_DEFAULTS.medium
+    );
+    var orientation = profile && profile.sizeKey === 'small' ? profile.orientation : null;
+    var small = orientation && SMALL_WORD_HUNT_AUTHORING[orientation]
+      ? SMALL_WORD_HUNT_AUTHORING[orientation][diff]
+      : null;
+    if (!small) return base;
+    for (var key in small) {
+      if (Object.prototype.hasOwnProperty.call(small, key)) {
+        base[key] = small[key];
+      }
+    }
+    return base;
+  }
+
   function resolve(gameMode, settings, layout) {
     settings = settings || {};
 
@@ -104,20 +192,21 @@
     var boardHeight = profile ? profile.boardHeight : size.height;
 
     if (gameMode === 'wordhunt') {
+      var authoring = resolveWordHuntAuthoring(diff, profile);
       return {
         boardWidth:  boardWidth,
         boardHeight: boardHeight,
         boardProfile: profile,
         // Planted words
-        plantedWordCount:    { easy: 20, medium: 15, hard: 10 }[diff],
-        plantedWordMinLen:   { easy: 4,  medium: 5,  hard: 6  }[diff],
-        plantedWordMaxLen:   { easy: 6,  medium: 7,  hard: 8  }[diff],
-        plantedDiagonalPct: { easy: 0,  medium: 0.2, hard: 0.5 }[diff],
-        plantedReversePct:  { easy: 0,  medium: 0.15, hard: 0.4 }[diff],
-        commonWordRankLimit:{ easy: 1800, medium: 2600, hard: 3400 }[diff],
+        plantedWordCount:    authoring.plantedWordCount,
+        plantedWordMinLen:   authoring.plantedWordMinLen,
+        plantedWordMaxLen:   authoring.plantedWordMaxLen,
+        plantedDiagonalPct:  authoring.plantedDiagonalPct,
+        plantedReversePct:   authoring.plantedReversePct,
+        commonWordRankLimit: authoring.commonWordRankLimit,
         commonWordRankStep: 700,
         // Fragments
-        fragmentCount: { easy: 18, medium: 12, hard: 6 }[diff],
+        fragmentCount: authoring.fragmentCount,
         // Special tiles
         crystalCount: settings.specialTiles ? 6 : 0,
         voidCount:    settings.specialTiles ? 5 : 0,
@@ -238,6 +327,7 @@
     BOARD_PROFILES:      BOARD_PROFILES,
     FRAGMENTS:           FRAGMENTS,
     resolve:             resolve,
+    resolveWordHuntAuthoring: resolveWordHuntAuthoring,
     resolveBoardProfile: resolveBoardProfile,
     getBoardTileTargets: getBoardTileTargets,
   };

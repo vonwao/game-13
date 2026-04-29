@@ -127,6 +127,70 @@ Hold diagonal / reverse rates fixed and use `plantedWordMinLen=5`,
 
 This lets us test coverage proxies without editing `modules/constants.js`.
 
+## Decision pass 001
+
+The first decision pass used `scripts/simulate-board-yield.mjs` and
+`scripts/compare-scoring-models.mjs` against live Playwright captures.
+
+### Small-board authoring defaults
+
+These defaults are now wired into `modules/constants.js` for the small board
+profile. Non-small boards keep the existing global difficulty defaults.
+
+1. Landscape `20x16`
+- `easy`: `14` planted words, `12` fragments, planted length `5-7`
+- `medium`: `15` planted words, `12` fragments, planted length `5-7`
+- `hard`: `11` planted words, `6` fragments, planted length `6-8`
+
+2. Portrait `13x18`
+- `easy`: `10` planted words, `6` fragments, planted length `5-7`
+- `medium`: `10` planted words, `6` fragments, planted length `5-7`
+- `hard`: `9` planted words, `6` fragments, planted length `6-8`
+
+### Verified default yield after wiring
+
+Three-run averages, no special tiles, solver min length `5`:
+
+1. Landscape
+- `easy`: `26.88%` coverage, `5264.33` organic solutions
+- `medium`: `28.23%` coverage, `4904.67` organic solutions
+- `hard`: `21.36%` coverage, `5209` organic solutions
+
+2. Portrait
+- `easy`: `25.35%` coverage, `3244.67` organic solutions
+- `medium`: `25.21%` coverage, `3423.67` organic solutions
+- `hard`: `24.22%` coverage, `3823.67` organic solutions
+
+This replaces the old default shape where portrait/easy could land near `49%`
+planted coverage.
+
+### Candidate length-first scoring table
+
+The compare script now evaluates this candidate table. Runtime scoring is still
+the current multiplier model until the UI, help copy, history text, and wildcard
+verification are updated together.
+
+Base score by length:
+
+- `5`: `55`
+- `6`: `85`
+- `7`: `120`
+- `8+`: `160`
+
+Modifiers:
+
+- tile bonus: `min(30, tilePoints * 2)`
+- horizontal / vertical: `+12`
+- diagonal: `+6`
+- cornered path: `-4` per corner, capped at `6` corners
+- crystal: `+12` each
+- ember: `+10` each
+- wildcard: `-10` each
+- planted / organic bonus: `0`
+
+This keeps normal word scores in the same broad UI range as the current model
+while making length the primary ranking signal.
+
 ## Parameter inventory
 
 These are the knobs we should treat as tunable during Sprint 002.
@@ -312,4 +376,6 @@ This sprint is successful when:
 
 ## Immediate next step
 
-Implement `solveBoard(...)` as the core primitive.
+Wire the selected length-first scoring table into runtime scoring, score
+preview, Help, history text, and verification checks as one player-facing
+rules patch.
