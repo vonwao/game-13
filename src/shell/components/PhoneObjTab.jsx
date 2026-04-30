@@ -48,9 +48,12 @@ export default function PhoneObjTab({
   const isControlled = typeof open === 'boolean';
   const isOpen = isControlled ? open : uncontrolledOpen;
   const discoveryTotal = model.discoverySummary.total || model.discoverySummary.found || 0;
+  const solutionLabel = model.solutionSummary.ready
+    ? `Solutions ${model.solutionSummary.playable}/${model.solutionSummary.total}`
+    : 'Solutions pending';
   const discoveryLabel = discoveryTotal > 0
-    ? `Discovered ${model.discoverySummary.found}/${discoveryTotal}`
-    : 'No discoveries yet';
+    ? `Found ${model.discoverySummary.found}/${discoveryTotal}`
+    : 'No discoveries';
 
   function setOpenState(nextOpen) {
     if (!isControlled) {
@@ -96,7 +99,7 @@ export default function PhoneObjTab({
             data-testid="phone-objectives-sheet"
             role="dialog"
             aria-modal="true"
-            aria-label="Objectives and discovered words"
+            aria-label="Objectives and solutions"
             style={{
               position: 'fixed',
               left: 0,
@@ -157,7 +160,7 @@ export default function PhoneObjTab({
                       lineHeight: 1,
                     }}
                   >
-                    Objectives &amp; Discovered
+                    Objectives &amp; Solutions
                   </div>
                   <div
                     style={{
@@ -284,6 +287,16 @@ export default function PhoneObjTab({
               }}
             >
               {discoveryLabel}
+            </span>
+            <span
+              style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: 13,
+                color: 'var(--ink-soft)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {solutionLabel}
             </span>
           </div>
         </div>

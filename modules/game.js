@@ -94,6 +94,14 @@
   let lastShellSignature = '';
   let lastShellEmitAt = 0;
   const SHELL_THROTTLE_MS = 100; // ~10Hz cap for unforced notifyShellState
+  const SOLUTION_MIN_LENGTH_DEFAULT = 5;
+  const SOLUTION_MAX_VISIBLE_DEFAULT = 50;
+  let shellSolutionsCache = {
+    signature: '',
+    boardIdentity: '',
+    pinnedWords: [],
+    value: null,
+  };
   let resizeBound = false;
   let loopStarted = false;
   let booted = false;
@@ -171,6 +179,192 @@
       orientation: entry.orientation || '',
       reasonText: entry.reasonText || '',
     };
+  }
+
+  function emptySolutionsState(reason) {
+    return {
+      ready: false,
+      reason: reason || '',
+      minLength: SOLUTION_MIN_LENGTH_DEFAULT,
+      maxVisible: SOLUTION_MAX_VISIBLE_DEFAULT,
+      total: 0,
+      playable: 0,
+      blocked: 0,
+      planted: 0,
+      organic: 0,
+      visible: 0,
+      items: [],
+    };
+  }
+
+  function resetShellSolutionsCache() {
+    shellSolutionsCache.signature = '';
+    shellSolutionsCache.boardIdentity = '';
+    shellSolutionsCache.pinnedWords = [];
+    shellSolutionsCache.value = null;
+  }
+
+  function buildSolutionBoardSignature(includeWear) {
+    var board = STATE.board || {};
+    if (!Array.isArray(board.tiles) || !board.width || !board.height) return '';
+
+    var parts = [board.width, board.height];
+    for (var i = 0; i < board.tiles.length; i++) {
+      var tile = board.tiles[i] || {};
+      parts.push([
+        tile.letter || '',
+        tile.icon || '',
+        typeof tile.points === 'number' ? tile.points : '',
+        tile.isSeal ? 1 : 0,
+        tile.corrupted ? 1 : 0,
+        includeWear ? (tile.useCount || 0) : 0,
+      ].join(':'));
+    }
+    return parts.join('|');
+  }
+
+  function buildSolutionHistorySignature() {
+    var history = STATE.wordHistory || [];
+    var words = [];
+    for (var i = 0; i < history.length; i++) {
+      if (history[i] && history[i].word) words.push(String(history[i].word).toUpperCase());
+    }
+    return words.join(',');
+  }
+
+  function normalizeSolutionEntry(entry, foundSet, rank) {
+    entry = entry || {};
+    var word = String(entry.word || '').toUpperCase();
+    return {
+      id: word || ('solution-' + rank),
+      rank: rank,
+      word: word,
+      score: entry.score || 0,
+      length: entry.length || word.length || 0,
+      playable: entry.playable !== false,
+      blocked: entry.playable === false,
+      found: foundSet.has(word),
+      planted: !!entry.planted,
+      organic: !!entry.organic,
+      pathCount: entry.pathCount || 0,
+      playablePathCount: entry.playablePathCount || 0,
+      blockedPathCount: entry.blockedPathCount || 0,
+      tileBonus: entry.tileBonus || 0,
+      shapeBonus: entry.shapeBonus || 0,
+      shapeLabel: entry.shapeLabel || '',
+      crystalBonus: entry.crystalBonus || 0,
+      emberBonus: entry.emberBonus || 0,
+      wildcardPenalty: entry.wildcardPenalty || 0,
+      scoreModel: entry.scoreModel || '',
+    };
+  }
+
+  function getShellSolutions(history) {
+    var active =
+      STATE.gameMode === 'wordhunt' &&
+      (STATE.phase === 'playing' || STATE.phase === 'paused' || STATE.phase === 'victory' || STATE.phase === 'gameover');
+
+    if (!active) {
+      shellSolutionsCache.signature = '';
+      return emptySolutionsState('inactive');
+    }
+
+    var solver = window.LD && window.LD.Solver;
+    if (!solver || typeof solver.solveBoard !== 'function') {
+      return emptySolutionsState('solver unavailable');
+    }
+
+    var boardIdentity = buildSolutionBoardSignature(false);
+    var wearSignature = buildSolutionBoardSignature(true);
+    if (!boardIdentity || !wearSignature) return emptySolutionsState('no board');
+
+    var historySignature = buildSolutionHistorySignature();
+    var signature = [
+      boardIdentity,
+      wearSignature,
+      historySignature,
+      SOLUTION_MIN_LENGTH_DEFAULT,
+      SOLUTION_MAX_VISIBLE_DEFAULT,
+    ].join('||');
+
+    if (shellSolutionsCache.signature === signature && shellSolutionsCache.value) {
+      return shellSolutionsCache.value;
+    }
+
+    var solved = solver.solveBoard(STATE, {
+      minLength: SOLUTION_MIN_LENGTH_DEFAULT,
+      dedupeBy: 'word',
+    }) || [];
+
+    var foundSet = new Set();
+    for (var h = 0; h < history.length; h++) {
+      if (history[h] && history[h].word) foundSet.add(String(history[h].word).toUpperCase());
+    }
+
+    var byWord = new Map();
+    var summary = {
+      total: solved.length,
+      playable: 0,
+      blocked: 0,
+      planted: 0,
+      organic: 0,
+    };
+
+    for (var i = 0; i < solved.length; i++) {
+      var entry = solved[i];
+      byWord.set(entry.word, entry);
+      if (entry.playable) summary.playable++;
+      else summary.blocked++;
+      if (entry.planted) summary.planted++;
+      if (entry.organic) summary.organic++;
+    }
+
+    if (shellSolutionsCache.boardIdentity !== boardIdentity) {
+      shellSolutionsCache.boardIdentity = boardIdentity;
+      shellSolutionsCache.pinnedWords = solved
+        .slice(0, SOLUTION_MAX_VISIBLE_DEFAULT)
+        .map(function(entry) { return entry.word; });
+    }
+
+    var pinnedLookup = new Set(shellSolutionsCache.pinnedWords);
+    for (var j = 0; j < solved.length && shellSolutionsCache.pinnedWords.length < SOLUTION_MAX_VISIBLE_DEFAULT; j++) {
+      var candidateWord = solved[j].word;
+      if (!pinnedLookup.has(candidateWord)) {
+        shellSolutionsCache.pinnedWords.push(candidateWord);
+        pinnedLookup.add(candidateWord);
+      }
+    }
+
+    var items = [];
+    for (var p = 0; p < shellSolutionsCache.pinnedWords.length; p++) {
+      var pinnedEntry = byWord.get(shellSolutionsCache.pinnedWords[p]);
+      if (pinnedEntry) items.push(normalizeSolutionEntry(pinnedEntry, foundSet, items.length + 1));
+    }
+    items.sort(function(a, b) {
+      if (a.playable !== b.playable) return a.playable ? -1 : 1;
+      return a.rank - b.rank;
+    });
+    for (var r = 0; r < items.length; r++) {
+      items[r].rank = r + 1;
+    }
+
+    var value = {
+      ready: true,
+      reason: '',
+      minLength: SOLUTION_MIN_LENGTH_DEFAULT,
+      maxVisible: SOLUTION_MAX_VISIBLE_DEFAULT,
+      total: summary.total,
+      playable: summary.playable,
+      blocked: summary.blocked,
+      planted: summary.planted,
+      organic: summary.organic,
+      visible: items.length,
+      items: items,
+    };
+
+    shellSolutionsCache.signature = signature;
+    shellSolutionsCache.value = value;
+    return value;
   }
 
   function normalizeShellLayout(layout) {
@@ -383,6 +577,7 @@
   }
 
   function setupRound(resetRunStats) {
+    resetShellSolutionsCache();
     buildRoundConfig();
 
     STATE.phase = 'playing';
@@ -535,6 +730,7 @@
     const objectives = (hunt.challenges || []).map(normalizeObjective);
     const discoveries = (hunt.discoveredWords || []).map(normalizeDiscoveryWord);
     const history = (STATE.wordHistory || []).map(normalizeHistoryEntry);
+    const solutions = getShellSolutions(history);
     return {
       phase: STATE.phase,
       displayPhase: isPausedPhase() ? 'playing' : STATE.phase,
@@ -590,6 +786,7 @@
         recent: discoveries.slice(-4).reverse(),
         items: discoveries,
       },
+      solutions: solutions,
       inputSummary: {
         typed: input.typed || '',
         valid: !!input.valid,

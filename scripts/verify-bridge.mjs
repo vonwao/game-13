@@ -128,6 +128,17 @@ async function main() {
     Array.isArray(playingState.objectives?.items) && playingState.objectives.items.length > 0,
     `${playingState.objectives?.items?.length || 0} objective(s)`,
   );
+  record(
+    'play state has solver-backed solutions populated',
+    playingState.solutions?.ready === true &&
+      Array.isArray(playingState.solutions?.items) &&
+      playingState.solutions.items.length > 0 &&
+      playingState.solutions.items[0].length >= 5 &&
+      playingState.solutions.items[0].playable === true,
+    playingState.solutions
+      ? `${playingState.solutions.items?.length || 0} visible, ${playingState.solutions.playable || 0}/${playingState.solutions.total || 0} playable`
+      : 'solutions missing',
+  );
 
   // ---- A2: typing a letter updates inputSummary.typed immediately (no throttle starvation) ----
   // Force-emit on input changes is important; throttle should only gate per-frame snapshots.
@@ -302,6 +313,11 @@ async function main() {
     'A4 phone objectives tab opens the bottom sheet',
     await page.locator('[data-testid="phone-objectives-sheet"]').count() > 0,
     'sheet visible',
+  );
+  record(
+    'A4 phone sheet includes solver solutions',
+    await page.locator('[data-testid="solutions-sheet"] [data-testid="solution-row"]').count() > 0,
+    `${await page.locator('[data-testid="solutions-sheet"] [data-testid="solution-row"]').count()} solution row(s)`,
   );
   await page.locator('[data-testid="phone-objectives-backdrop"]').click({
     position: { x: 20, y: 20 },

@@ -51,6 +51,23 @@ export function buildObjectivesSurfaceModel(state) {
     note: entry?.shapeLabel || '',
   }));
 
+  const rawSolutions = (state && state.solutions) || {};
+  const solutions = (rawSolutions.items || [])
+    .map((entry, index) => ({
+      id: entry?.id || `${entry?.word || 'solution'}-${index}`,
+      rank: toFiniteNumber(entry?.rank, index + 1),
+      word: entry?.word || '',
+      score: toFiniteNumber(entry?.score, 0),
+      length: toFiniteNumber(entry?.length, String(entry?.word || '').length),
+      playable: entry?.playable !== false,
+      blocked: entry?.blocked === true || entry?.playable === false,
+      found: !!entry?.found,
+      planted: !!entry?.planted,
+      pathCount: toFiniteNumber(entry?.pathCount, 0),
+      shapeLabel: entry?.shapeLabel || '',
+    }))
+    .filter((entry) => entry.word);
+
   const objectivesDone = objectives.filter((objective) => objective.done).length;
   const objectivesTotal = typeof state?.objectives?.total === 'number' ? state.objectives.total : objectives.length;
   const discoveriesFound = typeof state?.discoveries?.found === 'number'
@@ -64,6 +81,7 @@ export function buildObjectivesSurfaceModel(state) {
     objectives,
     recent,
     discoveries,
+    solutions,
     objectiveSummary: {
       done: objectivesDone,
       total: objectivesTotal,
@@ -71,6 +89,14 @@ export function buildObjectivesSurfaceModel(state) {
     discoverySummary: {
       found: discoveriesFound,
       total: discoveriesTotal,
+    },
+    solutionSummary: {
+      ready: !!rawSolutions.ready,
+      minLength: toFiniteNumber(rawSolutions.minLength, 5),
+      visible: toFiniteNumber(rawSolutions.visible, solutions.length),
+      total: toFiniteNumber(rawSolutions.total, solutions.length),
+      playable: toFiniteNumber(rawSolutions.playable, solutions.filter((entry) => entry.playable).length),
+      blocked: toFiniteNumber(rawSolutions.blocked, solutions.filter((entry) => entry.blocked).length),
     },
   };
 }
@@ -352,6 +378,103 @@ function RecentRow({ skin, entry, roomy = false }) {
   );
 }
 
+function SolutionRow({ skin, entry, roomy = false }) {
+  const isPage = skin.id === 'page';
+  const isTerm = skin.id === 'terminal';
+  const muted = entry.blocked;
+  const status = entry.found ? 'found' : (entry.blocked ? 'blocked' : `${entry.length} letters`);
+  const note = entry.shapeLabel ? `${status} · ${entry.shapeLabel}` : status;
+  const wrapperStyle = roomy
+    ? {
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) auto',
+        gap: 10,
+        alignItems: 'center',
+        padding: '10px 12px',
+        borderRadius: 6,
+        border: '1px solid var(--rule-faint)',
+        background: muted ? 'transparent' : getCardFill(skin),
+        opacity: muted ? 0.48 : 1,
+      }
+    : {
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) auto',
+        gap: 8,
+        alignItems: 'baseline',
+        padding: '6px 0',
+        borderBottom: isPage ? '0.5px dotted var(--rule-faint)' : 'none',
+        opacity: muted ? 0.45 : 1,
+      };
+
+  return (
+    <div data-testid="solution-row" data-playable={entry.playable ? 'true' : 'false'} style={wrapperStyle}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, minWidth: 0 }}>
+          {isTerm ? <span style={{ color: muted ? 'var(--ink-faint)' : 'var(--accent)' }}>{entry.playable ? '$' : '#'}</span> : null}
+          <span
+            style={{
+              fontFamily: isTerm ? 'var(--font-mono)' : 'var(--font-body)',
+              fontSize: roomy ? 15 : (isTerm ? 12 : 14),
+              fontVariant: isPage ? 'small-caps' : 'normal',
+              letterSpacing: isPage ? '0.08em' : '0.04em',
+              color: muted ? 'var(--ink-faint)' : 'var(--ink)',
+              fontWeight: skin.id === 'fullbleed' ? 600 : 400,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              textDecoration: entry.found ? 'line-through' : 'none',
+              textDecorationColor: 'var(--accent)',
+            }}
+          >
+            {isPage ? (entry.word || '').toLowerCase() : (entry.word || '')}
+          </span>
+          {entry.found ? (
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: roomy ? 10 : 9,
+                color: 'var(--accent)',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                flexShrink: 0,
+              }}
+            >
+              done
+            </span>
+          ) : null}
+        </div>
+        <div
+          style={{
+            marginTop: roomy ? 3 : 1,
+            fontFamily: 'var(--font-mono)',
+            fontSize: roomy ? 10 : 9,
+            color: muted ? 'var(--ink-faint)' : 'var(--ink-soft)',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {note}
+        </div>
+      </div>
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: roomy ? 13 : 12,
+          color: muted ? 'var(--ink-faint)' : 'var(--accent)',
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 600,
+          flexShrink: 0,
+        }}
+      >
+        {entry.score}
+      </span>
+    </div>
+  );
+}
+
 function EmptyState({ children, roomy = false }) {
   return (
     <div
@@ -450,6 +573,10 @@ function DiscoveryChip({ skin, word }) {
 }
 
 function RailSurface({ skin, model }) {
+  const solutionMeta = model.solutionSummary.ready
+    ? `${model.solutionSummary.playable}/${model.solutionSummary.total} playable`
+    : 'pending';
+
   return (
     <>
       <RailHeading skin={skin}>Objectives</RailHeading>
@@ -463,8 +590,32 @@ function RailSurface({ skin, model }) {
 
       <div style={{ height: 16 }} />
 
+      <RailHeading skin={skin}>Solutions</RailHeading>
+      <div
+        style={{
+          marginTop: 6,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          color: 'var(--ink-faint)',
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          flexShrink: 0,
+        }}
+      >
+        {model.solutionSummary.minLength}+ letters · {solutionMeta}
+      </div>
+      <div data-testid="solutions-surface" style={{ marginTop: 8, flex: '1 1 220px', overflow: 'auto', minHeight: 0 }}>
+        {model.solutions.length === 0 ? (
+          <EmptyState>no solutions yet</EmptyState>
+        ) : (
+          model.solutions.map((entry) => <SolutionRow key={entry.id} skin={skin} entry={entry} />)
+        )}
+      </div>
+
+      <div style={{ height: 14, flexShrink: 0 }} />
+
       <RailHeading skin={skin}>{skin.id === 'terminal' ? 'Scrollback' : 'Recent'}</RailHeading>
-      <div style={{ marginTop: 8, flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <div style={{ marginTop: 8, flex: '0 0 auto', maxHeight: 138, overflow: 'auto', minHeight: 0 }}>
         {model.recent.length === 0 ? (
           <EmptyState>no words yet</EmptyState>
         ) : (
@@ -483,15 +634,24 @@ function SheetSurface({ skin, model }) {
   const discoveryMeta = discoveryTotal > 0
     ? `${model.discoverySummary.found}/${discoveryTotal} found`
     : 'none yet';
+  const solutionMeta = model.solutionSummary.ready
+    ? `${model.solutionSummary.playable}/${model.solutionSummary.total} playable`
+    : 'pending';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 10 }}>
         <SummaryCard
           skin={skin}
           label="Objectives"
           value={`${model.objectiveSummary.done}/${model.objectiveSummary.total || 0}`}
           detail={model.objectiveSummary.total > 0 ? `${Math.max(0, model.objectiveSummary.total - model.objectiveSummary.done)} remaining` : 'No objectives yet'}
+        />
+        <SummaryCard
+          skin={skin}
+          label="Solutions"
+          value={`${model.solutionSummary.playable}`}
+          detail={model.solutionSummary.ready ? `${model.solutionSummary.minLength}+ letters, ${model.solutionSummary.blocked} blocked` : 'Pending board solve'}
         />
         <SummaryCard
           skin={skin}
@@ -508,6 +668,20 @@ function SheetSurface({ skin, model }) {
             <EmptyState roomy>No objectives yet.</EmptyState>
           ) : (
             model.objectives.map((objective) => <ObjectiveRow key={objective.id} skin={skin} objective={objective} roomy />)
+          )}
+        </div>
+      </div>
+
+      <div>
+        <SheetHeading skin={skin} meta={solutionMeta}>Solutions</SheetHeading>
+        <div
+          data-testid="solutions-sheet"
+          style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflow: 'auto' }}
+        >
+          {model.solutions.length === 0 ? (
+            <EmptyState roomy>No solutions yet.</EmptyState>
+          ) : (
+            model.solutions.map((entry) => <SolutionRow key={entry.id} skin={skin} entry={entry} roomy />)
           )}
         </div>
       </div>

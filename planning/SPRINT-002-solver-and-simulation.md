@@ -191,6 +191,20 @@ Modifiers:
 This keeps normal word scores in the same broad UI range as the previous model
 while making length the primary ranking signal.
 
+## Product surface checkpoint
+
+The first always-visible `Solutions` surface is live:
+
+1. shell snapshots expose `solutions` built from the board solver
+2. the default list uses `5+` words and keeps the first top-ranked solution
+   window pinned for the board
+3. playable pinned entries remain prioritized, while blocked pinned entries stay
+   visible and grey out instead of disappearing
+4. desktop right rail and phone bottom sheet both render the same solver-backed
+   list
+5. bridge verification now checks that solutions are present in runtime state and
+   visible in the phone sheet
+
 ## Parameter inventory
 
 These are the knobs we should treat as tunable during Sprint 002.
@@ -376,5 +390,5 @@ This sprint is successful when:
 
 ## Immediate next step
 
-Add the first always-visible `Solutions` surface using solver-ranked playable
-words of length `5+`.
+Exercise the live Solutions surface after submissions, then add the first filter
+controls: `Playable`, `All`, and `Blocked`.
