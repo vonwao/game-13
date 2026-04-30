@@ -662,8 +662,8 @@
         break;
     }
     if (!highlighted && ts >= 22) {
-      var label = icon === 'ember' ? '+20'
-        : icon === 'crystal' ? 'x2'
+      var label = icon === 'ember' ? '+10'
+        : icon === 'crystal' ? '+12'
         : icon === 'void' ? '?'
         : icon === 'bomb' ? 'BOOM' : '';
       if (label) {
@@ -1040,62 +1040,26 @@
     // Second line: score breakdown (Word Hunt) or hint text
     const sp = state.input.scorePreview;
     if (state.gameMode === 'wordhunt' && sp && state.input.hasPath) {
-      // Draw score formula: base × lenMult × shapeMult × comboMult = total
       ctx.font = '11px "Courier New", monospace';
       ctx.textBaseline = 'middle';
       let fx = 20;
       const fy = barY + 41;
 
-      // base points
-      ctx.fillStyle = '#a09080';
-      ctx.fillText(sp.basePts + 'pts', fx, fy);
-      fx += ctx.measureText(sp.basePts + 'pts').width + 4;
-
-      // length multiplier
-      if (sp.lenMult > 1.0) {
-        ctx.fillStyle = '#555';
-        ctx.fillText('×', fx, fy); fx += 12;
-        ctx.fillStyle = '#80b0e0';
-        ctx.fillText(sp.lenMult.toFixed(1) + ' (' + typed.length + 'L)', fx, fy);
-        fx += ctx.measureText(sp.lenMult.toFixed(1) + ' (' + typed.length + 'L)').width + 4;
+      function drawPart(text, color) {
+        if (!text) return;
+        ctx.fillStyle = color;
+        ctx.fillText(text, fx, fy);
+        fx += ctx.measureText(text).width + 6;
       }
 
-      // shape multiplier
-      if (sp.shapeMult !== 1.0) {
-        ctx.fillStyle = '#555';
-        ctx.fillText('×', fx, fy); fx += 12;
-        const shapeColor = sp.shapeMult >= 2.0 ? '#60e060'
-          : sp.shapeMult >= 1.5 ? '#90d060'
-          : sp.shapeMult < 1.0  ? '#e08040' : '#a09080';
-        ctx.fillStyle = shapeColor;
-        ctx.fillText(sp.shapeMult.toFixed(1) + ' ' + sp.shapeLabel, fx, fy);
-        fx += ctx.measureText(sp.shapeMult.toFixed(1) + ' ' + sp.shapeLabel).width + 4;
+      drawPart('len ' + (sp.lengthBase || 0), '#80b0e0');
+      drawPart('+tile ' + (sp.tileBonus || 0), '#a09080');
+      if (sp.shapeBonus) {
+        drawPart((sp.shapeBonus > 0 ? '+shape ' : '-shape ') + Math.abs(sp.shapeBonus), sp.shapeBonus > 0 ? '#80d080' : '#e08040');
       }
-
-      // combo multiplier
-      if (sp.comboMult > 1.0) {
-        ctx.fillStyle = '#555';
-        ctx.fillText('×', fx, fy); fx += 12;
-        ctx.fillStyle = '#f0d070';
-        ctx.fillText(sp.comboMult.toFixed(1) + ' combo', fx, fy);
-        fx += ctx.measureText(sp.comboMult.toFixed(1) + ' combo').width + 4;
-      }
-
-      if (sp.crystalMult > 1.0) {
-        ctx.fillStyle = '#555';
-        ctx.fillText('×', fx, fy); fx += 12;
-        ctx.fillStyle = '#80ffff';
-        ctx.fillText('2.0 crystal', fx, fy);
-        fx += ctx.measureText('2.0 crystal').width + 4;
-      }
-
-      if (sp.emberBonus > 0) {
-        ctx.fillStyle = '#555';
-        ctx.fillText('+', fx, fy); fx += 10;
-        ctx.fillStyle = '#ffb060';
-        ctx.fillText(String(sp.emberBonus) + ' ember', fx, fy);
-        fx += ctx.measureText(String(sp.emberBonus) + ' ember').width + 4;
-      }
+      if (sp.crystalBonus) drawPart('+crystal ' + sp.crystalBonus, '#80ffff');
+      if (sp.emberBonus) drawPart('+ember ' + sp.emberBonus, '#ffb060');
+      if (sp.wildcardPenalty) drawPart('-wild ' + sp.wildcardPenalty, '#d09070');
 
       // total
       ctx.fillStyle = '#555';
@@ -1355,16 +1319,13 @@
       ctx.textAlign = 'left';
       ctx.fillText(entry.word, panelX + padX, ey);
 
-      // Score + shape mult
+      // Score + shape note
       ctx.font = '10px "Courier New", monospace';
       ctx.textAlign = 'right';
-      const smColor = entry.shapeMult >= 2.0 ? '#60b060'
-        : entry.shapeMult >= 1.5 ? '#80a050'
-        : entry.shapeMult < 1.0  ? '#884820' : '#5a4a30';
       ctx.fillStyle = isLast ? '#c8a050' : '#5a4a30';
-      ctx.fillText('+' + entry.score, panelX + panelW - padX - 28, ey);
-      ctx.fillStyle = smColor;
-      ctx.fillText('×' + (entry.shapeMult || 1).toFixed(1), panelX + panelW - padX, ey);
+      ctx.fillText('+' + entry.score, panelX + panelW - padX - 42, ey);
+      ctx.fillStyle = entry.shapeBonus > 0 ? '#60b060' : (entry.shapeBonus < 0 ? '#884820' : '#5a4a30');
+      ctx.fillText((entry.shapeBonus > 0 ? '+' : '') + (entry.shapeBonus || 0), panelX + panelW - padX, ey);
     }
 
     ctx.textBaseline = 'middle';
@@ -1609,20 +1570,19 @@
       y1 += 32;
       ctx.font = '14px "Courier New", monospace';
       ctx.fillStyle = '#f0d070';
-      ctx.fillText('final = round(base × length × shape × combo × crystal) + ember', col1, y1);
+      ctx.fillText('final = length table + tile + shape + specials - wildcards', col1, y1);
       y1 += 34;
 
       ctx.font = '13px "Courier New", monospace';
       ctx.fillStyle = COLORS.hud;
       [
-        'base: sum of tile letter points',
-        'length: 4=1.5x, 5=2x, 6=3x, 7=5x, 8+=8x',
-        'shape: straight horizontal/vertical = 2.0x',
-        'shape: straight diagonal = 1.5x',
-        'shape: bent paths lose value by corners',
-        'combo: +0.1x for each chained word before scrolling',
-        'crystal: doubles the whole multiplied score',
-        'ember: adds +20 flat per ember tile used',
+        'length: 5=55, 6=85, 7=120, 8+=160',
+        'tiles: letter points add a capped +30 bonus',
+        'shape: horizontal/vertical +12, diagonal +6',
+        'shape: cornered paths lose 4 per corner',
+        'crystal: +12 per crystal tile used',
+        'ember: +10 per ember tile used',
+        'wildcard: -10 per icon tile used',
         'discovery: +100 for a planted hidden word',
         'objective rewards: added after the word resolves'
       ].forEach(function (line) {
@@ -1657,8 +1617,8 @@
       ctx.fillStyle = COLORS.hud;
       [
         'Void (?)  : wildcard, can stand in for any letter.',
-        'Crystal x2: include it in your path to double the word.',
-        'Ember +20 : include it in your path for +20 points.',
+        'Crystal +12: include it in your path for bonus points.',
+        'Ember +10  : include it in your path for bonus points.',
         '',
         'You use special tiles by routing your word through them.',
         'If a path can reach one and still spell the word, the',

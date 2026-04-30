@@ -93,33 +93,11 @@
     };
   }
 
-  function lengthMultiplier(len) {
-    if (len <= 3) return 1.0;
-    if (len === 4) return 1.5;
-    if (len === 5) return 2.0;
-    if (len === 6) return 3.0;
-    if (len === 7) return 5.0;
-    return 8.0;
-  }
-
-  function pathShapeMultiplier(shape) {
-    if (!shape || !shape.isStraight) {
-      var corners = shape ? shape.corners : 0;
-      return Math.max(0.4, 1.0 - corners * 0.2);
-    }
-    if (shape.isHorizontal || shape.isVertical) return 2.0;
-    return 1.5;
-  }
-
   function defaultScore(entry) {
-    var multiplied = Math.round(
-      entry.liveBasePoints *
-      lengthMultiplier(entry.length) *
-      entry.shapeMult *
-      entry.crystalMult *
-      entry.wildcardMult
-    );
-    return multiplied + entry.emberBonus;
+    if (window.LD && window.LD.Scoring && typeof window.LD.Scoring.scoreEntry === 'function') {
+      return window.LD.Scoring.scoreEntry(entry);
+    }
+    return entry.length * 10 + (entry.tilePoints || 0);
   }
 
   function compareEntries(a, b) {
@@ -133,7 +111,6 @@
 
   function finalizeEntry(word, path, tiles, plantedWordSet, options) {
     var shape = computePathShape(path);
-    var shapeMult = pathShapeMultiplier(shape);
     var tilePoints = 0;
     var liveBasePoints = 0;
     var wildcardCount = 0;
@@ -166,15 +143,15 @@
       isHorizontal: shape.isHorizontal,
       isVertical: shape.isVertical,
       isDiagonal: shape.isDiagonal,
-      shapeMult: shapeMult,
+      shapeMult: 1,
       wildcardCount: wildcardCount,
       hasWildcard: wildcardCount > 0,
       crystalCount: crystalCount,
       hasCrystal: crystalCount > 0,
-      crystalMult: crystalCount > 0 ? 2.0 : 1.0,
+      crystalMult: 1,
       emberCount: emberCount,
-      emberBonus: emberCount * 20,
-      wildcardMult: wildcardCount > 0 ? 0.5 : 1.0,
+      emberBonus: emberCount * 10,
+      wildcardMult: 1,
       spentTileCount: spentTileCount,
       wornTileCount: wornTileCount,
       playable: spentTileCount === 0,
@@ -184,6 +161,18 @@
       playablePathCount: spentTileCount === 0 ? 1 : 0,
       blockedPathCount: spentTileCount === 0 ? 0 : 1,
     };
+
+    if (window.LD && window.LD.Scoring && typeof window.LD.Scoring.computeBreakdown === 'function') {
+      var breakdown = window.LD.Scoring.computeBreakdown(entry);
+      entry.scoreModel = breakdown.scoreModel;
+      entry.lengthBase = breakdown.lengthBase;
+      entry.tileBonus = breakdown.tileBonus;
+      entry.shapeBonus = breakdown.shapeBonus;
+      entry.shapeLabel = breakdown.shapeLabel;
+      entry.crystalBonus = breakdown.crystalBonus;
+      entry.emberBonus = breakdown.emberBonus;
+      entry.wildcardPenalty = breakdown.wildcardPenalty;
+    }
 
     entry.score = typeof options.scoreFn === 'function'
       ? options.scoreFn(entry)

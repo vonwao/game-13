@@ -192,14 +192,14 @@ export default function HelpPanel() {
         </Step>
         <Step n="ii." title="Score the page">
           <div style={{ fontSize: 14, lineHeight: 1.6 }}>
-            <b>length</b> · <b>shape</b> (straight ×1.5, corner-free ×2) · <b>planted</b> (★ hidden) · <b>wear</b> (the third use seals a tile)
+            <b>length</b> leads · <b>tiles</b> add a small bonus · <b>shape</b> rewards straight paths · <b>planted</b> words add discovery points · <b>wear</b> seals a third use
           </div>
         </Step>
         <Step n="iii." title="Special tiles">
           <div style={{ display: 'flex', gap: 8 }}>
-            <SpecialDemo kind="ember" letter="E" name="Ember" desc="+pts" />
-            <SpecialDemo kind="crystal" letter="K" name="Crystal" desc="× 2" />
-            <SpecialDemo kind="void" letter="?" name="Wildcard" desc="any letter" />
+            <SpecialDemo kind="ember" letter="E" name="Ember" desc="+10" />
+            <SpecialDemo kind="crystal" letter="K" name="Crystal" desc="+12" />
+            <SpecialDemo kind="void" letter="?" name="Wildcard" desc="-10" />
           </div>
           <HelpNote center>{specialTilesNote}</HelpNote>
         </Step>
@@ -306,9 +306,9 @@ export default function HelpPanel() {
           <Step n="ii." title="Scoring rewards">
             <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 12, rowGap: 8, fontSize: 15, lineHeight: 1.5 }}>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 600 }}>length</span>
-              <span>longer words score more, non-linearly</span>
+              <span>fixed table: 5=55, 6=85, 7=120, 8+=160</span>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 600 }}>shape</span>
-              <span>straight paths × 1.5 ; corner-free × 2</span>
+              <span>straight paths add points; corners subtract points</span>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 600 }}>planted</span>
               <span>discover hidden words seeded into the page</span>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 600 }}>wear</span>
@@ -318,9 +318,9 @@ export default function HelpPanel() {
 
           <Step n="iii." title="Special tiles">
             <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-              <SpecialDemo kind="ember" letter="E" name="Ember" desc="adds points to the word it lights" />
-              <SpecialDemo kind="crystal" letter="K" name="Crystal" desc="doubles the word's score" />
-              <SpecialDemo kind="void" letter="?" name="Wildcard" desc="stands in for any letter you need" />
+              <SpecialDemo kind="ember" letter="E" name="Ember" desc="adds 10 points" />
+              <SpecialDemo kind="crystal" letter="K" name="Crystal" desc="adds 12 points" />
+              <SpecialDemo kind="void" letter="?" name="Wildcard" desc="subtracts 10 points" />
             </div>
             <HelpNote>{specialTilesNote}</HelpNote>
           </Step>

@@ -316,7 +316,7 @@ async function main() {
     'sheet closed',
   );
 
-  // ---- A5: scoring config — combo bonuses are off, wildcard mult exists ----
+  // ---- A5: scoring config — combo bonuses are off, length-first scoring is wired ----
   // Reset to a desktop viewport for the scoring checks.
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(80);
@@ -333,22 +333,44 @@ async function main() {
     `gameMode=${scoringConfig.gameMode} comboBonuses=${scoringConfig.comboBonuses}`,
   );
 
-  // The breakdown function should produce a wildcardMult field; calling it
-  // here would require a real path. Instead, search the bundled module text
-  // for the wildcard halving rule so a future regression is caught.
-  const wildcardWired = await page.evaluate(async () => {
-    try {
-      const r = await fetch('/modules/input.js');
-      const txt = await r.text();
-      return /hasWildcard/.test(txt) && /wildcardMult\s*=\s*hasWildcard\s*\?\s*0\.5/.test(txt);
-    } catch {
-      return false;
-    }
+  const scoringWired = await page.evaluate(() => {
+    const scoring = window.LD?.Scoring;
+    const solver = window.LD?.Solver;
+    if (!scoring || !solver) return null;
+    const entry = {
+      length: 8,
+      tilePoints: 20,
+      isHorizontal: true,
+      wildcardCount: 1,
+      crystalCount: 1,
+      emberCount: 1,
+    };
+    const breakdown = scoring.computeBreakdown(entry);
+    return {
+      model: breakdown.scoreModel,
+      lengthBase: breakdown.lengthBase,
+      tileBonus: breakdown.tileBonus,
+      shapeBonus: breakdown.shapeBonus,
+      crystalBonus: breakdown.crystalBonus,
+      emberBonus: breakdown.emberBonus,
+      wildcardPenalty: breakdown.wildcardPenalty,
+      total: breakdown.total,
+      solverScore: solver.defaultScore(entry),
+    };
   });
   record(
-    'A5 wildcard ×0.5 penalty is wired in input.js',
-    wildcardWired,
-    wildcardWired ? 'hasWildcard + wildcardMult = 0.5 present' : 'wildcard math missing',
+    'A5 length-first scoring table is wired through runtime and solver',
+    scoringWired &&
+      scoringWired.model === 'length-first-v1' &&
+      scoringWired.lengthBase === 160 &&
+      scoringWired.tileBonus === 30 &&
+      scoringWired.shapeBonus === 12 &&
+      scoringWired.crystalBonus === 12 &&
+      scoringWired.emberBonus === 10 &&
+      scoringWired.wildcardPenalty === 10 &&
+      scoringWired.total === 214 &&
+      scoringWired.solverScore === 214,
+    scoringWired ? JSON.stringify(scoringWired) : 'scoring API missing',
   );
 
   // ---- A6: paused phase blocks gameplay keystrokes ----

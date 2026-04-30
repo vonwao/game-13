@@ -282,67 +282,74 @@
    */
   function computeWordHuntBreakdown(path, word, comboCount) {
     const board  = _state.board;
-    const config = _state.config || {};
     const shape = computePathShape(path);
 
-    // Base: sum of tile letter points
-    let basePts = 0;
+    let tilePoints = 0;
+    let wildcardCount = 0;
+    let crystalCount = 0;
     let emberCount = 0;
-    let hasCrystal = false;
-    let hasWildcard = false;
     for (let i = 0; i < path.length; i++) {
       const t = board.tiles[path[i].row * board.width + path[i].col];
-      basePts += t ? (t.points || 1) : 1;
-      if (t && t.icon === 'ember') emberCount++;
-      if (t && t.icon === 'crystal') hasCrystal = true;
-      if (t && t.icon === 'void') hasWildcard = true;
+      tilePoints += t && typeof t.points === 'number' ? t.points : 0;
+      if (!t || !t.icon) continue;
+      wildcardCount++;
+      if (t.icon === 'crystal') crystalCount++;
+      if (t.icon === 'ember') emberCount++;
     }
 
-    const lenMult = lengthMultiplier(word.length);
-
-    // Shape
-    let shapeMult  = 1.0;
-    let shapeLabel = '';
-    if (config.pathBonuses) {
-      shapeMult = getPathShapeMultiplier(path);
-      if (shape.isStraight) {
-        if (shape.isHorizontal) shapeLabel = 'horizontal';
-        else if (shape.isVertical) shapeLabel = 'vertical';
-        else shapeLabel = 'diagonal';
-      } else {
-        shapeLabel = shape.corners + (shape.corners === 1 ? ' corner' : ' corners');
-      }
-    }
-
-    let comboMult = 1.0;
-    if (config.comboBonuses && comboCount > 1) {
-      comboMult = 1.0 + (comboCount - 1) * 0.1;
-    }
-
-    const crystalMult = hasCrystal ? 2.0 : 1.0;
-    // Wildcard penalty: paths through ✦ tiles score at half. Single penalty
-    // regardless of how many wildcards the path uses — keeps the rule legible.
-    const wildcardMult = hasWildcard ? 0.5 : 1.0;
-    const emberBonus = emberCount * 20;
-    const multiplied = Math.round(basePts * lenMult * shapeMult * comboMult * crystalMult * wildcardMult);
-    const total = multiplied + emberBonus;
+    const scoring = window.LD && window.LD.Scoring;
+    const scoreEntry = {
+      word,
+      length: word.length,
+      tilePoints,
+      corners: shape.corners,
+      isStraight: shape.isStraight,
+      isHorizontal: shape.isHorizontal,
+      isVertical: shape.isVertical,
+      isDiagonal: shape.isDiagonal,
+      wildcardCount,
+      crystalCount,
+      emberCount,
+    };
+    const scored = scoring && typeof scoring.computeBreakdown === 'function'
+      ? scoring.computeBreakdown(scoreEntry)
+      : {
+        scoreModel: 'fallback',
+        length: word.length,
+        lengthBase: word.length * 10,
+        tilePoints,
+        tileBonus: tilePoints,
+        shapeBonus: 0,
+        shapeLabel: '',
+        wildcardCount,
+        wildcardPenalty: 0,
+        crystalCount,
+        crystalBonus: 0,
+        emberCount,
+        emberBonus: 0,
+        total: word.length * 10 + tilePoints,
+      };
 
     return {
-      basePts,
-      lenMult,
-      shapeMult,
-      shapeLabel,
+      ...scored,
+      basePts: tilePoints,
+      tilePoints,
       corners: shape.corners,
+      isStraight: shape.isStraight,
+      isHorizontal: shape.isHorizontal,
+      isVertical: shape.isVertical,
+      isDiagonal: shape.isDiagonal,
       comboCount,
-      comboMult,
-      crystalMult,
-      hasCrystal,
-      wildcardMult,
-      hasWildcard,
+      comboMult: 1,
+      lenMult: 1,
+      shapeMult: 1,
+      crystalMult: 1,
+      wildcardMult: 1,
+      hasCrystal: crystalCount > 0,
+      hasWildcard: wildcardCount > 0,
       emberCount,
-      emberBonus,
-      multiplied,
-      total
+      multiplied: scored.total,
+      total: scored.total
     };
   }
 
@@ -374,32 +381,9 @@
       isStraight,
       isHorizontal: isStraight && dr0 === 0,
       isVertical:   isStraight && dc0 === 0,
+      isDiagonal:   isStraight && dc0 !== 0 && dr0 !== 0,
       corners,
     };
-  }
-
-  function getPathShapeMultiplier(path) {
-    if (path.length < 2) return 1.0;
-    const shape = computePathShape(path);
-    if (shape.isStraight) {
-      if (shape.isHorizontal || shape.isVertical) return 2.0;
-      return 1.5; // diagonal straight
-    }
-    // 0.2x penalty per direction change, min 0.4x — discourages zigzag paths
-    return Math.max(0.4, 1.0 - shape.corners * 0.2);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Word Hunt scoring
-  // ---------------------------------------------------------------------------
-
-  function lengthMultiplier(len) {
-    if (len <= 3) return 1.0;
-    if (len === 4) return 1.5;
-    if (len === 5) return 2.0;
-    if (len === 6) return 3.0;
-    if (len === 7) return 5.0;
-    return 8.0;
   }
 
   function submitWordHunt() {
@@ -412,7 +396,6 @@
     const nextCombo = (config.comboBonuses && hunt) ? ((hunt.combo || 0) + 1) : 1;
     const breakdown = computeWordHuntBreakdown(path, typed, nextCombo);
     const shape = computePathShape(path);
-    const shapeMult = breakdown.shapeMult;
 
     if (config.comboBonuses && hunt) {
       hunt.combo = nextCombo;
@@ -500,6 +483,14 @@
         score: earned,
         pathLength: path.length,
         basePts: breakdown.basePts,
+        tilePoints: breakdown.tilePoints,
+        lengthBase: breakdown.lengthBase,
+        tileBonus: breakdown.tileBonus,
+        shapeBonus: breakdown.shapeBonus,
+        crystalBonus: breakdown.crystalBonus,
+        wildcardPenalty: breakdown.wildcardPenalty,
+        wildcardCount: breakdown.wildcardCount,
+        scoreModel: breakdown.scoreModel,
         lenMult: breakdown.lenMult,
         shapeMult: breakdown.shapeMult,
         shapeLabel: breakdown.shapeLabel,
@@ -511,14 +502,9 @@
         discoveryBonus,
         objectiveBonus,
         orientation: getPathOrientationLabel(path, false),
-        reasonText:
-          breakdown.basePts + ' base ×' + breakdown.lenMult.toFixed(1) +
-          ' len ×' + breakdown.shapeMult.toFixed(1) + ' shape' +
-          (breakdown.comboMult > 1 ? ' ×' + breakdown.comboMult.toFixed(1) + ' combo' : '') +
-          (breakdown.crystalMult > 1 ? ' ×2 crystal' : '') +
-          (breakdown.emberBonus > 0 ? ' +' + breakdown.emberBonus + ' ember' : '') +
-          (discoveryBonus > 0 ? ' +100 discovery' : '') +
-          (objectiveBonus > 0 ? ' +' + objectiveBonus + ' objective' : '')
+        reasonText: (window.LD && window.LD.Scoring && window.LD.Scoring.formatReason)
+          ? window.LD.Scoring.formatReason(breakdown, { discoveryBonus, objectiveBonus })
+          : String(earned)
       };
       hunt.wordsThisRound.push(historyEntry);
       _state.wordHistory.push(historyEntry);
@@ -561,8 +547,8 @@
     if (window.LD?.Particles?.text && path.length > 0) {
       const mid = toPixel2(path[Math.floor(path.length / 2)]);
       let popupText = '+' + earned;
-      if (config.pathBonuses && shapeMult !== 1.0) {
-        popupText += ' ×' + shapeMult.toFixed(1);
+      if (config.pathBonuses && breakdown.shapeBonus) {
+        popupText += ' ' + (breakdown.shapeBonus > 0 ? '+' : '') + breakdown.shapeBonus + ' shape';
       }
       LD.Particles.text(mid.x, mid.y - 20, popupText, '#ffd700', 18);
     }

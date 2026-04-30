@@ -6,6 +6,7 @@ cd "$ROOT"
 
 echo "[1/5] Syntax check"
 node --check modules/game.js
+node --check modules/scoring.js
 node --check modules/input.js
 node --check modules/actions.js
 node --check modules/touch.js

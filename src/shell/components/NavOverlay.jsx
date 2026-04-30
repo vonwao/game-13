@@ -675,7 +675,7 @@ export function RunCompleteOverlay({ skin, phone, state, onNewRun, onQuit }) {
   const archiveRows = [
     { label: 'Goal shape', meta: getEndConditionLabel(settings.endCondition), detail: 'used for this run' },
     { label: 'Board size', meta: settings.boardSize || 'small', detail: 'next run can change this' },
-    { label: 'Wildcard rule', meta: settings.specialTiles ? 'enabled' : 'off', detail: settings.specialTiles ? 'paths through wildcards score at half' : 'letters only' },
+    { label: 'Wildcard rule', meta: settings.specialTiles ? 'enabled' : 'off', detail: settings.specialTiles ? 'icon paths subtract points' : 'letters only' },
   ];
 
   return (

@@ -739,12 +739,11 @@
     if (!isEmpty) {
       var sp = state.input.scorePreview;
       if (sp && state.input.hasPath) {
-        var breakdown = sp.basePts + 'pts';
-        if (sp.lenMult > 1.0) breakdown += ' ×' + sp.lenMult.toFixed(1);
-        if (sp.shapeMult !== 1.0) breakdown += ' ×' + sp.shapeMult.toFixed(1) + ' ' + (compact ? getCompactShapeLabel(sp.shapeLabel) : sp.shapeLabel);
-        if (sp.comboMult > 1.0) breakdown += ' ×' + sp.comboMult.toFixed(1) + ' combo';
-        if (sp.crystalMult > 1.0) breakdown += compact ? ' ×2 cry' : ' ×2 crystal';
-        if (sp.emberBonus > 0) breakdown += compact ? ' +' + sp.emberBonus + ' emb' : ' +' + sp.emberBonus + ' ember';
+        var breakdown = 'len ' + (sp.lengthBase || 0) + ' +tile ' + (sp.tileBonus || 0);
+        if (sp.shapeBonus) breakdown += (sp.shapeBonus > 0 ? ' +shape ' : ' -shape ') + Math.abs(sp.shapeBonus);
+        if (sp.crystalBonus) breakdown += compact ? ' +cry ' + sp.crystalBonus : ' +crystal ' + sp.crystalBonus;
+        if (sp.emberBonus > 0) breakdown += compact ? ' +emb ' + sp.emberBonus : ' +ember ' + sp.emberBonus;
+        if (sp.wildcardPenalty) breakdown += ' -wild ' + sp.wildcardPenalty;
         breakdown += ' = ~' + sp.total + ' pts';
         ctx.font = (compact ? '9px' : '10px') + ' "Courier New", monospace';
         ctx.fillStyle = isValid ? '#ffd700' : '#888';

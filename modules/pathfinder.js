@@ -135,12 +135,10 @@
   // Word Hunt path ranking — picks highest-scoring path
   // ---------------------------------------------------------------------------
 
-  /**
-   * Compute the shape multiplier for a path (mirrors input.js logic).
-   * Used to rank Word Hunt paths: straight > diagonal > zigzag.
-   */
-  function pathShapeMultiplier(path) {
-    if (path.length < 2) return 1.0;
+  function computePathShape(path) {
+    if (path.length < 2) {
+      return { isStraight: false, isHorizontal: false, isVertical: false, isDiagonal: false, corners: 0 };
+    }
     const dc0 = path[1].col - path[0].col;
     const dr0 = path[1].row - path[0].row;
     let isStraight = true;
@@ -153,23 +151,50 @@
         corners++;
       }
     }
-    if (isStraight) {
-      return (dr0 === 0 || dc0 === 0) ? 2.0 : 1.5;
-    }
-    return Math.max(0.4, 1.0 - corners * 0.2);
+    return {
+      isStraight,
+      isHorizontal: isStraight && dr0 === 0,
+      isVertical: isStraight && dc0 === 0,
+      isDiagonal: isStraight && dc0 !== 0 && dr0 !== 0,
+      corners,
+    };
   }
 
   /**
    * Rank score for a Word Hunt path: higher is better.
-   * Maximises sum(tile.points) × shapeMult.
+   * Mirrors the live length-first scoring table for a fixed word.
    */
-  function wordHuntRank(path, state) {
-    let pts = 0;
+  function wordHuntRank(path, state, word) {
+    const shape = computePathShape(path);
+    let tilePoints = 0;
+    let wildcardCount = 0;
+    let crystalCount = 0;
+    let emberCount = 0;
     for (let i = 0; i < path.length; i++) {
       const t = getTile(state, path[i].col, path[i].row);
-      pts += t ? (t.points || 1) : 1;
+      tilePoints += t && typeof t.points === 'number' ? t.points : 0;
+      if (!t || !t.icon) continue;
+      wildcardCount++;
+      if (t.icon === 'crystal') crystalCount++;
+      if (t.icon === 'ember') emberCount++;
     }
-    return pts * pathShapeMultiplier(path);
+
+    if (window.LD && window.LD.Scoring && typeof window.LD.Scoring.scoreEntry === 'function') {
+      return window.LD.Scoring.scoreEntry({
+        word,
+        length: word.length,
+        tilePoints,
+        corners: shape.corners,
+        isStraight: shape.isStraight,
+        isHorizontal: shape.isHorizontal,
+        isVertical: shape.isVertical,
+        isDiagonal: shape.isDiagonal,
+        wildcardCount,
+        crystalCount,
+        emberCount,
+      });
+    }
+    return word.length * 10 + tilePoints;
   }
 
   // ---------------------------------------------------------------------------
@@ -251,7 +276,7 @@
       if (candidateCount < 2) candidateCount++;
 
       if (isWordHunt) {
-        const rank = wordHuntRank(path, state);
+        const rank = wordHuntRank(path, state, word);
         if (rank > bestScore) {
           bestScore = rank;
           bestPath = path.slice();
@@ -285,7 +310,7 @@
   /**
    * DFS with backtracking over the active search area.
    *
-   * Word Hunt: keeps the path with the highest sum(points) × shapeMult.
+   * Word Hunt: keeps the highest-scoring path under the live score table.
    * Siege:     keeps the path closest (lowest avg distance) to corruption.
    *
    * @param {object}   state

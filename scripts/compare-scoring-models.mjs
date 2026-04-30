@@ -55,15 +55,6 @@ function lengthMultiplier(len) {
   return 8.0;
 }
 
-function lengthBasePoints(len) {
-  if (len <= 3) return 12;
-  if (len === 4) return 30;
-  if (len === 5) return 55;
-  if (len === 6) return 85;
-  if (len === 7) return 120;
-  return 160;
-}
-
 function sortRankedEntries(a, b) {
   if (!!a.playable !== !!b.playable) return a.playable ? -1 : 1;
   if ((b.modelScore || 0) !== (a.modelScore || 0)) return (b.modelScore || 0) - (a.modelScore || 0);
@@ -165,6 +156,7 @@ async function ensureSolverReady() {
     globalThis.window.LD = globalThis.window.LD || {};
 
     await import(pathToFileURL(path.join(ROOT, 'modules', 'dictionary.js')).href);
+    await import(pathToFileURL(path.join(ROOT, 'modules', 'scoring.js')).href);
     await import(pathToFileURL(path.join(ROOT, 'modules', 'solver.js')).href);
 
     const solver = globalThis.window?.LD?.Solver;
@@ -182,17 +174,10 @@ function scoreClassic(entry) {
 }
 
 function scoreLengthFirst(entry) {
-  const lengthBase = lengthBasePoints(entry.length || 0);
-  const tileBonus = Math.min(30, (entry.tilePoints || 0) * 2);
-  const shapeBonus = entry.isHorizontal || entry.isVertical
-    ? 12
-    : entry.isDiagonal
-      ? 6
-      : -(Math.min(6, entry.corners || 0) * 4);
-  const crystalBonus = (entry.crystalCount || 0) * 12;
-  const emberBonus = (entry.emberCount || 0) * 10;
-  const wildcardPenalty = (entry.wildcardCount || 0) * 10;
-  return Math.max(1, lengthBase + tileBonus + shapeBonus + crystalBonus + emberBonus - wildcardPenalty);
+  const scoring = globalThis.window?.LD?.Scoring;
+  return scoring && typeof scoring.scoreEntry === 'function'
+    ? scoring.scoreEntry(entry)
+    : entry.score || 0;
 }
 
 function describeTopEntry(entry, rank, currentRankByWord = null) {
@@ -404,8 +389,8 @@ async function main() {
   const modelDefs = [
     {
       id: 'current',
-      label: 'Current live scoring',
-      formula: 'liveBasePoints * lenMult * shape * crystal * wildcard + ember',
+      label: 'Current runtime scoring',
+      formula: 'length table + capped tile bonus + small shape/special modifiers',
       score: (entry) => solved.solver.defaultScore(entry),
     },
     {

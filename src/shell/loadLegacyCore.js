@@ -6,6 +6,7 @@ const LEGACY_MODULES = [
   'constants',
   'board',
   'pathfinder',
+  'scoring',
   'solver',
   'challenges',
   'particles',

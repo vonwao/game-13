@@ -164,11 +164,11 @@ Three-run averages, no special tiles, solver min length `5`:
 This replaces the old default shape where portrait/easy could land near `49%`
 planted coverage.
 
-### Candidate length-first scoring table
+### Length-first scoring table
 
-The compare script now evaluates this candidate table. Runtime scoring is still
-the current multiplier model until the UI, help copy, history text, and wildcard
-verification are updated together.
+Runtime scoring, solver ranking, score preview, path auto-selection, Help copy,
+history text, and bridge verification now use the shared `length-first-v1`
+table in `modules/scoring.js`.
 
 Base score by length:
 
@@ -188,7 +188,7 @@ Modifiers:
 - wildcard: `-10` each
 - planted / organic bonus: `0`
 
-This keeps normal word scores in the same broad UI range as the current model
+This keeps normal word scores in the same broad UI range as the previous model
 while making length the primary ranking signal.
 
 ## Parameter inventory
@@ -376,6 +376,5 @@ This sprint is successful when:
 
 ## Immediate next step
 
-Wire the selected length-first scoring table into runtime scoring, score
-preview, Help, history text, and verification checks as one player-facing
-rules patch.
+Add the first always-visible `Solutions` surface using solver-ranked playable
+words of length `5+`.
