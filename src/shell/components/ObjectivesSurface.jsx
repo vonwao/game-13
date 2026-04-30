@@ -1,3 +1,11 @@
+import { useState } from 'react';
+
+const SOLUTION_FILTERS = [
+  { key: 'playable', label: 'Playable' },
+  { key: 'all', label: 'All' },
+  { key: 'blocked', label: 'Blocked' },
+];
+
 function toFiniteNumber(value, fallback = 0) {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
@@ -98,7 +106,24 @@ export function buildObjectivesSurfaceModel(state) {
       playable: toFiniteNumber(rawSolutions.playable, solutions.filter((entry) => entry.playable).length),
       blocked: toFiniteNumber(rawSolutions.blocked, solutions.filter((entry) => entry.blocked).length),
     },
+    solutionFilterCounts: {
+      all: solutions.length,
+      playable: solutions.filter((entry) => entry.playable).length,
+      blocked: solutions.filter((entry) => entry.blocked).length,
+    },
   };
+}
+
+function filterSolutions(solutions, filter) {
+  if (filter === 'blocked') return solutions.filter((entry) => entry.blocked);
+  if (filter === 'all') return solutions;
+  return solutions.filter((entry) => entry.playable);
+}
+
+function getSolutionEmptyCopy(filter) {
+  if (filter === 'blocked') return 'no blocked solutions';
+  if (filter === 'all') return 'no solutions yet';
+  return 'no playable solutions';
 }
 
 function RailHeading({ skin, children }) {
@@ -475,6 +500,65 @@ function SolutionRow({ skin, entry, roomy = false }) {
   );
 }
 
+function SolutionFilterControl({ skin, value, onChange, counts }) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Solution filter"
+      data-testid="solutions-filter-control"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: 2,
+        padding: 2,
+        border: '1px solid var(--rule-faint)',
+        borderRadius: 6,
+        background: skin.id === 'terminal' ? 'rgba(127,219,106,.04)' : 'rgba(255,255,255,.03)',
+      }}
+    >
+      {SOLUTION_FILTERS.map((filter) => {
+        const active = value === filter.key;
+        return (
+          <button
+            key={filter.key}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            aria-pressed={active}
+            data-testid={`solutions-filter-${filter.key}`}
+            onClick={() => onChange(filter.key)}
+            style={{
+              appearance: 'none',
+              minWidth: 0,
+              minHeight: 28,
+              border: 'none',
+              borderRadius: 4,
+              background: active ? 'var(--accent)' : 'transparent',
+              color: active ? 'var(--bg)' : 'var(--ink-soft)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              padding: '5px 6px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              fontVariantNumeric: 'tabular-nums',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+            }}
+          >
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.label}</span>
+            <span style={{ opacity: active ? 0.78 : 0.72 }}>{counts[filter.key] || 0}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function EmptyState({ children, roomy = false }) {
   return (
     <div
@@ -572,10 +656,11 @@ function DiscoveryChip({ skin, word }) {
   );
 }
 
-function RailSurface({ skin, model }) {
+function RailSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
   const solutionMeta = model.solutionSummary.ready
     ? `${model.solutionSummary.playable}/${model.solutionSummary.total} playable`
     : 'pending';
+  const filteredSolutions = filterSolutions(model.solutions, solutionFilter);
 
   return (
     <>
@@ -604,11 +689,23 @@ function RailSurface({ skin, model }) {
       >
         {model.solutionSummary.minLength}+ letters · {solutionMeta}
       </div>
-      <div data-testid="solutions-surface" style={{ marginTop: 8, flex: '1 1 220px', overflow: 'auto', minHeight: 0 }}>
-        {model.solutions.length === 0 ? (
-          <EmptyState>no solutions yet</EmptyState>
+      <div style={{ marginTop: 8, flexShrink: 0 }}>
+        <SolutionFilterControl
+          skin={skin}
+          value={solutionFilter}
+          onChange={onSolutionFilterChange}
+          counts={model.solutionFilterCounts}
+        />
+      </div>
+      <div
+        data-testid="solutions-surface"
+        data-filter={solutionFilter}
+        style={{ marginTop: 8, flex: '1 1 220px', overflow: 'auto', minHeight: 0 }}
+      >
+        {filteredSolutions.length === 0 ? (
+          <EmptyState>{getSolutionEmptyCopy(solutionFilter)}</EmptyState>
         ) : (
-          model.solutions.map((entry) => <SolutionRow key={entry.id} skin={skin} entry={entry} />)
+          filteredSolutions.map((entry) => <SolutionRow key={entry.id} skin={skin} entry={entry} />)
         )}
       </div>
 
@@ -626,7 +723,7 @@ function RailSurface({ skin, model }) {
   );
 }
 
-function SheetSurface({ skin, model }) {
+function SheetSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
   const objectiveMeta = model.objectiveSummary.total > 0
     ? `${model.objectiveSummary.done}/${model.objectiveSummary.total} complete`
     : 'none yet';
@@ -637,6 +734,7 @@ function SheetSurface({ skin, model }) {
   const solutionMeta = model.solutionSummary.ready
     ? `${model.solutionSummary.playable}/${model.solutionSummary.total} playable`
     : 'pending';
+  const filteredSolutions = filterSolutions(model.solutions, solutionFilter);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -674,14 +772,23 @@ function SheetSurface({ skin, model }) {
 
       <div>
         <SheetHeading skin={skin} meta={solutionMeta}>Solutions</SheetHeading>
+        <div style={{ marginTop: 10 }}>
+          <SolutionFilterControl
+            skin={skin}
+            value={solutionFilter}
+            onChange={onSolutionFilterChange}
+            counts={model.solutionFilterCounts}
+          />
+        </div>
         <div
           data-testid="solutions-sheet"
+          data-filter={solutionFilter}
           style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflow: 'auto' }}
         >
-          {model.solutions.length === 0 ? (
-            <EmptyState roomy>No solutions yet.</EmptyState>
+          {filteredSolutions.length === 0 ? (
+            <EmptyState roomy>{getSolutionEmptyCopy(solutionFilter)}</EmptyState>
           ) : (
-            model.solutions.map((entry) => <SolutionRow key={entry.id} skin={skin} entry={entry} roomy />)
+            filteredSolutions.map((entry) => <SolutionRow key={entry.id} skin={skin} entry={entry} roomy />)
           )}
         </div>
       </div>
@@ -713,7 +820,22 @@ function SheetSurface({ skin, model }) {
 
 export default function ObjectivesSurface({ skin, state, variant = 'rail' }) {
   const model = buildObjectivesSurfaceModel(state);
+  const [solutionFilter, setSolutionFilter] = useState('playable');
   return variant === 'sheet'
-    ? <SheetSurface skin={skin} model={model} />
-    : <RailSurface skin={skin} model={model} />;
+    ? (
+        <SheetSurface
+          skin={skin}
+          model={model}
+          solutionFilter={solutionFilter}
+          onSolutionFilterChange={setSolutionFilter}
+        />
+      )
+    : (
+        <RailSurface
+          skin={skin}
+          model={model}
+          solutionFilter={solutionFilter}
+          onSolutionFilterChange={setSolutionFilter}
+        />
+      );
 }

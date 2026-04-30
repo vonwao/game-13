@@ -319,6 +319,26 @@ async function main() {
     await page.locator('[data-testid="solutions-sheet"] [data-testid="solution-row"]').count() > 0,
     `${await page.locator('[data-testid="solutions-sheet"] [data-testid="solution-row"]').count()} solution row(s)`,
   );
+  record(
+    'A4 phone sheet exposes solution filters',
+    await page.locator('[data-testid="solutions-filter-playable"]').count() > 0 &&
+      await page.locator('[data-testid="solutions-filter-all"]').count() > 0 &&
+      await page.locator('[data-testid="solutions-filter-blocked"]').count() > 0,
+    'Playable / All / Blocked controls present',
+  );
+  await page.locator('[data-testid="solutions-filter-all"]').click();
+  record(
+    'A4 all-solutions filter keeps solution rows visible',
+    await page.locator('[data-testid="solutions-sheet"][data-filter="all"] [data-testid="solution-row"]').count() > 0,
+    `${await page.locator('[data-testid="solutions-sheet"][data-filter="all"] [data-testid="solution-row"]').count()} all row(s)`,
+  );
+  await page.locator('[data-testid="solutions-filter-blocked"]').click();
+  record(
+    'A4 blocked-solutions filter excludes playable rows',
+    await page.locator('[data-testid="solutions-sheet"][data-filter="blocked"] [data-testid="solution-row"][data-playable="true"]').count() === 0,
+    `${await page.locator('[data-testid="solutions-sheet"][data-filter="blocked"] [data-testid="solution-row"]').count()} blocked row(s)`,
+  );
+  await page.locator('[data-testid="solutions-filter-playable"]').click();
   await page.locator('[data-testid="phone-objectives-backdrop"]').click({
     position: { x: 20, y: 20 },
   });

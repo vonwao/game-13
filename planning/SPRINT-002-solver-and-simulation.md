@@ -204,6 +204,8 @@ The first always-visible `Solutions` surface is live:
    list
 5. bridge verification now checks that solutions are present in runtime state and
    visible in the phone sheet
+6. desktop right rail and phone bottom sheet include first-pass filters:
+   `Playable`, `All`, and `Blocked`
 
 ## Parameter inventory
 
@@ -390,5 +392,5 @@ This sprint is successful when:
 
 ## Immediate next step
 
-Exercise the live Solutions surface after submissions, then add the first filter
-controls: `Playable`, `All`, and `Blocked`.
+Make solution rows actionable: selecting a solution should preview or load its
+path so the surface can move from reference list to playable tool.
