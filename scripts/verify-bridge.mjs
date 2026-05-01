@@ -134,10 +134,18 @@ async function main() {
       Array.isArray(playingState.solutions?.items) &&
       playingState.solutions.items.length > 0 &&
       playingState.solutions.items[0].length >= 5 &&
-      playingState.solutions.items[0].playable === true,
+      playingState.solutions.items[0].playable === true &&
+      playingState.solutions.playerFacingTotal > 0 &&
+      playingState.solutions.items.slice(0, 10).every((entry) => entry.planted || entry.commonRank > 0),
     playingState.solutions
-      ? `${playingState.solutions.items?.length || 0} visible, ${playingState.solutions.playable || 0}/${playingState.solutions.total || 0} playable`
+      ? `${playingState.solutions.items?.length || 0} visible, ${playingState.solutions.playable || 0}/${playingState.solutions.total || 0} common playable`
       : 'solutions missing',
+  );
+  const goalSummary = await page.locator('[data-testid="goal-summary"]').first().textContent().catch(() => '');
+  record(
+    'play state shows the current goal in the HUD',
+    typeof goalSummary === 'string' && goalSummary.includes('Goal:') && goalSummary.includes('objectives'),
+    goalSummary || 'goal summary missing',
   );
 
   // ---- A2: typing a letter updates inputSummary.typed immediately (no throttle starvation) ----
@@ -408,6 +416,43 @@ async function main() {
       scoringWired.solverScore === 214,
     scoringWired ? JSON.stringify(scoringWired) : 'scoring API missing',
   );
+
+  const scoreFormula = await page.evaluate(() => {
+    const state = window.LD?.STATE;
+    const solver = window.LD?.Solver;
+    const input = window.LD?.Input;
+    if (!state || !solver || !input) return null;
+    const top = (window.LD.Game.getShellState().solutions?.items || []).find((entry) => entry.playable);
+    if (!top) return null;
+    const solved = solver.solveBoard(state, { minLength: 5 }) || [];
+    const entry = solved.find((candidate) => candidate.word === top.word);
+    if (!entry || !Array.isArray(entry.path)) return null;
+    input.setCurrentWordPath(entry.word, entry.path);
+    const preview = window.LD.Game.getShellState().inputSummary?.scorePreview;
+    return preview
+      ? {
+          word: entry.word,
+          total: preview.total,
+          lengthBase: preview.lengthBase,
+          tileBonus: preview.tileBonus,
+        }
+      : null;
+  });
+  await page.waitForTimeout(120);
+  const scoreFormulaText = await page.locator('[data-testid="score-formula"]').first().textContent().catch(() => '');
+  record(
+    'A5 score formula is visible for selected words',
+    scoreFormula &&
+      typeof scoreFormulaText === 'string' &&
+      scoreFormulaText.includes('Length') &&
+      scoreFormulaText.includes('Tiles') &&
+      scoreFormulaText.includes(`= ${scoreFormula.total}`),
+    scoreFormula ? `${scoreFormula.word}: ${scoreFormulaText}` : 'score preview missing',
+  );
+  await page.evaluate(() => {
+    if (window.LD?.Actions?.clearCurrentWord) window.LD.Actions.clearCurrentWord();
+  });
+  await page.waitForTimeout(60);
 
   // ---- A6: paused phase blocks gameplay keystrokes ----
   // Open the pause menu (Esc), type letters, confirm typed buffer is unchanged.

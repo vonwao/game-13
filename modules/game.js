@@ -96,12 +96,14 @@
   const SHELL_THROTTLE_MS = 100; // ~10Hz cap for unforced notifyShellState
   const SOLUTION_MIN_LENGTH_DEFAULT = 5;
   const SOLUTION_MAX_VISIBLE_DEFAULT = 50;
+  const SOLUTION_COMMON_RANK_LIMIT = 6000;
   let shellSolutionsCache = {
     signature: '',
     boardIdentity: '',
     pinnedWords: [],
     value: null,
   };
+  let commonRankByWord = null;
   let resizeBound = false;
   let loopStarted = false;
   let booted = false;
@@ -204,6 +206,30 @@
     shellSolutionsCache.value = null;
   }
 
+  function getCommonRankByWord() {
+    if (commonRankByWord) return commonRankByWord;
+    commonRankByWord = new Map();
+    var ranked = window.LD && window.LD.CommonWords && Array.isArray(window.LD.CommonWords.RANKED)
+      ? window.LD.CommonWords.RANKED
+      : [];
+    for (var i = 0; i < ranked.length; i++) {
+      var word = String(ranked[i] || '').toUpperCase();
+      if (word && !commonRankByWord.has(word)) commonRankByWord.set(word, i + 1);
+    }
+    return commonRankByWord;
+  }
+
+  function getCommonRank(word) {
+    return getCommonRankByWord().get(String(word || '').toUpperCase()) || 0;
+  }
+
+  function isPlayerFacingSolution(entry) {
+    if (!entry || !entry.word) return false;
+    if (entry.planted) return true;
+    var rank = getCommonRank(entry.word);
+    return rank > 0 && rank <= SOLUTION_COMMON_RANK_LIMIT;
+  }
+
   function buildSolutionBoardSignature(includeWear) {
     var board = STATE.board || {};
     if (!Array.isArray(board.tiles) || !board.width || !board.height) return '';
@@ -241,6 +267,8 @@
       word: word,
       score: entry.score || 0,
       length: entry.length || word.length || 0,
+      commonRank: entry.commonRank || getCommonRank(word),
+      playerFacing: entry.playerFacing !== false,
       playable: entry.playable !== false,
       blocked: entry.playable === false,
       found: foundSet.has(word),
@@ -249,6 +277,7 @@
       pathCount: entry.pathCount || 0,
       playablePathCount: entry.playablePathCount || 0,
       blockedPathCount: entry.blockedPathCount || 0,
+      lengthBase: entry.lengthBase || 0,
       tileBonus: entry.tileBonus || 0,
       shapeBonus: entry.shapeBonus || 0,
       shapeLabel: entry.shapeLabel || '',
@@ -308,30 +337,62 @@
       blocked: 0,
       planted: 0,
       organic: 0,
+      dictionaryTotal: solved.length,
+      dictionaryPlayable: 0,
+      playerFacingTotal: 0,
+      playerFacingPlayable: 0,
+      playerFacingBlocked: 0,
     };
 
     for (var i = 0; i < solved.length; i++) {
       var entry = solved[i];
+      entry.commonRank = getCommonRank(entry.word);
+      entry.playerFacing = isPlayerFacingSolution(entry);
       byWord.set(entry.word, entry);
-      if (entry.playable) summary.playable++;
+      if (entry.playable) {
+        summary.playable++;
+        summary.dictionaryPlayable++;
+      }
       else summary.blocked++;
       if (entry.planted) summary.planted++;
       if (entry.organic) summary.organic++;
+      if (entry.playerFacing) {
+        summary.playerFacingTotal++;
+        if (entry.playable) summary.playerFacingPlayable++;
+        else summary.playerFacingBlocked++;
+      }
     }
 
     if (shellSolutionsCache.boardIdentity !== boardIdentity) {
       shellSolutionsCache.boardIdentity = boardIdentity;
-      shellSolutionsCache.pinnedWords = solved
-        .slice(0, SOLUTION_MAX_VISIBLE_DEFAULT)
-        .map(function(entry) { return entry.word; });
+      var playerFacing = solved.filter(function(entry) { return entry.playerFacing; });
+      shellSolutionsCache.pinnedWords = [];
+      var initialLookup = new Set();
+      var initialSources = [playerFacing, solved];
+      for (var s = 0; s < initialSources.length && shellSolutionsCache.pinnedWords.length < SOLUTION_MAX_VISIBLE_DEFAULT; s++) {
+        var source = initialSources[s];
+        for (var ps = 0; ps < source.length && shellSolutionsCache.pinnedWords.length < SOLUTION_MAX_VISIBLE_DEFAULT; ps++) {
+          var sourceWord = source[ps].word;
+          if (initialLookup.has(sourceWord)) continue;
+          shellSolutionsCache.pinnedWords.push(sourceWord);
+          initialLookup.add(sourceWord);
+        }
+      }
     }
 
     var pinnedLookup = new Set(shellSolutionsCache.pinnedWords);
-    for (var j = 0; j < solved.length && shellSolutionsCache.pinnedWords.length < SOLUTION_MAX_VISIBLE_DEFAULT; j++) {
-      var candidateWord = solved[j].word;
-      if (!pinnedLookup.has(candidateWord)) {
-        shellSolutionsCache.pinnedWords.push(candidateWord);
-        pinnedLookup.add(candidateWord);
+    var refillSources = [
+      solved.filter(function(entry) { return entry.playerFacing; }),
+      solved,
+    ];
+    for (var rs = 0; rs < refillSources.length && shellSolutionsCache.pinnedWords.length < SOLUTION_MAX_VISIBLE_DEFAULT; rs++) {
+      var refillSource = refillSources[rs];
+      for (var j = 0; j < refillSource.length && shellSolutionsCache.pinnedWords.length < SOLUTION_MAX_VISIBLE_DEFAULT; j++) {
+        var candidateWord = refillSource[j].word;
+        if (!pinnedLookup.has(candidateWord)) {
+          shellSolutionsCache.pinnedWords.push(candidateWord);
+          pinnedLookup.add(candidateWord);
+        }
       }
     }
 
@@ -353,11 +414,17 @@
       reason: '',
       minLength: SOLUTION_MIN_LENGTH_DEFAULT,
       maxVisible: SOLUTION_MAX_VISIBLE_DEFAULT,
-      total: summary.total,
-      playable: summary.playable,
-      blocked: summary.blocked,
+      total: summary.playerFacingTotal || summary.total,
+      playable: summary.playerFacingTotal ? summary.playerFacingPlayable : summary.playable,
+      blocked: summary.playerFacingTotal ? summary.playerFacingBlocked : summary.blocked,
       planted: summary.planted,
       organic: summary.organic,
+      dictionaryTotal: summary.dictionaryTotal,
+      dictionaryPlayable: summary.dictionaryPlayable,
+      playerFacingTotal: summary.playerFacingTotal,
+      playerFacingPlayable: summary.playerFacingPlayable,
+      playerFacingBlocked: summary.playerFacingBlocked,
+      commonRankLimit: SOLUTION_COMMON_RANK_LIMIT,
       visible: items.length,
       items: items,
     };

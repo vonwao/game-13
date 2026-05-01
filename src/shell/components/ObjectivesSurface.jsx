@@ -67,12 +67,20 @@ export function buildObjectivesSurfaceModel(state) {
       word: entry?.word || '',
       score: toFiniteNumber(entry?.score, 0),
       length: toFiniteNumber(entry?.length, String(entry?.word || '').length),
+      commonRank: toFiniteNumber(entry?.commonRank, 0),
+      playerFacing: entry?.playerFacing !== false,
       playable: entry?.playable !== false,
       blocked: entry?.blocked === true || entry?.playable === false,
       found: !!entry?.found,
       planted: !!entry?.planted,
       pathCount: toFiniteNumber(entry?.pathCount, 0),
+      lengthBase: toFiniteNumber(entry?.lengthBase, 0),
+      tileBonus: toFiniteNumber(entry?.tileBonus, 0),
+      shapeBonus: toFiniteNumber(entry?.shapeBonus, 0),
       shapeLabel: entry?.shapeLabel || '',
+      crystalBonus: toFiniteNumber(entry?.crystalBonus, 0),
+      emberBonus: toFiniteNumber(entry?.emberBonus, 0),
+      wildcardPenalty: toFiniteNumber(entry?.wildcardPenalty, 0),
     }))
     .filter((entry) => entry.word);
 
@@ -105,6 +113,8 @@ export function buildObjectivesSurfaceModel(state) {
       total: toFiniteNumber(rawSolutions.total, solutions.length),
       playable: toFiniteNumber(rawSolutions.playable, solutions.filter((entry) => entry.playable).length),
       blocked: toFiniteNumber(rawSolutions.blocked, solutions.filter((entry) => entry.blocked).length),
+      dictionaryTotal: toFiniteNumber(rawSolutions.dictionaryTotal, rawSolutions.total || solutions.length),
+      playerFacingTotal: toFiniteNumber(rawSolutions.playerFacingTotal, rawSolutions.total || solutions.length),
     },
     solutionFilterCounts: {
       all: solutions.length,
@@ -124,6 +134,25 @@ function getSolutionEmptyCopy(filter) {
   if (filter === 'blocked') return 'no blocked solutions';
   if (filter === 'all') return 'no solutions yet';
   return 'no playable solutions';
+}
+
+function signedNumber(value) {
+  const num = toFiniteNumber(value, 0);
+  if (!num) return '';
+  return `${num > 0 ? '+' : '-'}${Math.abs(num)}`;
+}
+
+function formatScoreFormula(entry, compact = false) {
+  const parts = [];
+  if (entry.lengthBase) parts.push(`Len ${entry.lengthBase}`);
+  parts.push(`Tile +${entry.tileBonus || 0}`);
+  const shape = signedNumber(entry.shapeBonus);
+  if (shape) parts.push(`Shape ${shape}`);
+  if (entry.crystalBonus) parts.push(`Crystal +${entry.crystalBonus}`);
+  if (entry.emberBonus) parts.push(`Ember +${entry.emberBonus}`);
+  if (entry.wildcardPenalty) parts.push(`Wild -${entry.wildcardPenalty}`);
+  const joined = parts.join(compact ? ' · ' : '  ');
+  return joined ? `${joined} = ${entry.score}` : String(entry.score || 0);
 }
 
 function RailHeading({ skin, children }) {
@@ -408,7 +437,11 @@ function SolutionRow({ skin, entry, roomy = false }) {
   const isTerm = skin.id === 'terminal';
   const muted = entry.blocked;
   const status = entry.found ? 'found' : (entry.blocked ? 'blocked' : `${entry.length} letters`);
-  const note = entry.shapeLabel ? `${status} · ${entry.shapeLabel}` : status;
+  const source = entry.planted
+    ? 'planted'
+    : (entry.commonRank ? `common #${entry.commonRank}` : 'dictionary');
+  const note = entry.shapeLabel ? `${status} · ${entry.shapeLabel} · ${source}` : `${status} · ${source}`;
+  const formula = formatScoreFormula(entry, !roomy);
   const wrapperStyle = roomy
     ? {
         display: 'grid',
@@ -482,6 +515,21 @@ function SolutionRow({ skin, entry, roomy = false }) {
           }}
         >
           {note}
+        </div>
+        <div
+          style={{
+            marginTop: roomy ? 4 : 2,
+            fontFamily: 'var(--font-mono)',
+            fontSize: roomy ? 10 : 9,
+            color: muted ? 'var(--ink-faint)' : 'var(--ink-faint)',
+            letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+          title={formula}
+        >
+          {formula}
         </div>
       </div>
       <span
@@ -658,7 +706,7 @@ function DiscoveryChip({ skin, word }) {
 
 function RailSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
   const solutionMeta = model.solutionSummary.ready
-    ? `${model.solutionSummary.playable}/${model.solutionSummary.total} playable`
+    ? `${model.solutionSummary.playable}/${model.solutionSummary.total} common playable`
     : 'pending';
   const filteredSolutions = filterSolutions(model.solutions, solutionFilter);
 
@@ -732,7 +780,7 @@ function SheetSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
     ? `${model.discoverySummary.found}/${discoveryTotal} found`
     : 'none yet';
   const solutionMeta = model.solutionSummary.ready
-    ? `${model.solutionSummary.playable}/${model.solutionSummary.total} playable`
+    ? `${model.solutionSummary.playable}/${model.solutionSummary.total} common playable`
     : 'pending';
   const filteredSolutions = filterSolutions(model.solutions, solutionFilter);
 
@@ -749,7 +797,7 @@ function SheetSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
           skin={skin}
           label="Solutions"
           value={`${model.solutionSummary.playable}`}
-          detail={model.solutionSummary.ready ? `${model.solutionSummary.minLength}+ letters, ${model.solutionSummary.blocked} blocked` : 'Pending board solve'}
+          detail={model.solutionSummary.ready ? `${model.solutionSummary.minLength}+ common words, ${model.solutionSummary.blocked} blocked` : 'Pending board solve'}
         />
         <SummaryCard
           skin={skin}

@@ -33,7 +33,24 @@ export default function HUDStrip({ skin, state, phone, onMenu, menuOpen = false 
   const hunt = state.huntSummary || {};
   const run = state.run || {};
   const settings = state.settings || {};
+  const objectives = state.objectives || {};
   const endCondition = settings.endCondition || 'challenges';
+  const objectiveDone = typeof objectives.completed === 'number' ? objectives.completed : (hunt.completedCount || 0);
+  const objectiveTotal = typeof objectives.total === 'number' ? objectives.total : 0;
+  const goalStat = endCondition === 'challenges'
+    ? `${objectiveDone}/${objectiveTotal || 0}`
+    : endCondition === 'timed'
+      ? 'Score'
+      : endCondition === 'turns'
+        ? 'Score'
+        : 'Open';
+  const goalSubtitle = endCondition === 'challenges'
+    ? `Goal: clear all objectives to advance (${objectiveDone}/${objectiveTotal || 0})`
+    : endCondition === 'timed'
+      ? 'Goal: build the highest score before time runs out'
+      : endCondition === 'turns'
+        ? 'Goal: build the highest score before turns run out'
+        : 'Goal: explore the board and maximize score';
 
   const hud = {
     round: hunt.round || 1,
@@ -73,23 +90,28 @@ export default function HUDStrip({ skin, state, phone, onMenu, menuOpen = false 
         >
           {skin.HeadingTransform(hud.roundName)}
         </div>
-        {!phone && (
-          <div
-            style={{
-              fontSize: 13,
-              color: 'var(--ink-faint)',
-              fontStyle: skin.id === 'page' ? 'italic' : 'normal',
-              fontFamily: skin.id === 'terminal' ? 'var(--font-mono)' : 'var(--font-body)',
-              marginTop: 3,
-              letterSpacing: skin.id === 'terminal' ? '0.15em' : 0,
-            }}
-          >
-            {skin.id === 'terminal' ? '// page: the_first_page.dat' : `folio ${romanize(hud.round)} of iii`}
-          </div>
-        )}
+        <div
+          data-testid="goal-summary"
+          style={{
+            fontSize: phone ? 10 : 13,
+            color: 'var(--ink-faint)',
+            fontStyle: skin.id === 'page' ? 'italic' : 'normal',
+            fontFamily: skin.id === 'terminal' ? 'var(--font-mono)' : 'var(--font-body)',
+            marginTop: 3,
+            letterSpacing: skin.id === 'terminal' ? '0.12em' : 0,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            maxWidth: phone ? 190 : 420,
+          }}
+          title={goalSubtitle}
+        >
+          {goalSubtitle}
+        </div>
       </div>
       <div style={{ flex: phone ? 'unset' : 1 }} />
       <Stat skin={skin} label="Score" value={String(hud.score)} />
+      {!phone && <Stat skin={skin} label="Goal" value={goalStat} accent={endCondition === 'challenges' && objectiveDone >= objectiveTotal && objectiveTotal > 0} />}
       {!phone && <Stat skin={skin} label="Words" value={String(hud.wordsSpelled).padStart(2, '0')} />}
       <Stat skin={skin} label="Clues" value={String(hud.clues)} />
       <Stat skin={skin} label="Time" value={hud.time} mono accent={hud.timeWarning} />

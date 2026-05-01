@@ -1,6 +1,25 @@
 // ActionBar — typed-word preview, status note, four action buttons.
 // Ported from /tmp/lexicon-design/lexicon-deep/project/layout.jsx (lines 303-351).
 
+function signedNumber(value) {
+  const num = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  if (!num) return '';
+  return `${num > 0 ? '+' : '-'}${Math.abs(num)}`;
+}
+
+function formatScoreFormula(preview) {
+  if (!preview || typeof preview.total !== 'number') return '';
+  const parts = [];
+  if (preview.lengthBase) parts.push(`Length ${preview.lengthBase}`);
+  parts.push(`Tiles +${preview.tileBonus || 0}`);
+  const shape = signedNumber(preview.shapeBonus);
+  if (shape) parts.push(`Shape ${shape}`);
+  if (preview.crystalBonus) parts.push(`Crystal +${preview.crystalBonus}`);
+  if (preview.emberBonus) parts.push(`Ember +${preview.emberBonus}`);
+  if (preview.wildcardPenalty) parts.push(`Wild -${preview.wildcardPenalty}`);
+  return `${parts.join('  ')} = ${preview.total}`;
+}
+
 export default function ActionBar({ skin, state, actions, phone }) {
   const isPage = skin.id === 'page';
   const isTerm = skin.id === 'terminal';
@@ -13,6 +32,7 @@ export default function ActionBar({ skin, state, actions, phone }) {
   const previewTotal = input.scorePreview && typeof input.scorePreview.total === 'number'
     ? `+${input.scorePreview.total}`
     : '';
+  const scoreFormula = input.valid && input.hasPath ? formatScoreFormula(input.scorePreview) : '';
   const status = !word ? 'empty' : (input.valid && input.hasPath ? 'valid' : 'invalid');
   const statusText = ambiguous
     ? (isTerm ? 'MULTIPLE ROUTES' : 'multiple routes')
@@ -96,6 +116,24 @@ export default function ActionBar({ skin, state, actions, phone }) {
             </span>
           )}
         </div>
+        {scoreFormula && (
+          <div
+            data-testid="score-formula"
+            style={{
+              marginTop: phone ? 5 : 7,
+              fontFamily: 'var(--font-mono)',
+              fontSize: phone ? 10 : 11,
+              color: 'var(--ink-soft)',
+              letterSpacing: phone ? '0.02em' : '0.06em',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+            title={scoreFormula}
+          >
+            {scoreFormula}
+          </div>
+        )}
       </div>
       <div style={{ display: 'flex', gap: phone ? 6 : 10, flexShrink: 0 }}>
         <BtnWrap onClick={actions.submitCurrentWord} disabled={submitDisabled}>

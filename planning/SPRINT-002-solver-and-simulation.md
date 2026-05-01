@@ -206,6 +206,10 @@ The first always-visible `Solutions` surface is live:
    visible in the phone sheet
 6. desktop right rail and phone bottom sheet include first-pass filters:
    `Playable`, `All`, and `Blocked`
+7. the visible Solutions window now favors planted/common words instead of raw
+   dictionary oddities; the full dictionary remains valid for typed submissions
+8. the HUD now states the active goal, and score previews/solution rows expose
+   the score formula instead of only the total
 
 ## Parameter inventory
 
