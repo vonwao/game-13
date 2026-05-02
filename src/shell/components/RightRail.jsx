@@ -2,10 +2,12 @@
 // Ported from /tmp/lexicon-design/lexicon-deep/project/layout.jsx (lines 160-300).
 
 import ObjectivesSurface, { buildObjectivesSurfaceModel } from './ObjectivesSurface.jsx';
+import useSolutionPreview from '../useSolutionPreview.js';
 
 export default function RightRail({ skin, state, phone }) {
   const collapsed = !!skin.rightRailDefaultCollapsed && !phone;
   const model = buildObjectivesSurfaceModel(state);
+  const previewControls = useSolutionPreview(state);
 
   if (collapsed) {
     return (
@@ -78,7 +80,15 @@ export default function RightRail({ skin, state, phone }) {
         minHeight: 0,
       }}
     >
-      <ObjectivesSurface skin={skin} state={state} variant="rail" />
+      <ObjectivesSurface
+        skin={skin}
+        state={state}
+        variant="rail"
+        onSelectSolution={previewControls.selectSolution}
+        onTraceSolution={previewControls.traceSolution}
+        selectedSolutionId={previewControls.selectedId}
+        tracingSolutionId={previewControls.tracingId}
+      />
     </div>
   );
 }

@@ -65,6 +65,11 @@ export function buildObjectivesSurfaceModel(state) {
       id: entry?.id || `${entry?.word || 'solution'}-${index}`,
       rank: toFiniteNumber(entry?.rank, index + 1),
       word: entry?.word || '',
+      path: Array.isArray(entry?.path)
+        ? entry.path
+            .filter((step) => step && Number.isFinite(step.col) && Number.isFinite(step.row))
+            .map((step) => ({ col: step.col, row: step.row }))
+        : [],
       score: toFiniteNumber(entry?.score, 0),
       length: toFiniteNumber(entry?.length, String(entry?.word || '').length),
       commonRank: toFiniteNumber(entry?.commonRank, 0),
@@ -432,7 +437,24 @@ function RecentRow({ skin, entry, roomy = false }) {
   );
 }
 
-function SolutionRow({ skin, entry, roomy = false }) {
+function TraceIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+      <path d="M3 2.5 L9 6 L3 9.5 Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function SolutionRow({
+  skin,
+  entry,
+  roomy = false,
+  selected = false,
+  onSelect,
+  onTrace,
+  tracing = false,
+  hasPath = true,
+}) {
   const isPage = skin.id === 'page';
   const isTerm = skin.id === 'terminal';
   const muted = entry.blocked;
@@ -442,6 +464,10 @@ function SolutionRow({ skin, entry, roomy = false }) {
     : (entry.commonRank ? `common #${entry.commonRank}` : 'dictionary');
   const note = entry.shapeLabel ? `${status} · ${entry.shapeLabel} · ${source}` : `${status} · ${source}`;
   const formula = formatScoreFormula(entry, !roomy);
+  const interactive = !!onSelect && hasPath;
+  const selectedBorder = selected
+    ? '1px solid var(--accent)'
+    : '1px solid var(--rule-faint)';
   const wrapperStyle = roomy
     ? {
         display: 'grid',
@@ -450,22 +476,62 @@ function SolutionRow({ skin, entry, roomy = false }) {
         alignItems: 'center',
         padding: '10px 12px',
         borderRadius: 6,
-        border: '1px solid var(--rule-faint)',
-        background: muted ? 'transparent' : getCardFill(skin),
-        opacity: muted ? 0.48 : 1,
+        border: selectedBorder,
+        background: selected
+          ? (skin.id === 'terminal' ? 'rgba(127,219,106,.10)' : 'rgba(255,255,255,.08)')
+          : (muted ? 'transparent' : getCardFill(skin)),
+        opacity: muted && !selected ? 0.55 : 1,
+        cursor: interactive ? 'pointer' : 'default',
+        textAlign: 'left',
+        boxShadow: selected ? '0 0 0 1px var(--accent) inset' : 'none',
+        transition: 'background 120ms ease, border-color 120ms ease',
       }
     : {
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1fr) auto',
         gap: 8,
-        alignItems: 'baseline',
-        padding: '6px 0',
-        borderBottom: isPage ? '0.5px dotted var(--rule-faint)' : 'none',
-        opacity: muted ? 0.45 : 1,
+        alignItems: 'center',
+        padding: selected ? '5px 6px' : '6px 0',
+        borderRadius: selected ? 4 : 0,
+        borderBottom: isPage && !selected ? '0.5px dotted var(--rule-faint)' : 'none',
+        background: selected
+          ? (skin.id === 'terminal' ? 'rgba(127,219,106,.10)' : 'rgba(255,255,255,.06)')
+          : 'transparent',
+        opacity: muted && !selected ? 0.55 : 1,
+        cursor: interactive ? 'pointer' : 'default',
+        textAlign: 'left',
+        boxShadow: selected ? `0 0 0 1px var(--accent)` : 'none',
+        transition: 'background 120ms ease, box-shadow 120ms ease',
       };
 
+  function handleSelectClick(event) {
+    if (!interactive) return;
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    onSelect(entry);
+  }
+
+  function handleTraceClick(event) {
+    if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    if (!hasPath || !onTrace) return;
+    onTrace(entry);
+  }
+
   return (
-    <div data-testid="solution-row" data-playable={entry.playable ? 'true' : 'false'} style={wrapperStyle}>
+    <div
+      data-testid="solution-row"
+      data-playable={entry.playable ? 'true' : 'false'}
+      data-selected={selected ? 'true' : 'false'}
+      data-tracing={tracing ? 'true' : 'false'}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-pressed={interactive ? selected : undefined}
+      onClick={interactive ? handleSelectClick : undefined}
+      onKeyDown={interactive ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') handleSelectClick(event);
+      } : undefined}
+      style={wrapperStyle}
+    >
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, minWidth: 0 }}>
           {isTerm ? <span style={{ color: muted ? 'var(--ink-faint)' : 'var(--accent)' }}>{entry.playable ? '$' : '#'}</span> : null}
@@ -500,6 +566,21 @@ function SolutionRow({ skin, entry, roomy = false }) {
               done
             </span>
           ) : null}
+          {selected ? (
+            <span
+              data-testid="solution-row-selected-pip"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: roomy ? 10 : 9,
+                color: 'var(--accent)',
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+                flexShrink: 0,
+              }}
+            >
+              {tracing ? 'tracing' : 'shown'}
+            </span>
+          ) : null}
         </div>
         <div
           style={{
@@ -532,18 +613,46 @@ function SolutionRow({ skin, entry, roomy = false }) {
           {formula}
         </div>
       </div>
-      <span
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: roomy ? 13 : 12,
-          color: muted ? 'var(--ink-faint)' : 'var(--accent)',
-          fontVariantNumeric: 'tabular-nums',
-          fontWeight: 600,
-          flexShrink: 0,
-        }}
-      >
-        {entry.score}
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: roomy ? 8 : 6, flexShrink: 0 }}>
+        <span
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: roomy ? 13 : 12,
+            color: muted ? 'var(--ink-faint)' : 'var(--accent)',
+            fontVariantNumeric: 'tabular-nums',
+            fontWeight: 600,
+          }}
+        >
+          {entry.score}
+        </span>
+        {hasPath && onTrace ? (
+          <button
+            type="button"
+            onClick={handleTraceClick}
+            data-testid="solution-row-trace"
+            aria-label={`Animate path for ${entry.word}`}
+            title={tracing ? 'Tracing…' : 'Animate path'}
+            style={{
+              appearance: 'none',
+              minWidth: 0,
+              width: roomy ? 26 : 22,
+              height: roomy ? 26 : 22,
+              padding: 0,
+              border: '1px solid var(--rule-faint)',
+              borderRadius: 999,
+              background: tracing ? 'var(--accent)' : 'transparent',
+              color: tracing ? 'var(--bg)' : 'var(--ink-soft)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <TraceIcon />
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -704,7 +813,16 @@ function DiscoveryChip({ skin, word }) {
   );
 }
 
-function RailSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
+function RailSurface({
+  skin,
+  model,
+  solutionFilter,
+  onSolutionFilterChange,
+  onSelectSolution,
+  onTraceSolution,
+  selectedSolutionId,
+  tracingSolutionId,
+}) {
   const solutionMeta = model.solutionSummary.ready
     ? `${model.solutionSummary.playable}/${model.solutionSummary.total} common playable`
     : 'pending';
@@ -753,7 +871,18 @@ function RailSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
         {filteredSolutions.length === 0 ? (
           <EmptyState>{getSolutionEmptyCopy(solutionFilter)}</EmptyState>
         ) : (
-          filteredSolutions.map((entry) => <SolutionRow key={entry.id} skin={skin} entry={entry} />)
+          filteredSolutions.map((entry) => (
+            <SolutionRow
+              key={entry.id}
+              skin={skin}
+              entry={entry}
+              hasPath={Array.isArray(entry.path) && entry.path.length > 0}
+              selected={!!selectedSolutionId && selectedSolutionId === entry.id}
+              tracing={!!tracingSolutionId && tracingSolutionId === entry.id}
+              onSelect={onSelectSolution}
+              onTrace={onTraceSolution}
+            />
+          ))
         )}
       </div>
 
@@ -771,7 +900,16 @@ function RailSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
   );
 }
 
-function SheetSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
+function SheetSurface({
+  skin,
+  model,
+  solutionFilter,
+  onSolutionFilterChange,
+  onSelectSolution,
+  onTraceSolution,
+  selectedSolutionId,
+  tracingSolutionId,
+}) {
   const objectiveMeta = model.objectiveSummary.total > 0
     ? `${model.objectiveSummary.done}/${model.objectiveSummary.total} complete`
     : 'none yet';
@@ -836,7 +974,19 @@ function SheetSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
           {filteredSolutions.length === 0 ? (
             <EmptyState roomy>{getSolutionEmptyCopy(solutionFilter)}</EmptyState>
           ) : (
-            filteredSolutions.map((entry) => <SolutionRow key={entry.id} skin={skin} entry={entry} roomy />)
+            filteredSolutions.map((entry) => (
+              <SolutionRow
+                key={entry.id}
+                skin={skin}
+                entry={entry}
+                roomy
+                hasPath={Array.isArray(entry.path) && entry.path.length > 0}
+                selected={!!selectedSolutionId && selectedSolutionId === entry.id}
+                tracing={!!tracingSolutionId && tracingSolutionId === entry.id}
+                onSelect={onSelectSolution}
+                onTrace={onTraceSolution}
+              />
+            ))
           )}
         </div>
       </div>
@@ -866,24 +1016,28 @@ function SheetSurface({ skin, model, solutionFilter, onSolutionFilterChange }) {
   );
 }
 
-export default function ObjectivesSurface({ skin, state, variant = 'rail' }) {
+export default function ObjectivesSurface({
+  skin,
+  state,
+  variant = 'rail',
+  onSelectSolution,
+  onTraceSolution,
+  selectedSolutionId,
+  tracingSolutionId,
+}) {
   const model = buildObjectivesSurfaceModel(state);
   const [solutionFilter, setSolutionFilter] = useState('playable');
+  const sharedProps = {
+    skin,
+    model,
+    solutionFilter,
+    onSolutionFilterChange: setSolutionFilter,
+    onSelectSolution,
+    onTraceSolution,
+    selectedSolutionId,
+    tracingSolutionId,
+  };
   return variant === 'sheet'
-    ? (
-        <SheetSurface
-          skin={skin}
-          model={model}
-          solutionFilter={solutionFilter}
-          onSolutionFilterChange={setSolutionFilter}
-        />
-      )
-    : (
-        <RailSurface
-          skin={skin}
-          model={model}
-          solutionFilter={solutionFilter}
-          onSolutionFilterChange={setSolutionFilter}
-        />
-      );
+    ? <SheetSurface {...sharedProps} />
+    : <RailSurface {...sharedProps} />;
 }

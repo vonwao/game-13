@@ -86,6 +86,7 @@ const fallbackShellState = {
     visible: 0,
     items: [],
   },
+  solutionPreview: null,
   history: {
     total: 0,
     items: [],
@@ -388,6 +389,45 @@ export function useClue() {
   if (api && typeof api.useClue === 'function') {
     api.useClue();
   }
+}
+
+export function previewSolution(solution, options) {
+  const game = getGameApi();
+  if (game && typeof game.previewSolution === 'function') {
+    game.previewSolution(solution, options || {});
+    return;
+  }
+  patchLocalSnapshot({
+    solutionPreview: solution
+      ? {
+          word: String(solution.word || '').toUpperCase(),
+          score: typeof solution.score === 'number' ? solution.score : null,
+          mode: options && options.mode === 'trace' ? 'trace' : 'static',
+          blocked: !!solution.blocked,
+          pathLength: Array.isArray(solution.path) ? solution.path.length : 0,
+          tilesRevealed: options && options.mode === 'trace' ? 0 : (Array.isArray(solution.path) ? solution.path.length : 0),
+          caption: solution.caption || '',
+          sequence: null,
+        }
+      : null,
+  });
+}
+
+export function clearSolutionPreview() {
+  const game = getGameApi();
+  if (game && typeof game.clearSolutionPreview === 'function') {
+    game.clearSolutionPreview();
+    return;
+  }
+  patchLocalSnapshot({ solutionPreview: null });
+}
+
+export function playRunCompleteReplays() {
+  const game = getGameApi();
+  if (game && typeof game.playRunCompleteReplays === 'function') {
+    return !!game.playRunCompleteReplays();
+  }
+  return false;
 }
 
 export function setShellLayout(layout) {

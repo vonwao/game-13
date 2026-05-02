@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import ObjectivesSurface, { buildObjectivesSurfaceModel } from './ObjectivesSurface.jsx';
 import useGameShellState from '../useGameShellState.js';
+import useSolutionPreview from '../useSolutionPreview.js';
 
 function getSheetBackdrop(skin) {
   if (skin.id === 'terminal') return 'rgba(0,0,0,.72)';
@@ -44,6 +45,7 @@ export default function PhoneObjTab({
   const { state: shellState } = useGameShellState();
   const resolvedState = state || (objectives ? { ...shellState, objectives } : shellState);
   const model = buildObjectivesSurfaceModel(resolvedState);
+  const previewControls = useSolutionPreview(resolvedState);
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
   const isControlled = typeof open === 'boolean';
   const isOpen = isControlled ? open : uncontrolledOpen;
@@ -206,7 +208,21 @@ export default function PhoneObjTab({
                   padding: '14px 16px calc(18px + env(safe-area-inset-bottom, 0px))',
                 }}
               >
-                <ObjectivesSurface skin={skin} state={resolvedState} variant="sheet" />
+                <ObjectivesSurface
+                  skin={skin}
+                  state={resolvedState}
+                  variant="sheet"
+                  onSelectSolution={(entry) => {
+                    previewControls.selectSolution(entry);
+                    setOpenState(false);
+                  }}
+                  onTraceSolution={(entry) => {
+                    previewControls.traceSolution(entry);
+                    setOpenState(false);
+                  }}
+                  selectedSolutionId={previewControls.selectedId}
+                  tracingSolutionId={previewControls.tracingId}
+                />
               </div>
             </div>
           </div>

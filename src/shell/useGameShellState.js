@@ -2,8 +2,11 @@ import { useSyncExternalStore } from 'react';
 import {
   advanceRound,
   clearCurrentWord,
+  clearSolutionPreview,
   getShellState,
   pauseGame,
+  playRunCompleteReplays,
+  previewSolution,
   resumeGame,
   returnToSettings,
   setGameMode,
@@ -49,6 +52,9 @@ export default function useGameShellState() {
       submitCurrentWord,
       undoTileSelection,
       useClue,
+      previewSolution,
+      clearSolutionPreview,
+      playRunCompleteReplays,
     },
   };
 }
