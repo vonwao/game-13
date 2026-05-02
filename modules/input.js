@@ -482,6 +482,7 @@
         word: typed,
         score: earned,
         pathLength: path.length,
+        path: path.map(function(p) { return { col: p.col, row: p.row }; }),
         basePts: breakdown.basePts,
         tilePoints: breakdown.tilePoints,
         lengthBase: breakdown.lengthBase,

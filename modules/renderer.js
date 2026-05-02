@@ -325,6 +325,104 @@
         drawTile(ctx, tile, x, y, ts, inPath, pathIdx, state, isMatch, isClue);
       }
     }
+
+    drawSolutionPreview(ctx, state, pathSet);
+  }
+
+  function drawSolutionPreview(ctx, state, livePathSet) {
+    const preview = state && state.solutionPreview;
+    if (!preview || !Array.isArray(preview.path) || preview.path.length === 0) return;
+    // Don't fight the live selection — once the player starts a path, hide the preview.
+    if (livePathSet && livePathSet.size > 0) return;
+
+    const vp = state.viewport;
+    const ts = vp.tileSize;
+    if (!ts) return;
+
+    const total = preview.path.length;
+    const revealed = preview.mode === 'trace'
+      ? Math.max(0, Math.min(total, preview.tilesRevealed || 0))
+      : total;
+    if (revealed === 0) return;
+
+    const blocked = !!preview.blocked;
+    const tokens = getSkinTokens();
+    const accent = blocked ? '#c04040' : (tokens.accent || COLORS.highlightBright);
+    const accentBright = blocked ? '#ff7878' : (tokens.tileOn || COLORS.highlightBright);
+    const time = state.time || 0;
+
+    ctx.save();
+    // Connecting strokes between revealed tiles.
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = accentBright;
+    ctx.lineWidth = Math.max(2, Math.floor(ts * 0.10));
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    var hasMove = false;
+    for (let i = 0; i < revealed; i++) {
+      const step = preview.path[i];
+      const screenCol = step.col - vp.col;
+      const screenRow = step.row - vp.row;
+      if (screenCol < 0 || screenRow < 0 || screenCol >= vp.cols || screenRow >= vp.rows) continue;
+      const cx = vp.offsetX + screenCol * ts + ts / 2;
+      const cy = vp.offsetY + screenRow * ts + ts / 2;
+      if (!hasMove) { ctx.moveTo(cx, cy); hasMove = true; }
+      else ctx.lineTo(cx, cy);
+    }
+    if (hasMove) ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Tile outlines + start/end pips.
+    for (let i = 0; i < revealed; i++) {
+      const step = preview.path[i];
+      const screenCol = step.col - vp.col;
+      const screenRow = step.row - vp.row;
+      if (screenCol < 0 || screenRow < 0 || screenCol >= vp.cols || screenRow >= vp.rows) continue;
+      const x = vp.offsetX + screenCol * ts;
+      const y = vp.offsetY + screenRow * ts;
+      const pad = Math.max(2, Math.floor(ts * 0.06));
+      const isLatest = preview.mode === 'trace' && i === revealed - 1 && revealed < total;
+      ctx.strokeStyle = isLatest ? accentBright : accent;
+      ctx.lineWidth = isLatest ? Math.max(3, Math.floor(ts * 0.09)) : Math.max(2, Math.floor(ts * 0.06));
+      ctx.globalAlpha = isLatest ? 0.95 : 0.78;
+      ctx.strokeRect(x + pad, y + pad, ts - pad * 2, ts - pad * 2);
+
+      if (i === 0 || i === total - 1) {
+        const cx = x + (i === 0 ? ts * 0.22 : ts * 0.78);
+        const cy = y + ts * 0.22;
+        const r = Math.max(7, Math.floor(ts * 0.16));
+        ctx.fillStyle = accent;
+        ctx.globalAlpha = 0.92;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold ' + Math.floor(r * 1.2) + 'px ' + (tokens.fontDisplay || 'sans-serif');
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(i === 0 ? 'A' : 'Z', cx, cy + 1);
+      }
+    }
+
+    // A soft pulse on the most recently revealed tile during trace.
+    if (preview.mode === 'trace' && revealed > 0 && revealed <= total) {
+      const last = preview.path[revealed - 1];
+      const screenCol = last.col - vp.col;
+      const screenRow = last.row - vp.row;
+      if (screenCol >= 0 && screenRow >= 0 && screenCol < vp.cols && screenRow < vp.rows) {
+        const x = vp.offsetX + screenCol * ts;
+        const y = vp.offsetY + screenRow * ts;
+        const pulse = 0.5 + 0.5 * Math.sin(time * 8);
+        ctx.globalAlpha = 0.18 + 0.18 * pulse;
+        ctx.fillStyle = accentBright;
+        ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    ctx.restore();
   }
 
   function getPathIndex(path, col, row) {

@@ -75,6 +75,7 @@
     },
     inputAdapter: null,
     shellLayout: null,
+    solutionPreview: null,
     showHelp: false,
     helpTab: 'basics',
     debug: {
@@ -153,12 +154,24 @@
     };
   }
 
+  function clonePath(path) {
+    if (!Array.isArray(path)) return [];
+    var out = [];
+    for (var i = 0; i < path.length; i++) {
+      var step = path[i];
+      if (!step) continue;
+      out.push({ col: step.col, row: step.row });
+    }
+    return out;
+  }
+
   function normalizeHistoryEntry(entry) {
     entry = entry || {};
     return {
       word: entry.word || '',
       score: entry.score || 0,
-      pathLength: entry.pathLength || 0,
+      pathLength: entry.pathLength || (Array.isArray(entry.path) ? entry.path.length : 0),
+      path: clonePath(entry.path),
       basePts: entry.basePts || 0,
       tilePoints: entry.tilePoints || entry.basePts || 0,
       lengthBase: entry.lengthBase || 0,
@@ -265,6 +278,7 @@
       id: word || ('solution-' + rank),
       rank: rank,
       word: word,
+      path: clonePath(entry.path),
       score: entry.score || 0,
       length: entry.length || word.length || 0,
       commonRank: entry.commonRank || getCommonRank(word),
@@ -645,6 +659,7 @@
 
   function setupRound(resetRunStats) {
     resetShellSolutionsCache();
+    STATE.solutionPreview = null;
     buildRoundConfig();
 
     STATE.phase = 'playing';
@@ -854,6 +869,20 @@
         items: discoveries,
       },
       solutions: solutions,
+      solutionPreview: STATE.solutionPreview ? {
+        word: STATE.solutionPreview.word,
+        score: STATE.solutionPreview.score,
+        mode: STATE.solutionPreview.mode,
+        blocked: !!STATE.solutionPreview.blocked,
+        pathLength: STATE.solutionPreview.path.length,
+        tilesRevealed: STATE.solutionPreview.tilesRevealed,
+        caption: STATE.solutionPreview.caption || '',
+        sequence: STATE.solutionPreview.sequence ? {
+          tag: STATE.solutionPreview.sequence.tag || '',
+          currentIndex: STATE.solutionPreview.sequence.currentIndex || 0,
+          total: STATE.solutionPreview.sequence.items.length,
+        } : null,
+      } : null,
       inputSummary: {
         typed: input.typed || '',
         valid: !!input.valid,
@@ -938,6 +967,162 @@
     notifyShellState(true);
   }
 
+  // ── Solution preview ────────────────────────────────────────────────────────
+  // The shell sends a chosen solution (from the Solutions surface or a Run
+  // Complete replay) and the renderer paints it as an overlay on the board.
+  // Trace mode advances `tilesRevealed` per-frame from the game loop. A
+  // sequence ({ items, currentIndex }) chains traces so Run Complete can
+  // auto-replay the player's top words back-to-back.
+  const TRACE_TILE_SECONDS = 0.08;
+  const TRACE_HOLD_SECONDS = 0.7;
+  const TRACE_SEQUENCE_GAP_SECONDS = 0.35;
+
+  function getNowSeconds() {
+    return STATE.time || 0;
+  }
+
+  function buildPreviewEntry(solution, mode) {
+    if (!solution || !Array.isArray(solution.path) || solution.path.length === 0) return null;
+    return {
+      word: String(solution.word || '').toUpperCase(),
+      score: typeof solution.score === 'number' ? solution.score : null,
+      path: clonePath(solution.path),
+      mode: mode === 'trace' ? 'trace' : 'static',
+      blocked: !!solution.blocked,
+      startedAt: getNowSeconds(),
+      tilesRevealed: mode === 'trace' ? 0 : (solution.path ? solution.path.length : 0),
+      caption: solution.caption || '',
+      sequence: null,
+    };
+  }
+
+  function previewSolution(solution, options) {
+    options = options || {};
+    var mode = options.mode === 'trace' ? 'trace' : 'static';
+    var preview = buildPreviewEntry(solution, mode);
+    if (!preview) {
+      clearSolutionPreview();
+      return;
+    }
+    STATE.solutionPreview = preview;
+    notifyShellState(true);
+  }
+
+  function playSolutionSequence(items, options) {
+    options = options || {};
+    var validItems = (items || []).filter(function(item) {
+      return item && Array.isArray(item.path) && item.path.length > 0;
+    });
+    if (!validItems.length) {
+      clearSolutionPreview();
+      return;
+    }
+    var first = validItems[0];
+    var preview = buildPreviewEntry(first, 'trace');
+    if (!preview) {
+      clearSolutionPreview();
+      return;
+    }
+    preview.sequence = {
+      items: validItems.map(function(item) {
+        return {
+          word: String(item.word || '').toUpperCase(),
+          score: typeof item.score === 'number' ? item.score : null,
+          path: clonePath(item.path),
+          caption: item.caption || '',
+          blocked: !!item.blocked,
+        };
+      }),
+      currentIndex: 0,
+      tag: options.tag || '',
+    };
+    STATE.solutionPreview = preview;
+    notifyShellState(true);
+  }
+
+  function clearSolutionPreview() {
+    if (!STATE.solutionPreview) return;
+    STATE.solutionPreview = null;
+    notifyShellState(true);
+  }
+
+  function advanceSolutionSequence(preview) {
+    var seq = preview.sequence;
+    if (!seq) return false;
+    var nextIndex = (seq.currentIndex || 0) + 1;
+    if (nextIndex >= seq.items.length) return false;
+    var nextItem = seq.items[nextIndex];
+    var carry = seq;
+    var nextPreview = buildPreviewEntry(nextItem, 'trace');
+    if (!nextPreview) return false;
+    nextPreview.startedAt = getNowSeconds() + TRACE_SEQUENCE_GAP_SECONDS;
+    nextPreview.sequence = {
+      items: carry.items,
+      currentIndex: nextIndex,
+      tag: carry.tag || '',
+    };
+    STATE.solutionPreview = nextPreview;
+    notifyShellState(true);
+    return true;
+  }
+
+  function tickSolutionPreview() {
+    var preview = STATE.solutionPreview;
+    if (!preview) return;
+    var totalTiles = preview.path.length;
+    if (preview.mode !== 'trace' || totalTiles === 0) return;
+    var elapsed = getNowSeconds() - (preview.startedAt || 0);
+    if (elapsed < 0) {
+      // Holding before sequence trace begins.
+      if (preview.tilesRevealed !== 0) {
+        preview.tilesRevealed = 0;
+        notifyShellState(true);
+      }
+      return;
+    }
+    var revealed = Math.min(totalTiles, Math.floor(elapsed / TRACE_TILE_SECONDS) + 1);
+    if (revealed !== preview.tilesRevealed) {
+      preview.tilesRevealed = revealed;
+      notifyShellState(true);
+    }
+    if (revealed >= totalTiles) {
+      var holdSince = elapsed - totalTiles * TRACE_TILE_SECONDS;
+      if (holdSince >= TRACE_HOLD_SECONDS) {
+        if (!advanceSolutionSequence(preview)) {
+          clearSolutionPreview();
+        }
+      }
+    }
+  }
+
+  function getTopRunWords(limit) {
+    var items = (STATE.wordHistory || []).filter(function(entry) {
+      return entry && Array.isArray(entry.path) && entry.path.length > 0;
+    });
+    items.sort(function(a, b) {
+      return (b.score || 0) - (a.score || 0);
+    });
+    return items.slice(0, limit).map(function(entry) {
+      return {
+        word: entry.word,
+        score: entry.score,
+        path: entry.path,
+        caption: (entry.word || '') + (entry.score ? ' · ' + entry.score + ' pts' : ''),
+        blocked: false,
+      };
+    });
+  }
+
+  function playRunCompleteReplays() {
+    var top = getTopRunWords(3);
+    if (!top.length) {
+      clearSolutionPreview();
+      return false;
+    }
+    playSolutionSequence(top, { tag: 'run-complete' });
+    return true;
+  }
+
   function setSettings(patch) {
     if (!patch || typeof patch !== 'object') return;
     const allowed = ['difficulty', 'boardSize', 'soundEnabled', 'particlesEnabled', 'specialTiles', 'endCondition'];
@@ -995,6 +1180,9 @@
     subscribeShell: subscribeShell,
     setUIState: setUIState,
     setSettings: setSettings,
+    previewSolution: previewSolution,
+    clearSolutionPreview: clearSolutionPreview,
+    playRunCompleteReplays: playRunCompleteReplays,
     mount: boot,
     isBooted: function() { return booted; },
   };
@@ -1105,6 +1293,8 @@
         STATE.phase = 'gameover';
       }
     }
+
+    tickSolutionPreview();
 
     notifyShellState(false);
 
