@@ -1,3 +1,9 @@
+import { useEffect, useRef } from 'react';
+import {
+  clearSolutionPreview,
+  playRunCompleteReplays,
+} from '../gameBridge.js';
+
 function CornerOrn({ style, flip }) {
   return (
     <svg
@@ -499,7 +505,10 @@ export function MenuButton({ skin, open, onClick }) {
   );
 }
 
-export function OverlayScrim({ skin, children, onDismiss, dataTestId }) {
+export function OverlayScrim({ skin, children, onDismiss, dataTestId, showBoard = false }) {
+  const scrimBackground = showBoard
+    ? (isTerminalSkin(skin) ? 'rgba(0,0,0,.32)' : 'rgba(7,8,10,.22)')
+    : getScrimStyle(skin);
   return (
     <div
       data-testid={dataTestId}
@@ -511,8 +520,8 @@ export function OverlayScrim({ skin, children, onDismiss, dataTestId }) {
         alignItems: 'center',
         justifyContent: 'center',
         padding: 16,
-        background: getScrimStyle(skin),
-        backdropFilter: 'blur(2px)',
+        background: scrimBackground,
+        backdropFilter: showBoard ? 'blur(0.5px)' : 'blur(2px)',
       }}
     >
       <div
@@ -520,7 +529,9 @@ export function OverlayScrim({ skin, children, onDismiss, dataTestId }) {
         style={{ position: 'absolute', inset: 0 }}
         aria-hidden="true"
       />
-      <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -678,8 +689,42 @@ export function RunCompleteOverlay({ skin, phone, state, onNewRun, onQuit }) {
     { label: 'Wildcard rule', meta: settings.specialTiles ? 'enabled' : 'off', detail: settings.specialTiles ? 'icon paths subtract points' : 'letters only' },
   ];
 
+  // Auto-replay the player's top words once on mount. The legacy core owns the
+  // sequence and clears itself when the last trace finishes; the Replay button
+  // re-triggers it. We also clear the preview when the overlay unmounts so the
+  // highlight doesn't leak into a fresh run.
+  const playedRef = useRef(false);
+  const hasReplayableHistory = (state.history?.items || []).some(
+    (entry) => Array.isArray(entry?.path) && entry.path.length > 0,
+  );
+
+  useEffect(() => {
+    if (playedRef.current) return undefined;
+    playedRef.current = true;
+    const handle = setTimeout(() => {
+      playRunCompleteReplays();
+    }, 240);
+    return () => {
+      clearTimeout(handle);
+    };
+  }, []);
+
+  useEffect(() => () => {
+    clearSolutionPreview();
+  }, []);
+
+  const preview = state.solutionPreview;
+  const replayCaption = preview && preview.sequence && preview.sequence.tag === 'run-complete'
+    ? `Replaying ${preview.word || ''}${preview.score ? ` · ${preview.score} pts` : ''} · ${(preview.sequence.currentIndex || 0) + 1}/${preview.sequence.total}`
+    : null;
+
+  function handleReplay() {
+    playedRef.current = true;
+    playRunCompleteReplays();
+  }
+
   return (
-    <OverlayScrim skin={skin} dataTestId="run-complete-overlay">
+    <OverlayScrim skin={skin} dataTestId="run-complete-overlay" showBoard={hasReplayableHistory}>
       <FlowCard skin={skin} phone={phone} width={phone ? 308 : 440} dataTestId="run-complete-card">
         <FlowHeader
           skin={skin}
@@ -716,11 +761,39 @@ export function RunCompleteOverlay({ skin, phone, state, onNewRun, onQuit }) {
           <span style={{ display: 'inline-flex', cursor: 'pointer' }} onClick={onNewRun}>
             <skin.ActionBtn label="New Run" kbd="↵" primary />
           </span>
+          {hasReplayableHistory ? (
+            <span
+              style={{ display: 'inline-flex', cursor: 'pointer' }}
+              onClick={handleReplay}
+              data-testid="run-complete-replay"
+            >
+              <skin.ActionBtn label="Replay Top Words" compact={phone} />
+            </span>
+          ) : null}
           <span style={{ display: 'inline-flex', cursor: 'pointer' }} onClick={onQuit}>
             <skin.ActionBtn label="Quit to Start" compact={phone} />
           </span>
         </ActionRow>
       </FlowCard>
+      {replayCaption ? (
+        <div
+          data-testid="run-complete-replay-caption"
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            color: 'var(--ink-soft)',
+            background: isTerminalSkin(skin) ? 'rgba(6,8,10,.78)' : 'rgba(15,17,22,.62)',
+            border: `1px solid ${getDividerColor(skin)}`,
+            borderRadius: 999,
+            padding: '6px 14px',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          {replayCaption}
+        </div>
+      ) : null}
     </OverlayScrim>
   );
 }
