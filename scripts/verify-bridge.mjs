@@ -248,6 +248,25 @@ async function main() {
     `phase=${resumedState.phase} isPaused=${resumedState.isPaused}`,
   );
 
+  const submittedSolution = await page.evaluate(() => {
+    const game = window.LD?.Game;
+    const input = window.LD?.Input;
+    const actions = window.LD?.Actions;
+    if (!game || !input || !actions) return null;
+    const candidate = (game.getShellState().solutions?.items || []).find((entry) => entry.playable && entry.path?.length);
+    if (!candidate) return null;
+    input.setCurrentWordPath(candidate.word, candidate.path);
+    actions.submitCurrentWord();
+    const found = (game.getShellState().solutions?.items || []).filter((entry) => entry.found).length;
+    return { word: candidate.word, found };
+  });
+  await page.waitForTimeout(120);
+  record(
+    'A2c submitted solution is marked found',
+    submittedSolution && submittedSolution.found > 0,
+    submittedSolution ? `${submittedSolution.word} submitted, ${submittedSolution.found} found` : 'no playable solution available',
+  );
+
   // ---- A3: canvas pixel buffer matches mount rect, not window size ----
   async function readSizes() {
     return page.evaluate(() => {
@@ -331,8 +350,9 @@ async function main() {
     'A4 phone sheet exposes solution filters',
     await page.locator('[data-testid="solutions-filter-playable"]').count() > 0 &&
       await page.locator('[data-testid="solutions-filter-all"]').count() > 0 &&
-      await page.locator('[data-testid="solutions-filter-blocked"]').count() > 0,
-    'Playable / All / Blocked controls present',
+      await page.locator('[data-testid="solutions-filter-blocked"]').count() > 0 &&
+      await page.locator('[data-testid="solutions-filter-found"]').count() > 0,
+    'Playable / All / Blocked / Found controls present',
   );
   await page.locator('[data-testid="solutions-filter-all"]').click();
   record(
@@ -345,6 +365,15 @@ async function main() {
     'A4 blocked-solutions filter excludes playable rows',
     await page.locator('[data-testid="solutions-sheet"][data-filter="blocked"] [data-testid="solution-row"][data-playable="true"]').count() === 0,
     `${await page.locator('[data-testid="solutions-sheet"][data-filter="blocked"] [data-testid="solution-row"]').count()} blocked row(s)`,
+  );
+  await page.locator('[data-testid="solutions-filter-found"]').click();
+  const foundFilterRows = await page.locator('[data-testid="solutions-sheet"][data-filter="found"] [data-testid="solution-row"]').count();
+  const foundMarkedRows = await page.locator('[data-testid="solutions-sheet"][data-filter="found"] [data-testid="solution-row"][data-found="true"]').count();
+  record(
+    'A4 found-solutions filter excludes unfound rows',
+    await page.locator('[data-testid="solutions-sheet"][data-filter="found"]').count() > 0 &&
+      foundMarkedRows === foundFilterRows,
+    `${foundFilterRows} found row(s)`,
   );
   await page.locator('[data-testid="solutions-filter-playable"]').click();
   await page.locator('[data-testid="phone-objectives-backdrop"]').click({

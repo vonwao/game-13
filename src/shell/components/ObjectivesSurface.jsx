@@ -4,6 +4,7 @@ const SOLUTION_FILTERS = [
   { key: 'playable', label: 'Playable' },
   { key: 'all', label: 'All' },
   { key: 'blocked', label: 'Blocked' },
+  { key: 'found', label: 'Found' },
 ];
 
 function toFiniteNumber(value, fallback = 0) {
@@ -125,17 +126,20 @@ export function buildObjectivesSurfaceModel(state) {
       all: solutions.length,
       playable: solutions.filter((entry) => entry.playable).length,
       blocked: solutions.filter((entry) => entry.blocked).length,
+      found: solutions.filter((entry) => entry.found).length,
     },
   };
 }
 
 function filterSolutions(solutions, filter) {
+  if (filter === 'found') return solutions.filter((entry) => entry.found);
   if (filter === 'blocked') return solutions.filter((entry) => entry.blocked);
   if (filter === 'all') return solutions;
   return solutions.filter((entry) => entry.playable);
 }
 
 function getSolutionEmptyCopy(filter) {
+  if (filter === 'found') return 'no found solutions yet';
   if (filter === 'blocked') return 'no blocked solutions';
   if (filter === 'all') return 'no solutions yet';
   return 'no playable solutions';
@@ -322,7 +326,7 @@ function ObjectiveRow({ skin, objective, roomy = false }) {
               fontWeight: isFB ? 500 : 400,
               lineHeight: 1.2,
               color: objective.done ? 'var(--ink-faint)' : 'var(--ink)',
-              textDecoration: objective.done ? 'line-through' : 'none',
+              textDecorationLine: objective.done ? 'line-through' : 'none',
               textDecorationColor: 'var(--accent)',
               textTransform: isTerm ? 'uppercase' : 'none',
             }}
@@ -521,6 +525,7 @@ function SolutionRow({
     <div
       data-testid="solution-row"
       data-playable={entry.playable ? 'true' : 'false'}
+      data-found={entry.found ? 'true' : 'false'}
       data-selected={selected ? 'true' : 'false'}
       data-tracing={tracing ? 'true' : 'false'}
       role={interactive ? 'button' : undefined}
@@ -546,7 +551,7 @@ function SolutionRow({
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              textDecoration: entry.found ? 'line-through' : 'none',
+              textDecorationLine: entry.found ? 'line-through' : 'none',
               textDecorationColor: 'var(--accent)',
             }}
           >
@@ -665,7 +670,7 @@ function SolutionFilterControl({ skin, value, onChange, counts }) {
       data-testid="solutions-filter-control"
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
         gap: 2,
         padding: 2,
         border: '1px solid var(--rule-faint)',
