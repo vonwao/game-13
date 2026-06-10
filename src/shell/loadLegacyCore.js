@@ -21,6 +21,16 @@ const LEGACY_MODULES = [
 
 let loadPromise = null;
 
+function normalizeBaseUrl(baseUrl) {
+  if (!baseUrl) return './';
+  return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+}
+
+export function resolveLegacyModuleSrc(name, baseUrl = import.meta.env.BASE_URL, documentBase = document.baseURI) {
+  const deployedBase = new URL(normalizeBaseUrl(baseUrl), documentBase);
+  return new URL(`modules/${name}.js`, deployedBase).toString();
+}
+
 function publishRuntimeFlags() {
   window.__LD_SHELL_MODE__ = true;
   window.__LD_DEV_MODE__ = import.meta.env.DEV;
@@ -50,7 +60,7 @@ export function loadLegacyCore() {
   window.LD = window.LD || {};
 
   loadPromise = LEGACY_MODULES.reduce((chain, name) => {
-    return chain.then(() => loadScript(`/modules/${name}.js`));
+    return chain.then(() => loadScript(resolveLegacyModuleSrc(name)));
   }, Promise.resolve()).then(() => {
     notifyCoreReady();
     return window.LD.Game || null;

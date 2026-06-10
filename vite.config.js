@@ -39,10 +39,11 @@ function copyLegacyModules() {
 }
 
 export default defineConfig({
+  base: './',
   plugins: [react(), copyLegacyModules()],
   test: {
     environment: 'jsdom',
-    include: ['modules/**/*.test.js'],
+    include: ['modules/**/*.test.js', 'src/**/*.test.js'],
     restoreMocks: true,
   },
   server: {
