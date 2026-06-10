@@ -261,11 +261,13 @@ const DIFFICULTY_DESCRIPTIONS = {
     medium: 'Balanced mix with some diagonal and reversed finds.',
     hard: 'Fewer hidden words, longer paths, and fewer fragments.',
   },
-  siege: {
-    easy: '4 seals, slower corruption spread, generous loss threshold.',
-    medium: '6 seals with the standard corruption pressure.',
-    hard: '8 seals, faster corruption, and harsher board decay.',
-  },
+  ...(import.meta.env.DEV ? {
+    siege: {
+      easy: '4 seals, slower corruption spread, generous loss threshold.',
+      medium: '6 seals with the standard corruption pressure.',
+      hard: '8 seals, faster corruption, and harsher board decay.',
+    },
+  } : {}),
 };
 
 const DIFFICULTY_OPTIONS_DESKTOP = [
@@ -320,7 +322,8 @@ const DICTIONARY_OPTIONS_PHONE = [
   { label: 'TWL', value: 'twl' },
   { label: 'OSPD', value: 'ospd' },
 ];
-const FOOTER_NOTE = 'Skin applies immediately and persists on this device. Board and run settings apply when you start a new run. Disabled controls are parked until the shell owns them.';
+const SHOW_PARKED_SETTINGS = false;
+const FOOTER_NOTE = 'Skin applies immediately and persists on this device. Board and run settings apply when you start a new run.';
 const SOUND_CONTROL_NOTE = 'Unavailable in this build. Audio still follows the legacy mixer.';
 const PARTICLES_CONTROL_NOTE = 'Unavailable in this build. Effects still follow the legacy renderer.';
 const REDUCE_MOTION_NOTE = 'Unavailable in this build. Motion still comes from the legacy renderer.';
@@ -333,13 +336,13 @@ function getDifficultyDescription(gameMode, difficulty) {
 }
 
 function getGoalDescription(gameMode) {
-  return gameMode !== 'wordhunt'
+  return import.meta.env.DEV && gameMode !== 'wordhunt'
     ? 'Word Hunt uses end conditions. Siege still ends on seals or corruption.'
     : 'Choose how a Word Hunt page ends.';
 }
 
 function getSpecialTilesDescription(gameMode) {
-  return gameMode === 'siege'
+  return import.meta.env.DEV && gameMode === 'siege'
     ? 'Adds Ember, Crystal, the Wildcard tile, and bomb tiles to the board.'
     : 'Adds Ember, Crystal, and the Wildcard tile to the page.';
 }
@@ -348,7 +351,7 @@ function getSpecialTilesDescription(gameMode) {
 export function SettingsView({ state, actions, onClose }) {
   const { skin, skinId, setSkin } = useSkin();
   const isPhone = useMediaQuery('(max-width: 720px)');
-  const legacyModes = legacyModesEnabled();
+  const legacyModes = import.meta.env.DEV && legacyModesEnabled();
 
   const settings = state?.settings ?? {};
   const setSettings = actions?.setSettings ?? (() => {});
@@ -361,12 +364,13 @@ export function SettingsView({ state, actions, onClose }) {
   const particlesEnabled = settings.particlesEnabled ?? CORE_DEFAULT_SETTINGS.particlesEnabled;
   const specialTiles = settings.specialTiles ?? CORE_DEFAULT_SETTINGS.specialTiles;
   const endCondition = settings.endCondition ?? CORE_DEFAULT_SETTINGS.endCondition;
-  const goalDisabled = gameMode !== 'wordhunt';
   const difficultyDescription = getDifficultyDescription(gameMode, difficulty);
   const goalDescription = getGoalDescription(gameMode);
   const specialTilesDescription = getSpecialTilesDescription(gameMode);
   const soundDisabled = true;
   const particlesDisabled = true;
+  const showGoalSetting = gameMode === 'wordhunt';
+  const showParkedSettings = SHOW_PARKED_SETTINGS;
 
   if (isPhone) {
     return (
@@ -430,78 +434,85 @@ export function SettingsView({ state, actions, onClose }) {
                 />
               }
             />
-            <SettingRow
-              label="Goal"
-              desc={goalDescription}
-              stackValue
-              value={
-                <Segmented
-                  options={END_CONDITION_OPTIONS_PHONE}
-                  selected={endCondition}
-                  onSelect={(value) => setSettings({ endCondition: value })}
-                  disabled={goalDisabled}
-                  fullWidth
-                  compact
-                />
-              }
-            />
+            {showGoalSetting ? (
+              <SettingRow
+                label="Goal"
+                desc={goalDescription}
+                stackValue
+                value={
+                  <Segmented
+                    options={END_CONDITION_OPTIONS_PHONE}
+                    selected={endCondition}
+                    onSelect={(value) => setSettings({ endCondition: value })}
+                    fullWidth
+                    compact
+                  />
+                }
+              />
+            ) : null}
             <SettingRow
               label="Special tiles"
               desc={specialTilesDescription}
               value={<Toggle on={specialTiles} onClick={() => setSettings({ specialTiles: !specialTiles })} />}
             />
-            <SettingRow
-              label="Sound"
-              desc={SOUND_CONTROL_NOTE}
-              value={<Toggle on={soundEnabled} disabled={soundDisabled} />}
-            />
-            <SettingRow
-              label="Particles"
-              desc={PARTICLES_CONTROL_NOTE}
-              value={<Toggle on={particlesEnabled} disabled={particlesDisabled} />}
-            />
+            {showParkedSettings ? (
+              <>
+                <SettingRow
+                  label="Sound"
+                  desc={SOUND_CONTROL_NOTE}
+                  value={<Toggle on={soundEnabled} disabled={soundDisabled} />}
+                />
+                <SettingRow
+                  label="Particles"
+                  desc={PARTICLES_CONTROL_NOTE}
+                  value={<Toggle on={particlesEnabled} disabled={particlesDisabled} />}
+                />
+              </>
+            ) : null}
           </div>
 
-          <div style={{ marginTop: 16 }}>
-            <SectionLabel>Coming soon</SectionLabel>
-            <SettingRow
-              label="Reduce motion"
-              desc={REDUCE_MOTION_NOTE}
-              value={<Toggle on={false} disabled />}
-            />
-            <SettingRow
-              label="Path colors"
-              desc={PATH_COLORS_NOTE}
-              stackValue
-              value={
-                <Segmented
-                  options={PATH_COLOR_OPTIONS_PHONE}
-                  selected="default"
-                  disabled
-                  fullWidth
-                  compact
-                />
-              }
-            />
-            <SettingRow
-              label="Dictionary"
-              desc={DICTIONARY_NOTE}
-              stackValue
-              value={
-                <Segmented
-                  options={DICTIONARY_OPTIONS_PHONE}
-                  disabled
-                  fullWidth
-                  compact
-                />
-              }
-            />
-            <SettingRow
-              label="Keyboard hints"
-              desc={KEYBOARD_HINTS_NOTE}
-              value={<Toggle on disabled />}
-            />
-          </div>
+          {showParkedSettings ? (
+            <div style={{ marginTop: 16 }}>
+              <SectionLabel>Coming soon</SectionLabel>
+              <SettingRow
+                label="Reduce motion"
+                desc={REDUCE_MOTION_NOTE}
+                value={<Toggle on={false} disabled />}
+              />
+              <SettingRow
+                label="Path colors"
+                desc={PATH_COLORS_NOTE}
+                stackValue
+                value={
+                  <Segmented
+                    options={PATH_COLOR_OPTIONS_PHONE}
+                    selected="default"
+                    disabled
+                    fullWidth
+                    compact
+                  />
+                }
+              />
+              <SettingRow
+                label="Dictionary"
+                desc={DICTIONARY_NOTE}
+                stackValue
+                value={
+                  <Segmented
+                    options={DICTIONARY_OPTIONS_PHONE}
+                    disabled
+                    fullWidth
+                    compact
+                  />
+                }
+              />
+              <SettingRow
+                label="Keyboard hints"
+                desc={KEYBOARD_HINTS_NOTE}
+                value={<Toggle on disabled />}
+              />
+            </div>
+          ) : null}
 
           <div style={{ borderTop: '1px solid var(--rule-faint)', paddingTop: 12, marginTop: 16, fontSize: 13, color: 'var(--ink-faint)', fontStyle: 'italic' }}>
             {FOOTER_NOTE}
@@ -547,7 +558,7 @@ export function SettingsView({ state, actions, onClose }) {
         </div>
 
         {/* Two-column settings */}
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, minHeight: 0, overflow: 'auto', alignContent: 'start' }}>
+        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: showParkedSettings ? '1fr 1fr' : 'minmax(0, 1fr)', gap: 32, minHeight: 0, overflow: 'auto', alignContent: 'start' }}>
 
           {/* Left: gameplay */}
           <div>
@@ -574,18 +585,19 @@ export function SettingsView({ state, actions, onClose }) {
                 />
               }
             />
-            <SettingRow
-              label="Goal"
-              desc={goalDescription}
-              value={
-                <Segmented
-                  options={END_CONDITION_OPTIONS_DESKTOP}
-                  selected={endCondition}
-                  onSelect={(value) => setSettings({ endCondition: value })}
-                  disabled={goalDisabled}
-                />
-              }
-            />
+            {showGoalSetting ? (
+              <SettingRow
+                label="Goal"
+                desc={goalDescription}
+                value={
+                  <Segmented
+                    options={END_CONDITION_OPTIONS_DESKTOP}
+                    selected={endCondition}
+                    onSelect={(value) => setSettings({ endCondition: value })}
+                  />
+                }
+              />
+            ) : null}
             <SettingRow
               label="Special tiles"
               desc={specialTilesDescription}
@@ -594,60 +606,64 @@ export function SettingsView({ state, actions, onClose }) {
           </div>
 
           {/* Right: options */}
-          <div>
-            <SectionLabel>Options</SectionLabel>
-            <SettingRow
-              label="Sound"
-              desc={SOUND_CONTROL_NOTE}
-              value={<Toggle on={soundEnabled} disabled={soundDisabled} />}
-            />
-            <SettingRow
-              label="Particles"
-              desc={PARTICLES_CONTROL_NOTE}
-              value={<Toggle on={particlesEnabled} disabled={particlesDisabled} />}
-            />
-          </div>
+          {showParkedSettings ? (
+            <div>
+              <SectionLabel>Options</SectionLabel>
+              <SettingRow
+                label="Sound"
+                desc={SOUND_CONTROL_NOTE}
+                value={<Toggle on={soundEnabled} disabled={soundDisabled} />}
+              />
+              <SettingRow
+                label="Particles"
+                desc={PARTICLES_CONTROL_NOTE}
+                value={<Toggle on={particlesEnabled} disabled={particlesDisabled} />}
+              />
+            </div>
+          ) : null}
 
-          <div style={{ gridColumn: '1 / -1' }}>
-            <SectionLabel>Coming soon</SectionLabel>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 12 }}>
-              <div>
-                <SettingRow
-                  label="Reduce motion"
-                  desc={REDUCE_MOTION_NOTE}
-                  value={<Toggle on={false} disabled />}
-                />
-                <SettingRow
-                  label="Path colors"
-                  desc={PATH_COLORS_NOTE}
-                  value={
-                    <Segmented
-                      options={PATH_COLOR_OPTIONS_DESKTOP}
-                      selected="default"
-                      disabled
-                    />
-                  }
-                />
-              </div>
-              <div>
-                <SettingRow
-                  label="Dictionary"
-                  desc={DICTIONARY_NOTE}
-                  value={
-                    <Segmented
-                      options={DICTIONARY_OPTIONS_DESKTOP}
-                      disabled
-                    />
-                  }
-                />
-                <SettingRow
-                  label="Keyboard hints"
-                  desc={KEYBOARD_HINTS_NOTE}
-                  value={<Toggle on disabled />}
-                />
+          {showParkedSettings ? (
+            <div style={{ gridColumn: '1 / -1' }}>
+              <SectionLabel>Coming soon</SectionLabel>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 12 }}>
+                <div>
+                  <SettingRow
+                    label="Reduce motion"
+                    desc={REDUCE_MOTION_NOTE}
+                    value={<Toggle on={false} disabled />}
+                  />
+                  <SettingRow
+                    label="Path colors"
+                    desc={PATH_COLORS_NOTE}
+                    value={
+                      <Segmented
+                        options={PATH_COLOR_OPTIONS_DESKTOP}
+                        selected="default"
+                        disabled
+                      />
+                    }
+                  />
+                </div>
+                <div>
+                  <SettingRow
+                    label="Dictionary"
+                    desc={DICTIONARY_NOTE}
+                    value={
+                      <Segmented
+                        options={DICTIONARY_OPTIONS_DESKTOP}
+                        disabled
+                      />
+                    }
+                  />
+                  <SettingRow
+                    label="Keyboard hints"
+                    desc={KEYBOARD_HINTS_NOTE}
+                    value={<Toggle on disabled />}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          ) : null}
         </div>
 
         {/* Footer */}

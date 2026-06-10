@@ -1,6 +1,6 @@
 // Non-public shell switch for local QA of deprecated modes.
-export const LEGACY_MODES_QUERY = 'legacyModes';
-export const LEGACY_MODES_STORAGE_KEY = 'lexdeep:legacyModes';
+export const LEGACY_MODES_QUERY = import.meta.env.DEV ? 'legacyModes' : '';
+export const LEGACY_MODES_STORAGE_KEY = import.meta.env.DEV ? 'lexdeep:legacyModes' : '';
 
 function readFromLocation() {
   if (typeof window === 'undefined' || !window.location) return null;
@@ -25,12 +25,14 @@ function readFromStorage() {
 }
 
 export function legacyModesEnabled() {
+  if (!import.meta.env.DEV) return false;
   const fromLocation = readFromLocation();
   if (fromLocation != null) return fromLocation;
   return readFromStorage();
 }
 
 export function persistLegacyModesPreference(enabled) {
+  if (!import.meta.env.DEV) return;
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
     if (enabled) {

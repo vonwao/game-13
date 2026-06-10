@@ -21,6 +21,11 @@ const LEGACY_MODULES = [
 
 let loadPromise = null;
 
+function publishRuntimeFlags() {
+  window.__LD_SHELL_MODE__ = true;
+  window.__LD_DEV_MODE__ = import.meta.env.DEV;
+}
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
@@ -34,7 +39,7 @@ function loadScript(src) {
 
 export function loadLegacyCore() {
   if (typeof window === 'undefined') return Promise.resolve();
-  window.__LD_SHELL_MODE__ = true;
+  publishRuntimeFlags();
   if (window.LD && window.LD.Game) {
     notifyCoreReady();
     return Promise.resolve(window.LD.Game);

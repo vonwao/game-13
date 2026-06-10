@@ -90,6 +90,7 @@ function StartOverlay({ skin, state, actions, gameMode, legacyModes, phone, onSe
   const historyItems = state.history?.items || [];
   const bestWord = getBestWord(historyItems);
   const hasLastRun = (run.wordsSpelled || 0) > 0 || historyItems.length > 0;
+  const legacyModeActive = import.meta.env.DEV && legacyModes && gameMode === 'siege';
   const nextRunSummary = [
     ['Difficulty', formatStartLabel(settings.difficulty, 'Easy')],
     ['Board', formatStartLabel(settings.boardSize, 'Small')],
@@ -143,7 +144,7 @@ function StartOverlay({ skin, state, actions, gameMode, legacyModes, phone, onSe
               color: 'var(--ink-faint)',
             }}
           >
-            {gameMode === 'siege' ? 'Legacy Mode' : 'Word Hunt'}
+            {legacyModeActive ? 'Legacy Mode' : 'Word Hunt'}
           </div>
           <div style={{ flex: 1 }} />
           <div
@@ -154,7 +155,7 @@ function StartOverlay({ skin, state, actions, gameMode, legacyModes, phone, onSe
               fontFamily: skin.id === 'terminal' ? 'var(--font-mono)' : 'var(--font-body)',
             }}
           >
-            {legacyModes ? 'Legacy modes are available locally only.' : 'One run, three pages, one front door.'}
+            {import.meta.env.DEV && legacyModes ? 'Legacy modes are available locally only.' : 'One run, three pages, one front door.'}
           </div>
         </div>
 
@@ -189,7 +190,7 @@ function StartOverlay({ skin, state, actions, gameMode, legacyModes, phone, onSe
                   lineHeight: 1.5,
                 }}
               >
-                {gameMode === 'siege'
+                {legacyModeActive
                   ? 'The archive still keeps the retired Siege build for local testing, but the live game now centers on Word Hunt.'
                   : 'Trace words through the page, manage a board that wears down as you use it, and clear three rounds without losing the shape of the run.'}
               </div>
@@ -205,7 +206,7 @@ function StartOverlay({ skin, state, actions, gameMode, legacyModes, phone, onSe
               <span onClick={onHelp} style={{ display: 'inline-flex', cursor: 'pointer' }}>
                 <skin.ActionBtn label="How to Play" kbd="?" warm />
               </span>
-              {legacyModes ? (
+              {import.meta.env.DEV && legacyModes ? (
                 <span
                   onClick={() => actions.setGameMode(gameMode === 'wordhunt' ? 'siege' : 'wordhunt')}
                   style={{ display: 'inline-flex', cursor: 'pointer' }}
@@ -283,7 +284,7 @@ export default function GameShell() {
   const { state, actions } = useGameShellState();
   const { skin } = useSkin();
   const phone = useMediaQuery('(max-width: 720px)');
-  const legacyModes = legacyModesEnabled();
+  const legacyModes = import.meta.env.DEV && legacyModesEnabled();
   const [panel, setPanel] = useState(null);
   const phase = state.phase;
   const rawPhase = state.rawPhase || phase;
@@ -429,7 +430,7 @@ export default function GameShell() {
         return;
       }
 
-      if (legacyModes && (event.key === 'm' || event.key === 'M')) {
+      if (import.meta.env.DEV && legacyModes && (event.key === 'm' || event.key === 'M')) {
         event.preventDefault();
         actions.setGameMode(state.gameMode === 'wordhunt' ? 'siege' : 'wordhunt');
         return;
@@ -477,7 +478,7 @@ export default function GameShell() {
               skin={skin}
               state={state}
               actions={actions}
-              gameMode={state.gameMode}
+              gameMode={legacyModes ? state.gameMode : 'wordhunt'}
               legacyModes={legacyModes}
               phone={phone}
               onSettings={openSettings}

@@ -132,18 +132,21 @@ const HelpNote = ({ children, center = false }) => (
 export default function HelpPanel() {
   const { state } = useGameShellState();
   const phone = useMediaQuery('(max-width: 720px)');
-  const legacyModes = legacyModesEnabled();
+  const legacyModes = import.meta.env.DEV && legacyModesEnabled();
   const gameMode = legacyModes ? (state?.gameMode ?? 'wordhunt') : 'wordhunt';
+  const showLegacyHelp = import.meta.env.DEV && gameMode === 'siege';
   const specialTilesEnabled = state?.settings?.specialTiles ?? false;
   const specialTilesNote = specialTilesEnabled
     ? 'Special tiles are enabled for this run.'
     : 'These appear when Special tiles is turned on in Settings.';
-  const siegeSpecialTilesNote = specialTilesEnabled
-    ? 'Special tiles are enabled for this run. Siege can also spawn bomb tiles.'
-    : 'Turn on Special tiles in Settings to add these, plus bomb tiles in Siege.';
+  const siegeSpecialTilesNote = import.meta.env.DEV
+    ? (specialTilesEnabled
+        ? 'Special tiles are enabled for this run. Siege can also spawn bomb tiles.'
+        : 'Turn on Special tiles in Settings to add these, plus bomb tiles in Siege.')
+    : '';
 
   if (phone) {
-    if (gameMode === 'siege') {
+    if (showLegacyHelp) {
       return (
         <div style={{ position: 'absolute', inset: 16, display: 'flex', flexDirection: 'column', gap: 10, overflow: 'auto' }}>
           <div style={{ paddingBottom: 6, borderBottom: '1px solid var(--rule-faint)' }}>
@@ -214,7 +217,7 @@ export default function HelpPanel() {
     );
   }
 
-  if (gameMode === 'siege') {
+  if (showLegacyHelp) {
     return (
       <div style={{ position: 'absolute', inset: 28, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--rule-faint)' }}>

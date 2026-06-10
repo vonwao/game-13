@@ -67,6 +67,14 @@
     };
   }
 
+  function isDevMode() {
+    return window.__LD_DEV_MODE__ === true;
+  }
+
+  function getDevShortcutKey() {
+    return String.fromCharCode(96);
+  }
+
   function subscribeSkinChange(cb) {
     window.addEventListener('ld:skin-change', function() { cb(); });
   }
@@ -273,7 +281,7 @@
       }
     }
 
-    if (!isShellMode() && state.debug && state.debug.enabled) {
+    if (!isShellMode() && isDevMode() && state.debug && state.debug.enabled) {
       drawDebugOverlay(ctx, state);
     }
 
@@ -927,7 +935,7 @@
         ctx.fillText('× ' + hunt.combo + ' COMBO', w / 2, 15);
       }
 
-      if (state.debug && state.debug.enabled) {
+      if (isDevMode() && state.debug && state.debug.enabled) {
         ctx.textAlign = 'center';
         ctx.font = 'bold 10px "Courier New", monospace';
         ctx.fillStyle = '#ff8080';
@@ -960,7 +968,7 @@
       ctx.fillText('× ' + hunt.combo + ' COMBO', w / 2, 28);
     }
 
-    if (state.debug && state.debug.enabled) {
+    if (isDevMode() && state.debug && state.debug.enabled) {
       ctx.textAlign = 'center';
       ctx.font = 'bold 10px "Courier New", monospace';
       ctx.fillStyle = '#ff8080';
@@ -1170,7 +1178,10 @@
       ctx.font = '11px "Courier New", monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Type, click, or drag tiles · Enter submit · clue button · ` debug · ? help', 20, barY + 41);
+      var helpText = 'Type, click, or drag tiles · Enter submit · clue button';
+      if (isDevMode()) helpText += ' · ' + getDevShortcutKey() + ' diagnostics';
+      helpText += ' · ? help';
+      ctx.fillText(helpText, 20, barY + 41);
     }
   }
 
@@ -1202,7 +1213,7 @@
   }
 
   function drawDebugOverlay(ctx, state) {
-    if (isShellMode()) return;
+    if (isShellMode() || !isDevMode()) return;
     var hunt = state.hunt || {};
     ctx.fillStyle = 'rgba(7, 6, 5, 0.93)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1211,10 +1222,10 @@
     ctx.textBaseline = 'middle';
     ctx.font = 'bold 24px "Courier New", monospace';
     ctx.fillStyle = '#f0d070';
-    ctx.fillText('DEBUG OVERLAY', 36, 34);
+    ctx.fillText('DEVELOPER DIAGNOSTICS', 36, 34);
     ctx.font = '12px "Courier New", monospace';
     ctx.fillStyle = '#8a7a60';
-    ctx.fillText('` close  ·  Tab switch  ·  1 planted  ·  2 history', 36, 58);
+    ctx.fillText(getDevShortcutKey() + ' close  ·  Tab switch  ·  1 planted  ·  2 history', 36, 58);
 
     drawDebugTabs(ctx, [
       { key: 'planted', label: '1  PLANTED WORDS' },
@@ -1620,7 +1631,7 @@
       y1 += 30;
       ctx.font = '13px "Courier New", monospace';
       ctx.fillStyle = COLORS.hud;
-      [
+      var controlLines = [
         'A-Z: type a word',
         'Mouse / touch: click or drag tiles',
         'Bottom bar: clear, undo, submit, clue',
@@ -1628,9 +1639,10 @@
         'Backspace / Escape: edit or clear',
         'Arrow keys: scroll the board',
         'Clue button: reveal part of an unfound planted word',
-        '` : toggle debug overlay',
-        '?: open or close help',
-      ].forEach(function (line) {
+      ];
+      if (isDevMode()) controlLines.push(getDevShortcutKey() + ' : open developer diagnostics');
+      controlLines.push('?: open or close help');
+      controlLines.forEach(function (line) {
         ctx.fillText(line, col1, y1);
         y1 += lineH;
       });
@@ -1730,12 +1742,12 @@
 
       ctx.font = 'bold 16px "Courier New", monospace';
       ctx.fillStyle = '#c8a050';
-      ctx.fillText('DEBUG MODE', col2, y2);
+      ctx.fillText('DEVELOPER DIAGNOSTICS', col2, y2);
       y2 += 30;
       ctx.font = '13px "Courier New", monospace';
       ctx.fillStyle = COLORS.hud;
       [
-        'Press ` to open debug mode.',
+        'Press ' + getDevShortcutKey() + ' to open developer diagnostics.',
         'Tab 1 shows every planted word with orientation',
         'and whether it has been found.',
         'Tab 2 shows full word history with score reasons.',

@@ -40,6 +40,14 @@
     return undefined;
   }
 
+  function isDevMode() {
+    return window.__LD_DEV_MODE__ === true;
+  }
+
+  function getDevShortcutKey() {
+    return String.fromCharCode(96);
+  }
+
   function dictIsValid(word) {
     return safeCall(window.LD?.Dict?.isValid, word) ?? false;
   }
@@ -768,6 +776,10 @@
     const isGameOver = phase === 'victory' || phase === 'gameover';
 
     const key = e.key;
+    const debugToolsAvailable = isDevMode();
+    if (!debugToolsAvailable && _state.debug && _state.debug.enabled) {
+      _state.debug.enabled = false;
+    }
 
     // ── Arrow keys always scroll ────────────────────────────────────────────
     switch (key) {
@@ -809,8 +821,8 @@
       return;
     }
 
-    // ── ` — toggle debug overlay ───────────────────────────────────────────
-    if (key === '`') {
+    // ── Developer diagnostics shortcut ─────────────────────────────────────
+    if (debugToolsAvailable && key === getDevShortcutKey()) {
       e.preventDefault();
       _state.debug = _state.debug || {};
       _state.debug.enabled = !_state.debug.enabled;
@@ -837,8 +849,8 @@
       return;
     }
 
-    // Debug overlay: tabbed, block normal input while open
-    if (_state.debug && _state.debug.enabled) {
+    // Developer diagnostics: tabbed, block normal input while open
+    if (debugToolsAvailable && _state.debug && _state.debug.enabled) {
       if (key === 'Escape') {
         e.preventDefault();
         _state.debug.enabled = false;
