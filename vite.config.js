@@ -17,6 +17,11 @@ function copyLegacyModules() {
 
 export default defineConfig({
   plugins: [react(), copyLegacyModules()],
+  test: {
+    environment: 'jsdom',
+    include: ['modules/**/*.test.js'],
+    restoreMocks: true,
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,
