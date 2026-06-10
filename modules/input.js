@@ -1,0 +1,983 @@
+/**
+ * LEXICON DEEP — Input Module
+ * window.LD.Input
+ *
+ * Handles all keyboard input and orchestrates the full turn sequence:
+ *   typing → validation → path-finding → submission → board effects → win/lose check
+ */
+(function () {
+  'use strict';
+
+  window.LD = window.LD || {};
+
+  // ---------------------------------------------------------------------------
+  // Internal state
+  // ---------------------------------------------------------------------------
+
+  let _state = null;       // reference set by init()
+  let _attached = false;   // guard against double-attaching listeners
+
+  // Word color palette — cycles with each submitted word
+  const WORD_COLORS = [
+    '#e05858', // red
+    '#5090e0', // blue
+    '#50c878', // green
+    '#e09030', // orange
+    '#a050e0', // purple
+    '#e05090', // pink
+    '#30c8c0', // teal
+    '#c8c030', // yellow
+    '#e07040', // coral
+    '#4090c0', // steel blue
+  ];
+
+  // ---------------------------------------------------------------------------
+  // Helpers — safe module calls (graceful no-ops if a module isn't loaded yet)
+  // ---------------------------------------------------------------------------
+
+  function safeCall(fn, ...args) {
+    if (typeof fn === 'function') return fn(...args);
+    return undefined;
+  }
+
+  function isDevMode() {
+    return window.__LD_DEV_MODE__ === true;
+  }
+
+  function getDevShortcutKey() {
+    return String.fromCharCode(96);
+  }
+
+  function dictIsValid(word) {
+    return safeCall(window.LD?.Dict?.isValid, word) ?? false;
+  }
+
+  function dictScore(word, pathTiles) {
+    return safeCall(window.LD?.Dict?.score, word, pathTiles) ?? word.length;
+  }
+
+  function getExplicitPath() {
+    return Array.isArray(_state.input.explicitPath) ? _state.input.explicitPath : [];
+  }
+
+  function clearExplicitPath() {
+    _state.input.explicitPath = [];
+  }
+
+  function getSubmissionPath() {
+    return Array.isArray(_state.input.resolvedPath)
+      ? _state.input.resolvedPath.slice()
+      : [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Input state mutators
+  // ---------------------------------------------------------------------------
+
+  function clearInput() {
+    _state.input.typed    = '';
+    _state.input.path     = [];
+    _state.input.valid    = false;
+    _state.input.hasPath  = false;
+    _state.input.resolvedPath = [];
+    _state.input.explicitPath = [];
+    _state.input.pathAmbiguous = false;
+    _state.input.pathCandidateCount = 0;
+    _state.input.matchingTiles = [];
+    _state.input.scorePreview = null;
+  }
+
+  function setCurrentWordPath(word, path) {
+    _state.input.typed = word || '';
+    _state.input.explicitPath = Array.isArray(path) ? path.slice() : [];
+    refreshInputState();
+  }
+
+  function getPathOrientationLabel(path, reversed) {
+    if (!path || path.length < 2) return 'single';
+    const dc = path[1].col - path[0].col;
+    const dr = path[1].row - path[0].row;
+    const axis = dr === 0 ? 'horizontal'
+      : dc === 0 ? 'vertical'
+      : 'diagonal';
+    return axis + (reversed ? ' backward' : ' forward');
+  }
+
+  /**
+   * After every keystroke, re-run validation and path search, then update
+   * highlighting data for the renderer.
+   */
+  function refreshInputState() {
+    const typed = _state.input.typed;
+    const pathfinder = window.LD.Pathfinder;
+
+    if (typed.length === 0) {
+      _state.input.valid        = false;
+      _state.input.hasPath      = false;
+      _state.input.path         = [];
+      _state.input.resolvedPath = [];
+      _state.input.explicitPath = [];
+      _state.input.pathAmbiguous = false;
+      _state.input.pathCandidateCount = 0;
+      _state.input.matchingTiles = [];
+      _state.input.scorePreview = null;
+      return;
+    }
+
+    // 1. Dictionary validity check (Word Hunt requires min 4 letters)
+    const minLen = _state.gameMode === 'wordhunt' ? 4 : 2;
+    _state.input.valid = typed.length >= minLen && dictIsValid(typed);
+
+    // 2. Explicit board-selected paths stay pinned to the user's choice.
+    const explicitPath = getExplicitPath();
+    if (explicitPath.length > 0) {
+      const explicitValid = pathfinder?.isPathViable
+        ? pathfinder.isPathViable(_state, typed, explicitPath)
+        : explicitPath.length > 0;
+
+      _state.input.path = explicitPath.slice();
+      _state.input.resolvedPath = explicitValid ? explicitPath.slice() : [];
+      _state.input.hasPath = explicitValid;
+      _state.input.pathAmbiguous = false;
+      _state.input.pathCandidateCount = explicitValid ? 1 : 0;
+      _state.input.matchingTiles = [];
+      _state.input.scorePreview = (
+        _state.gameMode === 'wordhunt' &&
+        explicitValid &&
+        explicitPath.length > 0
+      )
+        ? computeScorePreview(explicitPath, typed)
+        : null;
+      return;
+    }
+
+    // 3. Auto path search for typed input.
+    let bestPath = [];
+    let resolvedPath = [];
+    let ambiguous = false;
+    let candidateCount = 0;
+
+    if (pathfinder?.findPathDetails) {
+      const details = pathfinder.findPathDetails(_state, typed);
+      bestPath = Array.isArray(details.bestPath) ? details.bestPath.slice() : [];
+      resolvedPath = Array.isArray(details.resolvedPath) ? details.resolvedPath.slice() : [];
+      ambiguous = !!details.ambiguous;
+      candidateCount = details.candidateCount || 0;
+    } else if (pathfinder?.findPath) {
+      bestPath = pathfinder.findPath(_state, typed) || [];
+      resolvedPath = bestPath.slice();
+      candidateCount = bestPath.length > 0 ? 1 : 0;
+    }
+
+    const displayPath = resolvedPath.length > 0 ? resolvedPath.slice() : [];
+    const prefixCells = (displayPath.length === 0 && pathfinder?.findPrefixCells)
+      ? pathfinder.findPrefixCells(_state, typed)
+      : [];
+
+    _state.input.path = displayPath;
+    _state.input.resolvedPath = resolvedPath.length > 0 ? resolvedPath : bestPath.slice();
+    _state.input.hasPath = _state.input.resolvedPath.length > 0;
+    _state.input.pathAmbiguous = ambiguous;
+    _state.input.pathCandidateCount = candidateCount;
+    _state.input.matchingTiles = displayPath.length > 0 ? [] : prefixCells;
+
+    // 4. Score preview (Word Hunt — computed when a concrete path is visible)
+    if (_state.gameMode === 'wordhunt' && displayPath.length > 0) {
+      _state.input.scorePreview = computeScorePreview(displayPath, typed);
+    } else {
+      _state.input.scorePreview = null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Viewport scrolling
+  // ---------------------------------------------------------------------------
+
+  function scrollViewport(dCol, dRow) {
+    const vp = _state.viewport;
+    const maxCol = _state.board.width  - vp.cols;
+    const maxRow = _state.board.height - vp.rows;
+
+    vp.col = Math.max(0, Math.min(maxCol, vp.col + dCol));
+    vp.row = Math.max(0, Math.min(maxRow, vp.row + dRow));
+
+    // Reset combo on scroll in Word Hunt
+    if (_state.gameMode === 'wordhunt' && _state.hunt && _state.config && _state.config.comboBonuses) {
+      _state.hunt.combo = 0;
+    }
+
+    // Clear word input on scroll — path is now stale
+    clearInput();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Turn execution
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Resolve icon effects for tiles in the activated path.
+   * Called AFTER cleanseTilesNear so the crystal radius is already applied.
+   */
+  function processIconEffects(path) {
+    for (let i = 0; i < path.length; i++) {
+      const { col, row } = path[i];
+      const tile = _state.board.tiles[row * _state.board.width + col];
+      if (!tile || !tile.icon) continue;
+
+      switch (tile.icon) {
+        case 'ember': {
+          // 5×5 area centred on ember tile
+          const emberTiles = [];
+          for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              const c = col + dc;
+              const r = row + dr;
+              if (c >= 0 && c < _state.board.width && r >= 0 && r < _state.board.height) {
+                emberTiles.push({ col: c, row: r });
+              }
+            }
+          }
+          safeCall(window.LD?.Board?.cleanseTilesNear, _state.board || _state, emberTiles, 0);
+          break;
+        }
+        case 'bomb': {
+          // 9×9 area centred on bomb tile
+          const bombTiles = [];
+          for (let dr = -4; dr <= 4; dr++) {
+            for (let dc = -4; dc <= 4; dc++) {
+              const c = col + dc;
+              const r = row + dr;
+              if (c >= 0 && c < _state.board.width && r >= 0 && r < _state.board.height) {
+                bombTiles.push({ col: c, row: r });
+              }
+            }
+          }
+          safeCall(window.LD?.Board?.cleanseTilesNear, _state.board || _state, bombTiles, 0);
+          break;
+        }
+        case 'crystal':
+          // Crystal radius was already handled in submitWord (doubled radius)
+          break;
+        case 'void':
+          // Void is just a wildcard — no additional effect
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  /**
+   * Determine the cleanse radius for a submitted path.
+   * Crystal in the path doubles it from 2 → 4.
+   */
+  function getCleanseRadius(path) {
+    for (let i = 0; i < path.length; i++) {
+      const { col, row } = path[i];
+      const tile = _state.board.tiles[row * _state.board.width + col];
+      if (tile && tile.icon === 'crystal') return 4;
+    }
+    return 2;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Score preview (live breakdown while typing)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Compute an estimated score breakdown for the current path + word.
+   * Used by the renderer to show math as the player types.
+   */
+  function computeWordHuntBreakdown(path, word, comboCount) {
+    const board  = _state.board;
+    const shape = computePathShape(path);
+
+    let tilePoints = 0;
+    let wildcardCount = 0;
+    let crystalCount = 0;
+    let emberCount = 0;
+    for (let i = 0; i < path.length; i++) {
+      const t = board.tiles[path[i].row * board.width + path[i].col];
+      tilePoints += t && typeof t.points === 'number' ? t.points : 0;
+      if (!t || !t.icon) continue;
+      wildcardCount++;
+      if (t.icon === 'crystal') crystalCount++;
+      if (t.icon === 'ember') emberCount++;
+    }
+
+    const scoring = window.LD && window.LD.Scoring;
+    const scoreEntry = {
+      word,
+      length: word.length,
+      tilePoints,
+      corners: shape.corners,
+      isStraight: shape.isStraight,
+      isHorizontal: shape.isHorizontal,
+      isVertical: shape.isVertical,
+      isDiagonal: shape.isDiagonal,
+      wildcardCount,
+      crystalCount,
+      emberCount,
+    };
+    const scored = scoring && typeof scoring.computeBreakdown === 'function'
+      ? scoring.computeBreakdown(scoreEntry)
+      : {
+        scoreModel: 'fallback',
+        length: word.length,
+        lengthBase: word.length * 10,
+        tilePoints,
+        tileBonus: tilePoints,
+        shapeBonus: 0,
+        shapeLabel: '',
+        wildcardCount,
+        wildcardPenalty: 0,
+        crystalCount,
+        crystalBonus: 0,
+        emberCount,
+        emberBonus: 0,
+        total: word.length * 10 + tilePoints,
+      };
+
+    return {
+      ...scored,
+      basePts: tilePoints,
+      tilePoints,
+      corners: shape.corners,
+      isStraight: shape.isStraight,
+      isHorizontal: shape.isHorizontal,
+      isVertical: shape.isVertical,
+      isDiagonal: shape.isDiagonal,
+      comboCount,
+      comboMult: 1,
+      lenMult: 1,
+      shapeMult: 1,
+      crystalMult: 1,
+      wildcardMult: 1,
+      hasCrystal: crystalCount > 0,
+      hasWildcard: wildcardCount > 0,
+      emberCount,
+      multiplied: scored.total,
+      total: scored.total
+    };
+  }
+
+  function computeScorePreview(path, word) {
+    const hunt = _state.hunt || {};
+    const nextCombo = ((_state.config || {}).comboBonuses) ? ((hunt.combo || 0) + 1) : 1;
+    return computeWordHuntBreakdown(path, word, nextCombo);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Word Hunt path-shape helpers
+  // ---------------------------------------------------------------------------
+
+  function computePathShape(path) {
+    if (path.length < 2) return { isStraight: false, isHorizontal: false, isVertical: false, corners: 0 };
+    const dc0 = path[1].col - path[0].col;
+    const dr0 = path[1].row - path[0].row;
+    let isStraight = true;
+    let corners = 0;
+    for (let i = 2; i < path.length; i++) {
+      const dc = path[i].col - path[i-1].col;
+      const dr = path[i].row - path[i-1].row;
+      if (dc !== (path[i-1].col - path[i-2].col) || dr !== (path[i-1].row - path[i-2].row)) {
+        isStraight = false;
+        corners++;
+      }
+    }
+    return {
+      isStraight,
+      isHorizontal: isStraight && dr0 === 0,
+      isVertical:   isStraight && dc0 === 0,
+      isDiagonal:   isStraight && dc0 !== 0 && dr0 !== 0,
+      corners,
+    };
+  }
+
+  function submitWordHunt() {
+    const typed = _state.input.typed;
+    const path  = getSubmissionPath();
+    const board = _state.board;
+    const config = _state.config || {};
+    const hunt  = _state.hunt;
+
+    const nextCombo = (config.comboBonuses && hunt) ? ((hunt.combo || 0) + 1) : 1;
+    const breakdown = computeWordHuntBreakdown(path, typed, nextCombo);
+    const shape = computePathShape(path);
+
+    if (config.comboBonuses && hunt) {
+      hunt.combo = nextCombo;
+      if (hunt.combo > hunt.bestCombo) hunt.bestCombo = hunt.combo;
+    }
+
+    let earned = breakdown.total;
+    let discoveryBonus = 0;
+    let objectiveBonus = 0;
+
+    // 1. Check planted words
+    const planted = safeCall(window.LD?.Board?.checkPlantedWord, board, typed, path);
+    if (planted) {
+      planted.found = true;
+      if (hunt && hunt.discoveredWords) {
+        hunt.discoveredWords.push(planted.word);
+      }
+      // Mark individual tile objects as found (golden tint) + count as 1 use
+      for (let i = 0; i < planted.path.length; i++) {
+        const pt = planted.path[i];
+        const t = board.tiles[pt.row * board.width + pt.col];
+        if (t) {
+          t.found = true;
+          // useCount already incremented below in step 8 — don't double-count
+        }
+      }
+      discoveryBonus = 100;
+      earned += discoveryBonus;
+      // Discovery visual
+      const vp = _state.viewport;
+      const ts = vp.tileSize || 32;
+      const toPixel = (t) => ({ x: vp.offsetX + (t.col - vp.col) * ts + ts/2, y: vp.offsetY + (t.row - vp.row) * ts + ts/2 });
+      const midTile = path[Math.floor(path.length / 2)];
+      if (window.LD?.Particles?.text) {
+        const mp = toPixel(midTile);
+        LD.Particles.text(mp.x, mp.y - 30, 'DISCOVERED: ' + typed + '!', '#f0d070', 18);
+      }
+      safeCall(window.LD?.Audio?.play, 'challenge_complete');
+    }
+
+    if (hunt) {
+      hunt.roundScore = (hunt.roundScore || 0) + earned;
+    }
+
+    // 2. Check round objectives
+    const wordData = {
+      word:         typed,
+      path:         path,
+      score:        earned,
+      isStraight:   shape.isStraight,
+      isHorizontal: shape.isHorizontal,
+      isVertical:   shape.isVertical,
+      corners:      shape.corners,
+      isPlantedWord: !!planted,
+      tilesUsed:    path,
+      roundScore:   hunt ? (hunt.roundScore || 0) : 0,
+    };
+    const newlyCompleted = (window.LD?.Challenges?.checkAll)
+      ? window.LD.Challenges.checkAll(_state, wordData)
+      : [];
+
+    for (let i = 0; i < newlyCompleted.length; i++) {
+      const challenge = (hunt && hunt.challenges)
+        ? hunt.challenges.find(c => c.id === newlyCompleted[i])
+        : null;
+      const reward = challenge ? (challenge.reward || 100) : 100;
+      objectiveBonus += reward;
+      earned += reward;
+      if (hunt) hunt.completedCount = (hunt.completedCount || 0) + 1;
+    }
+
+    if (hunt) {
+      hunt.roundScore = (hunt.roundScore || 0) + objectiveBonus;
+    }
+
+    // 3. Update stats
+    _state.score        = (_state.score || 0) + earned;
+    _state.wordsSpelled = (_state.wordsSpelled || 0) + 1;
+    if (typed.length > ((_state.longestWord || '').length)) _state.longestWord = typed;
+    if (!_state.wordHistory) _state.wordHistory = [];
+    if (hunt) {
+      if (_state.settings.endCondition === 'turns') hunt.turnsRemaining--;
+      var historyEntry = {
+        word: typed,
+        score: earned,
+        pathLength: path.length,
+        path: path.map(function(p) { return { col: p.col, row: p.row }; }),
+        basePts: breakdown.basePts,
+        tilePoints: breakdown.tilePoints,
+        lengthBase: breakdown.lengthBase,
+        tileBonus: breakdown.tileBonus,
+        shapeBonus: breakdown.shapeBonus,
+        crystalBonus: breakdown.crystalBonus,
+        wildcardPenalty: breakdown.wildcardPenalty,
+        wildcardCount: breakdown.wildcardCount,
+        scoreModel: breakdown.scoreModel,
+        lenMult: breakdown.lenMult,
+        shapeMult: breakdown.shapeMult,
+        shapeLabel: breakdown.shapeLabel,
+        corners: breakdown.corners,
+        comboCount: breakdown.comboCount,
+        comboMult: breakdown.comboMult,
+        crystalMult: breakdown.crystalMult,
+        emberBonus: breakdown.emberBonus,
+        discoveryBonus,
+        objectiveBonus,
+        orientation: getPathOrientationLabel(path, false),
+        reasonText: (window.LD && window.LD.Scoring && window.LD.Scoring.formatReason)
+          ? window.LD.Scoring.formatReason(breakdown, { discoveryBonus, objectiveBonus })
+          : String(earned)
+      };
+      hunt.wordsThisRound.push(historyEntry);
+      _state.wordHistory.push(historyEntry);
+    }
+
+    // 4. Mark tiles with word color + increment useCount
+    const wordColor = WORD_COLORS[(_state.wordsSpelled - 1) % WORD_COLORS.length];
+    path.forEach(p => {
+      const t = board.tiles[p.row * board.width + p.col];
+      if (t) {
+        t.useCount = (t.useCount || 0) + 1;
+        if (!t.wordColors) t.wordColors = [];
+        t.wordColors.push(wordColor);
+      }
+      if (hunt && hunt.usedTileKeys) hunt.usedTileKeys.add(p.col + ',' + p.row);
+    });
+
+    // 5. Win/lose check
+    if (_state.settings.endCondition === 'challenges') {
+      const total = (hunt && hunt.challenges) ? hunt.challenges.length : 0;
+      if (total > 0 && (hunt.completedCount || 0) >= total) {
+        if (hunt) {
+          hunt.advanceAvailable = (hunt.round || 1) < (hunt.maxRounds || 3);
+        }
+        _state.phase = 'victory';
+      }
+    } else if (_state.settings.endCondition === 'turns') {
+      if (hunt && hunt.turnsRemaining <= 0) _state.phase = 'gameover';
+    }
+    // timed: handled in game loop
+
+    // 6. Particles & Audio
+    const vp = _state.viewport;
+    const ts = vp.tileSize || 32;
+    const toPixel2 = (t) => ({ x: vp.offsetX + (t.col - vp.col) * ts + ts/2, y: vp.offsetY + (t.row - vp.row) * ts + ts/2, col: t.col, row: t.row });
+
+    if (window.LD?.Particles?.wordActivation) {
+      LD.Particles.wordActivation(path.map(toPixel2), ts);
+    }
+    if (window.LD?.Particles?.text && path.length > 0) {
+      const mid = toPixel2(path[Math.floor(path.length / 2)]);
+      let popupText = '+' + earned;
+      if (config.pathBonuses && breakdown.shapeBonus) {
+        popupText += ' ' + (breakdown.shapeBonus > 0 ? '+' : '') + breakdown.shapeBonus + ' shape';
+      }
+      LD.Particles.text(mid.x, mid.y - 20, popupText, '#ffd700', 18);
+    }
+    if (window.LD?.Audio) {
+      safeCall(window.LD.Audio.play, 'word_valid');
+      if (_state.hunt && _state.hunt.combo > 1) safeCall(window.LD.Audio.play, 'combo');
+    }
+
+    clearInput();
+  }
+
+  function useClue() {
+    if (!_state || _state.phase !== 'playing' || _state.gameMode !== 'wordhunt') return false;
+
+    const hunt = _state.hunt;
+    if (!hunt || (hunt.cluesRemaining || 0) <= 0) return false;
+
+    const unfound = (hunt.plantedWords || []).filter(function (entry) {
+      return !entry.found;
+    });
+    if (unfound.length === 0) return false;
+
+    unfound.sort(function (a, b) {
+      return a.word.length - b.word.length;
+    });
+
+    const chosen = unfound[Math.floor(Math.random() * Math.min(3, unfound.length))];
+    const clueTiles = [];
+    if (chosen.path.length > 0) clueTiles.push(chosen.path[0]);
+    if (chosen.path.length >= 6) clueTiles.push(chosen.path[chosen.path.length - 1]);
+
+    hunt.cluesRemaining--;
+    hunt.clueTiles = clueTiles;
+    hunt.clueTimer = 3.2;
+
+    if (window.LD?.Particles?.text) {
+      const vp = _state.viewport;
+      const ts = vp.tileSize || 24;
+      const clue = clueTiles[0];
+      if (clue) {
+        const x = vp.offsetX + (clue.col - vp.col) * ts + ts / 2;
+        const y = vp.offsetY + (clue.row - vp.row) * ts + ts / 2;
+        LD.Particles.text(x, y - 18, 'CLUE · ' + chosen.word.length + ' letters', '#80d8ff', 16);
+      }
+    }
+
+    safeCall(window.LD?.Audio?.play, 'tap');
+    return true;
+  }
+
+  /**
+   * Execute a valid, path-confirmed word submission.
+   *
+   * Turn sequence (per spec):
+   *   1. Score calculation
+   *   2. Cleanse tiles near path
+   *   3. Check / destroy seals
+   *   4. Process icon tile effects
+   *   5. Refresh activated tiles
+   *   6. Spread corruption
+   *   7. Update stats
+   *   8. Check win / lose
+   *   9. Spawn particles
+   *  10. Play audio
+   *  11. Clear input
+   */
+  function submitWord() {
+    // Route to Word Hunt or Siege submission
+    if (_state.gameMode === 'wordhunt') {
+      return submitWordHunt();
+    }
+
+    const typed    = _state.input.typed;
+    const path     = getSubmissionPath(); // snapshot before clear
+
+    // ── 1. Score ──────────────────────────────────────────────────────────────
+    const pathTiles = path.map(({ col, row }) =>
+      _state.board.tiles[row * _state.board.width + col]
+    );
+    const earned = dictScore(typed, pathTiles);
+
+    // ── 2. Cleanse tiles near path ────────────────────────────────────────────
+    const board = _state.board || _state;
+    const radius = getCleanseRadius(path);
+    const cleansedTiles = safeCall(window.LD?.Board?.cleanseTilesNear, board, path, radius) || [];
+
+    // ── 3. Check and destroy seals ────────────────────────────────────────────
+    const sealIndex = safeCall(window.LD?.Board?.checkSealDestruction, board, path);
+    let sealCleansed = [];
+    if (typeof sealIndex === 'number' && sealIndex >= 0) {
+      sealCleansed = safeCall(window.LD?.Board?.destroySeal, board, sealIndex) || [];
+      _state.seedsDestroyed = (_state.seedsDestroyed || 0) + 1;
+    }
+
+    // ── 4. Icon tile effects ──────────────────────────────────────────────────
+    processIconEffects(path);
+
+    // ── 5. Refresh activated tiles ────────────────────────────────────────────
+    safeCall(window.LD?.Board?.refreshTiles, board, path);
+
+    // ── 6. Spread corruption ─────────────────────────────────────────────────
+    const newCorruption = safeCall(window.LD?.Board?.spreadCorruption, board, _state.config) || [];
+
+    // ── 7. Update stats ───────────────────────────────────────────────────────
+    _state.score        = (_state.score        || 0) + earned;
+    _state.wordsSpelled = (_state.wordsSpelled || 0) + 1;
+    _state.turns        = (_state.turns        || 0) + 1;
+    if (typed.length > ((_state.longestWord || '').length)) {
+      _state.longestWord = typed;
+    }
+
+    // ── 8. Win / lose checks ─────────────────────────────────────────────────
+    const totalSeeds = _state.totalSeeds || 0;
+    if (totalSeeds > 0 && (_state.seedsDestroyed || 0) >= totalSeeds) {
+      _state.phase = 'victory';
+    } else {
+      const corruptPct = safeCall(window.LD?.Board?.getCorruptionPercent, board) ?? 0;
+      const lossThreshold = (_state.config && _state.config.corruptionLossThreshold) ? _state.config.corruptionLossThreshold : 40;
+      if (corruptPct >= lossThreshold) {
+        _state.phase = 'gameover';
+      }
+    }
+
+    // ── 9. Particles & Audio ────────────────────────────────────────────────
+    const vp = _state.viewport;
+    const ts = vp.tileSize || 64;
+    function toPixel(t) {
+      return { x: vp.offsetX + (t.col - vp.col) * ts + ts/2, y: vp.offsetY + (t.row - vp.row) * ts + ts/2, col: t.col, row: t.row };
+    }
+
+    // Word activation sparks
+    if (window.LD?.Particles?.wordActivation) {
+      const pixelPath = path.map(toPixel);
+      LD.Particles.wordActivation(pixelPath, ts);
+    }
+
+    // Cleanse particles
+    if (window.LD?.Particles?.cleanseTiles && cleansedTiles.length > 0) {
+      LD.Particles.cleanseTiles(cleansedTiles.map(toPixel), ts);
+    }
+
+    // Score popup
+    if (window.LD?.Particles?.text && path.length > 0) {
+      const mid = toPixel(path[Math.floor(path.length / 2)]);
+      LD.Particles.text(mid.x, mid.y - 20, '+' + earned, '#ffd700', 20);
+    }
+
+    // Seal destruction effects
+    if (typeof sealIndex === 'number' && sealIndex >= 0) {
+      const seal = board.seals[sealIndex];
+      if (seal && window.LD?.Particles?.sealDestroyed) {
+        const sp = toPixel(seal);
+        LD.Particles.sealDestroyed(sp.x, sp.y, sealCleansed.map(toPixel), ts);
+      }
+      safeCall(window.LD?.Audio?.play, 'seal_destroy');
+    }
+
+    // Corruption spread audio
+    if (newCorruption.length > 0) {
+      safeCall(window.LD?.Audio?.play, 'corrupt_spread');
+      if (window.LD?.Particles?.corruptionSpread) {
+        LD.Particles.corruptionSpread(newCorruption.map(toPixel), ts);
+      }
+    }
+
+    safeCall(window.LD?.Audio?.play, 'word_valid');
+
+    // ── 11. Clear input ───────────────────────────────────────────────────────
+    clearInput();
+  }
+
+  /**
+   * Handle an invalid or no-path submission attempt: give feedback without
+   * consuming a turn.
+   */
+  function rejectWord() {
+    safeCall(window.LD?.Audio?.play, 'word_invalid');
+    // Signal the renderer to flash the input indicator
+    _state.input.flashInvalid = true;
+    // The renderer is responsible for clearing flashInvalid after animation
+  }
+
+  // ---------------------------------------------------------------------------
+  // Letter-by-letter input
+  // ---------------------------------------------------------------------------
+
+  function appendLetter(letter) {
+    clearExplicitPath();
+    _state.input.typed += letter.toUpperCase();
+    refreshInputState();
+
+    // Ascending pitch: index = length of current word minus 1
+    const letterIndex = _state.input.typed.length - 1;
+    safeCall(window.LD?.Audio?.playLetterTick, letterIndex);
+  }
+
+  function backspaceLetter() {
+    if (_state.input.typed.length === 0) return;
+    clearExplicitPath();
+    _state.input.typed = _state.input.typed.slice(0, -1);
+    refreshInputState();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Keyboard handler
+  // ---------------------------------------------------------------------------
+
+  function onKeyDown(e) {
+    if (!_state) return;
+
+    // Do not intercept system shortcuts (Ctrl+R, Ctrl+W, Ctrl+T, etc.)
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // Block input when game is over (still allow scrolling to look around)
+    const phase = _state.phase;
+    const isGameOver = phase === 'victory' || phase === 'gameover';
+
+    const key = e.key;
+    const debugToolsAvailable = isDevMode();
+    if (!debugToolsAvailable && _state.debug && _state.debug.enabled) {
+      _state.debug.enabled = false;
+    }
+
+    // ── Arrow keys always scroll ────────────────────────────────────────────
+    switch (key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(0, -1);
+        else scrollViewport(0, -1);
+        safeCall(window.LD?.Audio?.play, 'scroll');
+        return;
+      case 'ArrowDown':
+        e.preventDefault();
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(0, 1);
+        else scrollViewport(0, 1);
+        safeCall(window.LD?.Audio?.play, 'scroll');
+        return;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(-1, 0);
+        else scrollViewport(-1, 0);
+        safeCall(window.LD?.Audio?.play, 'scroll');
+        return;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (window.LD.Actions) window.LD.Actions.scrollBoard(1, 0);
+        else scrollViewport(1, 0);
+        safeCall(window.LD?.Audio?.play, 'scroll');
+        return;
+    }
+
+    // ── ? — toggle help screen ─────────────────────────────────────────────
+    if (key === '?') {
+      e.preventDefault();
+      _state.showHelp = !_state.showHelp;
+      if (_state.showHelp) {
+        _state.debug = _state.debug || {};
+        _state.debug.enabled = false;
+      }
+      if (_state.showHelp) _state.helpTab = _state.helpTab || 'basics';
+      return;
+    }
+
+    // ── Developer diagnostics shortcut ─────────────────────────────────────
+    if (debugToolsAvailable && key === getDevShortcutKey()) {
+      e.preventDefault();
+      _state.debug = _state.debug || {};
+      _state.debug.enabled = !_state.debug.enabled;
+      if (_state.debug.enabled) _state.showHelp = false;
+      if (!_state.debug.tab) _state.debug.tab = 'planted';
+      return;
+    }
+
+    // Help overlay: tabbed, do not auto-close on unrelated keys
+    if (_state.showHelp) {
+      if (key === 'Escape') {
+        e.preventDefault();
+        _state.showHelp = false;
+      } else if (key === '1') {
+        e.preventDefault();
+        _state.helpTab = 'basics';
+      } else if (key === '2') {
+        e.preventDefault();
+        _state.helpTab = 'scoring';
+      } else if (key === '3') {
+        e.preventDefault();
+        _state.helpTab = 'tiles';
+      }
+      return;
+    }
+
+    // Developer diagnostics: tabbed, block normal input while open
+    if (debugToolsAvailable && _state.debug && _state.debug.enabled) {
+      if (key === 'Escape') {
+        e.preventDefault();
+        _state.debug.enabled = false;
+      } else if (key === '1') {
+        e.preventDefault();
+        _state.debug.tab = 'planted';
+      } else if (key === '2') {
+        e.preventDefault();
+        _state.debug.tab = 'history';
+      } else if (key === 'Tab') {
+        e.preventDefault();
+        _state.debug.tab = _state.debug.tab === 'history' ? 'planted' : 'history';
+      }
+      return;
+    }
+
+    if (isGameOver) return; // no word input after game ends
+    if (phase === 'paused') return; // pause card is open — block gameplay keys
+
+    // ── Escape — clear input ──────────────────────────────────────────────────
+    if (key === 'Escape') {
+      e.preventDefault();
+      if (window.LD.Actions) window.LD.Actions.clearCurrentWord();
+      else clearInput();
+      return;
+    }
+
+    // ── Backspace ─────────────────────────────────────────────────────────────
+    if (key === 'Backspace') {
+      e.preventDefault();
+      if (window.LD.Actions) window.LD.Actions.backspaceLetter();
+      else backspaceLetter();
+      return;
+    }
+
+    // ── Enter — submit ────────────────────────────────────────────────────────
+    if (key === 'Enter') {
+      e.preventDefault();
+      if (window.LD.Actions) window.LD.Actions.submitCurrentWord();
+      else if (_state.input.valid && _state.input.hasPath) submitWord();
+      else rejectWord();
+      return;
+    }
+
+    // ── Letter keys (A-Z) ────────────────────────────────────────────────────
+    // key.length === 1 catches printable single characters
+    if (key.length === 1 && /^[A-Za-z]$/.test(key)) {
+      e.preventDefault();
+      if (window.LD.Actions) window.LD.Actions.appendLetter(key);
+      else appendLetter(key);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Attach keyboard listeners and store the state reference.
+   * Safe to call multiple times — will only attach once.
+   *
+   * @param {object} state - the shared game state object
+   */
+  function init(state) {
+    _state = state;
+
+    // Ensure required input sub-fields exist
+    state.input         = state.input         || {};
+    state.input.typed   = state.input.typed   ?? '';
+    state.input.path    = state.input.path    ?? [];
+    state.input.valid   = state.input.valid   ?? false;
+    state.input.hasPath = state.input.hasPath ?? false;
+    state.input.resolvedPath = state.input.resolvedPath ?? [];
+    state.input.explicitPath = state.input.explicitPath ?? [];
+    state.input.pathAmbiguous = state.input.pathAmbiguous ?? false;
+    state.input.pathCandidateCount = state.input.pathCandidateCount ?? 0;
+    state.input.prefixStarts = state.input.prefixStarts ?? [];
+    state.input.matchingTiles = state.input.matchingTiles ?? [];
+    state.input.scorePreview = state.input.scorePreview ?? null;
+    state.input.flashInvalid = state.input.flashInvalid ?? false;
+
+    if (!_attached) {
+      window.addEventListener('keydown', onKeyDown);
+      _attached = true;
+    }
+  }
+
+  /**
+   * Called each game loop tick. Currently event-driven so this is a no-op,
+   * but provided for consistent module interface.
+   *
+   * @param {object} state
+   */
+  function update(state) {
+    // Event-driven — nothing to poll each frame.
+    // If flashInvalid needs timed reset (renderer doesn't clear it),
+    // that can be handled here.
+    _state = state; // keep reference current in case state object is replaced
+    if (!_state?.input?.typed) {
+      _state.input.path = [];
+      _state.input.resolvedPath = [];
+      _state.input.explicitPath = [];
+      _state.input.valid = false;
+      _state.input.hasPath = false;
+      _state.input.pathAmbiguous = false;
+      _state.input.pathCandidateCount = 0;
+      _state.input.matchingTiles = [];
+      _state.input.scorePreview = null;
+    }
+  }
+
+  window.LD.Input = {
+    init,
+    update,
+    appendLetter,
+    backspaceLetter,
+    clearCurrentWord: clearInput,
+    setCurrentWordPath,
+    refreshCurrentWord: refreshInputState,
+    scrollBoard: scrollViewport,
+    submitCurrentWord: submitWord,
+    rejectCurrentWord: rejectWord,
+    useClue,
+    // Compatibility exports during migration
+    _submitWord: submitWord,
+    _rejectWord: rejectWord,
+    _useClue: useClue,
+    _refreshInputState: refreshInputState,
+  };
+})();

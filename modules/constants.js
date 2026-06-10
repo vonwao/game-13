@@ -1,0 +1,335 @@
+(function () {
+  'use strict';
+
+  window.LD = window.LD || {};
+
+  var BOARD_SIZES = {
+    small:  { width: 20, height: 16 },
+    medium: { width: 30, height: 25 },
+    large:  { width: 40, height: 40 },
+  };
+
+  // Orientation-aware board profile hints.
+  //
+  // These are pure lookup data for future callers that want to pick a board
+  // presentation profile based on both size tier and aspect/orientation.
+  // Nothing in the current runtime uses them yet, so existing behavior stays
+  // unchanged until a caller opts in.
+  var BOARD_PROFILES = {
+    landscape: {
+      small: {
+        boardSize: 'small',
+        orientation: 'landscape',
+        boardWidth: 20,
+        boardHeight: 16,
+        tileTargets: {
+          preferred: 28,
+          minimumReadable: 22,
+          maximum: 34,
+        },
+      },
+      medium: {
+        boardSize: 'medium',
+        orientation: 'landscape',
+        boardWidth: 30,
+        boardHeight: 25,
+        tileTargets: {
+          preferred: 22,
+          minimumReadable: 18,
+          maximum: 28,
+        },
+      },
+      large: {
+        boardSize: 'large',
+        orientation: 'landscape',
+        boardWidth: 40,
+        boardHeight: 40,
+        tileTargets: {
+          preferred: 16,
+          minimumReadable: 14,
+          maximum: 20,
+        },
+      },
+    },
+    portrait: {
+      small: {
+        boardSize: 'small',
+        orientation: 'portrait',
+        boardWidth: 13,
+        boardHeight: 18,
+        tileTargets: {
+          preferred: 24,
+          minimumReadable: 19,
+          maximum: 30,
+        },
+      },
+      medium: {
+        boardSize: 'medium',
+        orientation: 'portrait',
+        boardWidth: 16,
+        boardHeight: 22,
+        tileTargets: {
+          preferred: 20,
+          minimumReadable: 16,
+          maximum: 24,
+        },
+      },
+      large: {
+        boardSize: 'large',
+        orientation: 'portrait',
+        boardWidth: 18,
+        boardHeight: 26,
+        tileTargets: {
+          preferred: 16,
+          minimumReadable: 13,
+          maximum: 20,
+        },
+      },
+    },
+  };
+
+  var FRAGMENTS = [
+    'ING', 'TION', 'COM', 'PRE', 'OUT', 'STR', 'IGHT', 'MENT',
+    'ABLE', 'NESS', 'OVER', 'UNDER', 'ENCE', 'OUGH', 'ANCE'
+  ];
+
+  var WORD_HUNT_AUTHORING_DEFAULTS = {
+    easy: {
+      plantedWordCount: 20,
+      plantedWordMinLen: 4,
+      plantedWordMaxLen: 6,
+      plantedDiagonalPct: 0,
+      plantedReversePct: 0,
+      commonWordRankLimit: 1800,
+      fragmentCount: 18,
+    },
+    medium: {
+      plantedWordCount: 15,
+      plantedWordMinLen: 5,
+      plantedWordMaxLen: 7,
+      plantedDiagonalPct: 0.2,
+      plantedReversePct: 0.15,
+      commonWordRankLimit: 2600,
+      fragmentCount: 12,
+    },
+    hard: {
+      plantedWordCount: 10,
+      plantedWordMinLen: 6,
+      plantedWordMaxLen: 8,
+      plantedDiagonalPct: 0.5,
+      plantedReversePct: 0.4,
+      commonWordRankLimit: 3400,
+      fragmentCount: 6,
+    },
+  };
+
+  var SMALL_WORD_HUNT_AUTHORING = {
+    landscape: {
+      easy: {
+        plantedWordCount: 14,
+        plantedWordMinLen: 5,
+        plantedWordMaxLen: 7,
+        fragmentCount: 12,
+      },
+      hard: {
+        plantedWordCount: 11,
+      },
+    },
+    portrait: {
+      easy: {
+        plantedWordCount: 10,
+        plantedWordMinLen: 5,
+        plantedWordMaxLen: 7,
+        fragmentCount: 6,
+      },
+      medium: {
+        plantedWordCount: 10,
+        fragmentCount: 6,
+      },
+      hard: {
+        plantedWordCount: 9,
+      },
+    },
+  };
+
+  function cloneWordHuntAuthoring(profile) {
+    return {
+      plantedWordCount: profile.plantedWordCount,
+      plantedWordMinLen: profile.plantedWordMinLen,
+      plantedWordMaxLen: profile.plantedWordMaxLen,
+      plantedDiagonalPct: profile.plantedDiagonalPct,
+      plantedReversePct: profile.plantedReversePct,
+      commonWordRankLimit: profile.commonWordRankLimit,
+      fragmentCount: profile.fragmentCount,
+    };
+  }
+
+  function resolveWordHuntAuthoring(diff, profile) {
+    var base = cloneWordHuntAuthoring(
+      WORD_HUNT_AUTHORING_DEFAULTS[diff] || WORD_HUNT_AUTHORING_DEFAULTS.medium
+    );
+    var orientation = profile && profile.sizeKey === 'small' ? profile.orientation : null;
+    var small = orientation && SMALL_WORD_HUNT_AUTHORING[orientation]
+      ? SMALL_WORD_HUNT_AUTHORING[orientation][diff]
+      : null;
+    if (!small) return base;
+    for (var key in small) {
+      if (Object.prototype.hasOwnProperty.call(small, key)) {
+        base[key] = small[key];
+      }
+    }
+    return base;
+  }
+
+  function resolve(gameMode, settings, layout) {
+    settings = settings || {};
+
+    var diff = settings.difficulty || 'medium';
+    var sizeKey = settings.boardSize || 'medium';
+    var size = BOARD_SIZES[sizeKey] || BOARD_SIZES.medium;
+    var profile = layout ? resolveBoardProfile(sizeKey, layout) : null;
+    var boardWidth = profile ? profile.boardWidth : size.width;
+    var boardHeight = profile ? profile.boardHeight : size.height;
+
+    if (gameMode === 'wordhunt') {
+      var authoring = resolveWordHuntAuthoring(diff, profile);
+      return {
+        boardWidth:  boardWidth,
+        boardHeight: boardHeight,
+        boardProfile: profile,
+        // Planted words
+        plantedWordCount:    authoring.plantedWordCount,
+        plantedWordMinLen:   authoring.plantedWordMinLen,
+        plantedWordMaxLen:   authoring.plantedWordMaxLen,
+        plantedDiagonalPct:  authoring.plantedDiagonalPct,
+        plantedReversePct:   authoring.plantedReversePct,
+        commonWordRankLimit: authoring.commonWordRankLimit,
+        commonWordRankStep: 700,
+        // Fragments
+        fragmentCount: authoring.fragmentCount,
+        // Special tiles
+        crystalCount: settings.specialTiles ? 6 : 0,
+        voidCount:    settings.specialTiles ? 5 : 0,
+        emberCount:   settings.specialTiles ? 4 : 0,
+        bombCount:    0,
+        // Discovery / progression
+        clueCount:   { easy: 3, medium: 2, hard: 1 }[diff],
+        roundsToWin: 3,
+        // Scoring — combo bonuses removed (April 2026): chains rewarded
+        // streaks, not decisions, and the multiplier was hidden in the HUD
+        // anyway. See PR notes / commit history.
+        pathBonuses:  true,
+        comboBonuses: false,
+        // Timing
+        timeLimit:  { easy: 420, medium: 300, hard: 180 }[diff],
+        turnLimit:  { easy: 60,  medium: 50,  hard: 35  }[diff],
+      };
+    }
+
+    if (gameMode === 'siege') {
+      return {
+        boardWidth:  boardWidth,
+        boardHeight: boardHeight,
+        boardProfile: profile,
+        // Corruption
+        sealCount:                { easy: 4, medium: 6, hard: 8 }[diff],
+        corruptionSpreadChance:   { easy: 0.2, medium: 0.3, hard: 0.45 }[diff],
+        corruptionLossThreshold:  { easy: 50, medium: 40, hard: 30 }[diff],
+        initialCorruptionRadius:  { easy: 1, medium: 1, hard: 2 }[diff],
+        hardModeLetters:          diff === 'hard',
+        // Special tiles
+        crystalCount: settings.specialTiles ? 8 : 0,
+        voidCount:    settings.specialTiles ? 5 : 0,
+        emberCount:   settings.specialTiles ? 6 : 0,
+        bombCount:    settings.specialTiles ? 2 : 0,
+        // Scoring
+        pathBonuses:  false,
+        comboBonuses: false,
+      };
+    }
+
+    // Fallback (should not happen)
+    return { boardWidth: boardWidth, boardHeight: boardHeight, boardProfile: profile };
+  }
+
+  function normalizeBoardSizeKey(sizeKey) {
+    return BOARD_SIZES[sizeKey] ? sizeKey : 'medium';
+  }
+
+  function resolveBoardOrientation(layout) {
+    if (typeof layout === 'string') {
+      return layout === 'portrait' ? 'portrait' : 'landscape';
+    }
+
+    if (layout && typeof layout.orientation === 'string') {
+      return layout.orientation === 'portrait' ? 'portrait' : 'landscape';
+    }
+
+    if (layout && typeof layout.aspect === 'string') {
+      return layout.aspect === 'tall' || layout.aspect === 'portrait' ? 'portrait' : 'landscape';
+    }
+
+    if (layout && typeof layout.aspect === 'number') {
+      return layout.aspect < 1 ? 'portrait' : 'landscape';
+    }
+
+    if (layout && typeof layout.width === 'number' && typeof layout.height === 'number') {
+      return layout.width < layout.height ? 'portrait' : 'landscape';
+    }
+
+    if (layout && typeof layout.orientationHint === 'string') {
+      return layout.orientationHint === 'portrait' ? 'portrait' : 'landscape';
+    }
+
+    return 'landscape';
+  }
+
+  function cloneBoardProfile(profile, sizeKey, orientation) {
+    if (!profile) return null;
+    var tileTargets = profile.tileTargets || {};
+    return {
+      sizeKey: sizeKey,
+      orientation: orientation,
+      boardSize: profile.boardSize,
+      boardWidth: profile.boardWidth,
+      boardHeight: profile.boardHeight,
+      tileTargets: {
+        preferred: tileTargets.preferred,
+        minimumReadable: tileTargets.minimumReadable,
+        maximum: tileTargets.maximum,
+      },
+      tileTarget: tileTargets.preferred,
+      tileTargetMin: tileTargets.minimumReadable,
+      tileTargetMax: tileTargets.maximum,
+      aspectHint: profile.orientation === 'portrait' ? 'tall' : 'wide',
+    };
+  }
+
+  function resolveBoardProfile(sizeKey, layout) {
+    var normalizedSizeKey = normalizeBoardSizeKey(sizeKey);
+    var orientation = resolveBoardOrientation(layout);
+    var profile = BOARD_PROFILES[orientation] && BOARD_PROFILES[orientation][normalizedSizeKey];
+    if (!profile) {
+      profile = BOARD_PROFILES.landscape.medium;
+      normalizedSizeKey = 'medium';
+      orientation = 'landscape';
+    }
+    return cloneBoardProfile(profile, normalizedSizeKey, orientation);
+  }
+
+  function getBoardTileTargets(sizeKey, layout) {
+    var profile = resolveBoardProfile(sizeKey, layout);
+    return profile ? profile.tileTargets : null;
+  }
+
+  window.LD.Constants = {
+    BOARD_SIZES:        BOARD_SIZES,
+    BOARD_PROFILES:      BOARD_PROFILES,
+    FRAGMENTS:           FRAGMENTS,
+    resolve:             resolve,
+    resolveWordHuntAuthoring: resolveWordHuntAuthoring,
+    resolveBoardProfile: resolveBoardProfile,
+    getBoardTileTargets: getBoardTileTargets,
+  };
+
+})();
